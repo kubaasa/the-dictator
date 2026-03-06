@@ -60,6 +60,9 @@ typings/
 # dotenv environment variables file
 .env
 .env.test
+.env.development
+.env.UAT.json
+.env.PRD.json
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
