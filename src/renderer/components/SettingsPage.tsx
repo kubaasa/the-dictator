@@ -83,7 +83,6 @@ export function SettingsPage() {
               }
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-200"
             >
-              <option value="api">OpenAI Whisper API</option>
               <option value="local">Local Whisper (offline)</option>
             </select>
             <p className="text-xs text-zinc-500">

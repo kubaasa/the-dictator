@@ -3,10 +3,10 @@ import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
 import { TrayManager } from './tray';
-import { AudioRecorderService } from './services/audio-recorder.service';
 import { HotkeyService } from './services/hotkey.service';
 import { TranscriptionService } from './services/transcription.service';
 import { registerIpcHandlers } from './ipc-handlers';
+import { PasteService } from './services/paste.service';
 import { DEFAULT_SETTINGS, type AppSettings, type RecordingState } from '../shared/types';
 import { IPC } from '../shared/constants';
 
@@ -16,8 +16,8 @@ if (started) {
 
 const store = new Store<AppSettings>({ defaults: DEFAULT_SETTINGS });
 const trayManager = new TrayManager();
-const audioRecorder = new AudioRecorderService();
 const transcriptionService = new TranscriptionService(store);
+const pasteService = new PasteService();
 
 // Hotkey sends toggle to the main renderer window (which owns getUserMedia)
 function sendToggleToRenderer(): void {
@@ -26,7 +26,10 @@ function sendToggleToRenderer(): void {
   }
 }
 
-const hotkeyService = new HotkeyService(sendToggleToRenderer, sendToggleToRenderer);
+const hotkeyService = new HotkeyService(
+  () => { pasteService.captureTarget(); sendToggleToRenderer(); }, // onStart: capture target first
+  sendToggleToRenderer,                                            // onStop: just toggle
+);
 
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
@@ -74,14 +77,14 @@ function createMainWindow(): BrowserWindow {
 
 function createOverlayWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 300,
-    height: 100,
+    width: 160,
+    height: 160,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
-    focusable: false,
+    focusable: true,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -94,7 +97,10 @@ function createOverlayWindow(): BrowserWindow {
   const { screen } = require('electron');
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenW } = primaryDisplay.workAreaSize;
-  win.setPosition(screenW - 320, 20);
+  win.setPosition(screenW - 180, 20);
+
+  // Blur immediately on focus so the overlay never steals focus from other apps
+  win.on('focus', () => win.blur());
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     win.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#overlay`);
@@ -130,8 +136,12 @@ function setupRecordingIpc(): void {
   });
 
   ipcMain.on(IPC.RECORDING_STOP, () => {
-    // TODO: replace with real transcription pipeline (Phase 3/4)
-    broadcastState('idle');
+    // Don't broadcast 'idle' here — state stays 'recording' until
+    // transcription handler sets 'transcribing', preventing overlay flicker.
+  });
+
+  ipcMain.on(IPC.VOICE_ACTIVITY, (_, level: number) => {
+    overlayWindow?.webContents.send(IPC.VOICE_ACTIVITY, level);
   });
 
   ipcMain.handle(IPC.RECORDING_STATE_CHANGED, () => {
@@ -144,7 +154,7 @@ app.on('ready', () => {
   overlayWindow = createOverlayWindow();
 
   trayManager.create(mainWindow);
-  registerIpcHandlers(store, audioRecorder, transcriptionService, broadcastState);
+  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService);
   setupRecordingIpc();
 
   const { shortcut, mode } = store.get('hotkey');

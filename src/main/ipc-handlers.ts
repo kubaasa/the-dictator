@@ -1,16 +1,16 @@
 import { ipcMain, BrowserWindow, shell, clipboard } from 'electron';
 import { IPC } from '../shared/constants';
 import type { AppSettings, RecordingState } from '../shared/types';
-import { AudioRecorderService } from './services/audio-recorder.service';
 import { TranscriptionService } from './services/transcription.service';
+import { PasteService } from './services/paste.service';
 import Store from 'electron-store';
 import { DEFAULT_SETTINGS } from '../shared/types';
 
 export function registerIpcHandlers(
   store: Store<AppSettings>,
-  audioRecorder: AudioRecorderService,
   transcriptionService: TranscriptionService,
   broadcastState: (state: RecordingState) => void,
+  pasteService: PasteService,
 ): void {
   // Settings
   ipcMain.handle(IPC.SETTINGS_GET, () => {
@@ -28,14 +28,6 @@ export function registerIpcHandlers(
     return store.store;
   });
 
-  // Audio
-  ipcMain.handle(
-    IPC.AUDIO_SAVE_WAV,
-    async (_event, audioBuffer: ArrayBuffer, sampleRate: number) => {
-      return audioRecorder.saveWav(audioBuffer, sampleRate);
-    },
-  );
-
   // Transcription readiness check (before recording starts)
   ipcMain.handle(IPC.TRANSCRIPTION_CHECK_READY, () => {
     const engine = (store.get('transcription.engine') as string) ?? 'local';
@@ -50,32 +42,31 @@ export function registerIpcHandlers(
     return { ready: true };
   });
 
-  // Transcription
-  ipcMain.handle(IPC.TRANSCRIPTION_START, async (event, wavPath: string) => {
+  // Transcription — receives raw audio buffer directly, no disk I/O
+  ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, async (event, audioBuffer: ArrayBuffer, sampleRate: number) => {
     broadcastState('transcribing');
     try {
-      const engine = (store.get('transcription.engine') as string) ?? 'local';
-      const text = engine === 'api'
-        ? await transcriptionService.transcribeApi(wavPath)
-        : await transcriptionService.transcribeLocal(wavPath);
+      const text = await transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate);
       broadcastState('done');
       const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
       console.log('[Dictator] Transcription done. autoPaste=%s, text="%s"', autoPaste, text);
-      if (autoPaste) {
+
+      // Always write to clipboard so the user can always Ctrl+V manually
+      clipboard.writeText(text);
+      console.log('[Dictator] Text copied to clipboard');
+
+      if (autoPaste && pasteService.hasTarget()) {
+        await pasteService.simulatePaste();
+        // Re-write after paste so transcribed text stays in clipboard for manual use
         clipboard.writeText(text);
-        console.log('[Dictator] Text copied to clipboard');
       }
-      event.sender.send(IPC.TRANSCRIPTION_RESULT, { text, wavPath });
+      event.sender.send(IPC.TRANSCRIPTION_RESULT, { text });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       broadcastState('error');
+      setTimeout(() => broadcastState('idle'), 3000);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, msg);
     }
-  });
-
-  // Open recordings folder in system file explorer
-  ipcMain.on(IPC.APP_OPEN_RECORDINGS_FOLDER, () => {
-    shell.openPath(audioRecorder.getRecordingsDir());
   });
 
   // Open models cache folder in system file explorer
@@ -85,24 +76,11 @@ export function registerIpcHandlers(
 
   // Model
   ipcMain.handle(IPC.MODEL_STATUS, () => {
-    if (transcriptionService.isModelDownloaded()) {
-      return { downloaded: true };
-    }
+    return { downloaded: transcriptionService.isModelDownloaded() };
+  });
 
-    // Current model not on disk — scan cache for any downloaded model and auto-fix the setting
-    const MODEL_QUALITY_ORDER = ['large', 'medium', 'small', 'base', 'base.en', 'tiny', 'tiny.en'];
-    const downloadedModels = transcriptionService.getDownloadedModels();
-
-    if (downloadedModels.length > 0) {
-      const bestModel = MODEL_QUALITY_ORDER.find((m) => downloadedModels.includes(m)) ?? downloadedModels[0];
-      store.set('transcription', { ...store.store.transcription, localModelSize: bestModel });
-      for (const win of BrowserWindow.getAllWindows()) {
-        win.webContents.send(IPC.SETTINGS_ON_CHANGE, store.store);
-      }
-      return { downloaded: true };
-    }
-
-    return { downloaded: false };
+  ipcMain.handle(IPC.MODEL_ALL_DOWNLOADED, () => {
+    return transcriptionService.getDownloadedModels();
   });
 
   ipcMain.handle(IPC.MODEL_DOWNLOAD, async (event) => {

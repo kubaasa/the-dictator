@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+html,
+body,
+#app {
+  background: transparent;
+}
+
 @keyframes ping-slow {
   0% {
     transform: scale(1);

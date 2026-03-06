@@ -32,6 +32,10 @@ Strona Modes: toggle Local (offline) / OpenAI API, wybór rozmiaru modelu,
 progress-bar pobierania, przycisk "Open models folder".
 Strona Home: nagrywanie, stan transkrypcji, textarea z wynikiem, przyciski Copy i Clear.
 
+Faza 6 (clipboard) — częściowo: po transkrypcji tekst jest automatycznie kopiowany do schowka
+przez Electron clipboard API (ustawienie autoPaste w store). User wkleja ręcznie Ctrl+V.
+Brak symulacji klawiatury (nut-js nie zainstalowany) — to pozostaje do zrobienia.
+
 
 Status faz
 ----------
@@ -41,13 +45,14 @@ Faza  | Zakres                              | Status
 1     | Szkielet + audio recording          | Done
 2     | Global hotkey + push-to-talk        | Done
 3     | Transkrypcja offline (@xenova)      | Done
-4     | Transkrypcja online (OpenAI API)    | Done
+4     | Transkrypcja online (OpenAI API)    | Wykonane / Nie przetestowane
 5     | AI post-processing + tryby          | Do zrobienia
-6     | Auto-paste (nut-js)                  | Do zrobienia
-7     | Settings UI (pełny)                  | Do zrobienia
-8     | Overlay + UX polish                  | Do zrobienia
-9     | Historia + zaawansowane              | Do zrobienia
-10    | Packaging (NSIS)                     | Do zrobienia
+6     | Auto-paste (nut-js)                 | W toku — clipboard gotowy, brak symulacji Ctrl+V
+7     | Settings UI (pełny)                 | Do zrobienia
+8     | Overlay + UX polish                 | Do zrobienia
+9     | Historia + zaawansowane             | Do zrobienia
+10    | Packaging (NSIS)                    | Do zrobienia
+
 
 
 Następny krok

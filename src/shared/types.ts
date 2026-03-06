@@ -1,6 +1,5 @@
 export interface TranscriptionResult {
   text: string;
-  wavPath: string;
 }
 
 export type DictationMode = 'voice' | 'message' | 'email' | 'chat' | 'custom';

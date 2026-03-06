@@ -6,18 +6,18 @@ export interface DictatorAPI {
   // Recording
   startRecording: () => void;
   stopRecording: () => void;
-  saveWav: (audioBuffer: ArrayBuffer, sampleRate: number) => Promise<string>;
   getRecordingState: () => Promise<RecordingState>;
   onRecordingStateChanged: (callback: (state: RecordingState) => void) => () => void;
 
   // Transcription
   checkTranscriptionReady: () => Promise<{ ready: boolean; error?: string }>;
-  transcribe: (wavPath: string) => Promise<void>;
+  transcribeBuffer: (audioBuffer: ArrayBuffer, sampleRate: number) => Promise<void>;
   onTranscriptionResult: (callback: (result: TranscriptionResult) => void) => () => void;
   onTranscriptionError: (callback: (message: string) => void) => () => void;
 
   // Model
   checkModelStatus: () => Promise<{ downloaded: boolean }>;
+  getDownloadedModels: () => Promise<string[]>;
   downloadModel: () => Promise<void>;
   cancelDownload: () => void;
   onModelProgress: (callback: (pct: number) => void) => () => void;
@@ -29,13 +29,16 @@ export interface DictatorAPI {
   setSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>;
   onSettingsChange: (callback: (settings: AppSettings) => void) => () => void;
 
+  // Voice Activity
+  sendVoiceActivity: (level: number) => void;
+  onVoiceActivity: (callback: (level: number) => void) => () => void;
+
   // Hotkey
   onHotkeyToggle: (callback: () => void) => () => void;
 
   // App
   quit: () => void;
   showSettings: () => void;
-  openRecordingsFolder: () => void;
   openModelsFolder: () => void;
 }
 
@@ -43,8 +46,6 @@ const api: DictatorAPI = {
   // Recording
   startRecording: () => ipcRenderer.send(IPC.RECORDING_START),
   stopRecording: () => ipcRenderer.send(IPC.RECORDING_STOP),
-  saveWav: (audioBuffer, sampleRate) =>
-    ipcRenderer.invoke(IPC.AUDIO_SAVE_WAV, audioBuffer, sampleRate),
   getRecordingState: () => ipcRenderer.invoke(IPC.RECORDING_STATE_CHANGED),
   onRecordingStateChanged: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, state: RecordingState) => callback(state);
@@ -54,7 +55,8 @@ const api: DictatorAPI = {
 
   // Transcription
   checkTranscriptionReady: () => ipcRenderer.invoke(IPC.TRANSCRIPTION_CHECK_READY),
-  transcribe: (wavPath) => ipcRenderer.invoke(IPC.TRANSCRIPTION_START, wavPath),
+  transcribeBuffer: (audioBuffer, sampleRate) =>
+    ipcRenderer.invoke(IPC.TRANSCRIPTION_START_BUFFER, audioBuffer, sampleRate),
   onTranscriptionResult: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, result: TranscriptionResult) => callback(result);
     ipcRenderer.on(IPC.TRANSCRIPTION_RESULT, handler);
@@ -68,6 +70,7 @@ const api: DictatorAPI = {
 
   // Model
   checkModelStatus: () => ipcRenderer.invoke(IPC.MODEL_STATUS),
+  getDownloadedModels: () => ipcRenderer.invoke(IPC.MODEL_ALL_DOWNLOADED),
   downloadModel: () => ipcRenderer.invoke(IPC.MODEL_DOWNLOAD),
   cancelDownload: () => ipcRenderer.send(IPC.MODEL_DOWNLOAD_CANCEL),
   onModelProgress: (callback) => {
@@ -95,6 +98,14 @@ const api: DictatorAPI = {
     return () => ipcRenderer.removeListener(IPC.SETTINGS_ON_CHANGE, handler);
   },
 
+  // Voice Activity
+  sendVoiceActivity: (level) => ipcRenderer.send(IPC.VOICE_ACTIVITY, level),
+  onVoiceActivity: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, level: number) => callback(level);
+    ipcRenderer.on(IPC.VOICE_ACTIVITY, handler);
+    return () => ipcRenderer.removeListener(IPC.VOICE_ACTIVITY, handler);
+  },
+
   // Hotkey
   onHotkeyToggle: (callback) => {
     const handler = () => callback();
@@ -105,7 +116,6 @@ const api: DictatorAPI = {
   // App
   quit: () => ipcRenderer.send(IPC.APP_QUIT),
   showSettings: () => ipcRenderer.send(IPC.APP_SHOW_SETTINGS),
-  openRecordingsFolder: () => ipcRenderer.send(IPC.APP_OPEN_RECORDINGS_FOLDER),
   openModelsFolder: () => ipcRenderer.send(IPC.APP_OPEN_MODELS_FOLDER),
 };
 

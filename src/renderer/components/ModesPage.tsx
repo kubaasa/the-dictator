@@ -1,26 +1,82 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ModelStatus } from '../hooks/useModelStatus';
 
 const MODEL_OPTIONS = [
-  { value: 'tiny', label: 'tiny' },
-  { value: 'base', label: 'base' },
-  { value: 'small', label: 'small' },
-  { value: 'medium', label: 'medium' },
+  { value: 'tiny', label: 'Tiny' },
+  { value: 'base', label: 'Base' },
+  { value: 'small', label: 'Small' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'large-v3', label: 'Large v3' },
+];
+
+const LANGUAGE_OPTIONS = [
+  { value: 'auto', label: 'Auto-detect' },
+  { value: 'en', label: 'English' },
+  { value: 'pl', label: 'Polish' },
+  { value: 'de', label: 'German' },
+  { value: 'fr', label: 'French' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'it', label: 'Italian' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'nl', label: 'Dutch' },
+  { value: 'ja', label: 'Japanese' },
+  { value: 'zh', label: 'Chinese' },
+  { value: 'ko', label: 'Korean' },
+  { value: 'ru', label: 'Russian' },
+  { value: 'uk', label: 'Ukrainian' },
+  { value: 'cs', label: 'Czech' },
+  { value: 'sv', label: 'Swedish' },
 ];
 
 export function ModesPage(props: ModelStatus) {
-  const { downloaded, downloading, progress, error, download, cancel, recheck } = props;
+  const { downloaded, downloadedModels, downloading, progress, error, download, cancel, recheck } = props;
   const [engine, setEngine] = useState<'local' | 'api'>('api');
   const [modelSize, setModelSize] = useState('base');
+  const [language, setLanguage] = useState('auto');
   const [apiKey, setApiKey] = useState('');
   const [apiKeySaved, setApiKeySaved] = useState(false);
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [langDropdownOpen, setLangDropdownOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const langDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!modelDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setModelDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [modelDropdownOpen]);
+
+  useEffect(() => {
+    if (!langDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (langDropdownRef.current && !langDropdownRef.current.contains(e.target as Node)) {
+        setLangDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [langDropdownOpen]);
 
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
       setEngine(s.transcription.engine);
       setModelSize(s.transcription.localModelSize);
+      setLanguage(s.transcription.language);
       setApiKey(s.transcription.openaiApiKey);
     });
+
+    const unsub = window.dictator.onSettingsChange((s) => {
+      setEngine(s.transcription.engine);
+      setModelSize(s.transcription.localModelSize);
+      setLanguage(s.transcription.language);
+      setApiKey(s.transcription.openaiApiKey);
+    });
+    return unsub;
   }, []);
 
   const handleEngineChange = async (newEngine: 'local' | 'api') => {
@@ -40,6 +96,14 @@ export function ModesPage(props: ModelStatus) {
     recheck();
   };
 
+  const handleLanguageChange = async (newLang: string) => {
+    setLanguage(newLang);
+    const current = await window.dictator.getSettings();
+    await window.dictator.setSettings({
+      transcription: { ...current.transcription, language: newLang },
+    });
+  };
+
   const handleApiKeySave = async () => {
     const current = await window.dictator.getSettings();
     await window.dictator.setSettings({
@@ -53,92 +117,104 @@ export function ModesPage(props: ModelStatus) {
     <main className="flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-md flex flex-col gap-6">
 
-        {/* Engine toggle */}
-        <div>
-          <h2 className="mb-3 text-base font-semibold text-zinc-900">Transcription Engine</h2>
-          <div className="flex rounded-lg border border-zinc-200 bg-zinc-50 p-1 w-fit gap-1">
-            {(['local', 'api'] as const).map((e) => (
-              <button
-                key={e}
-                onClick={() => handleEngineChange(e)}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  engine === e
-                    ? 'bg-white text-zinc-900 shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-600'
-                }`}
-              >
-                {e === 'local' ? 'Local (offline)' : 'OpenAI API'}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Local model section */}
-        {engine === 'local' && (
-          <div>
-            <h2 className="mb-3 text-base font-semibold text-zinc-900">Local Whisper Model</h2>
+        <div>
+            <h2 className="mb-3 text-base font-semibold text-zinc-900">Modes</h2>
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 flex flex-col gap-5">
+              {/* Language — first */}
               <div className="flex items-center gap-3">
-                <span className="text-sm text-zinc-400 w-14">Model</span>
-                <select
-                  value={modelSize}
-                  onChange={(e) => handleModelChange(e.target.value)}
-                  disabled={downloading}
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  {MODEL_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-                <span className="text-xs text-zinc-400">change requires re-download</span>
+                <span className="text-sm text-zinc-400 w-14">Language</span>
+                <div ref={langDropdownRef} className="relative">
+                  <button
+                    onClick={() => setLangDropdownOpen((o) => !o)}
+                    className="flex w-40 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 cursor-pointer hover:border-zinc-300 justify-between"
+                  >
+                    <span>{LANGUAGE_OPTIONS.find((o) => o.value === language)?.label ?? language}</span>
+                    <svg className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${langDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {langDropdownOpen && (
+                    <div className="absolute left-0 top-full z-50 mt-1 w-40 overflow-y-auto max-h-64 rounded-lg border border-zinc-200 bg-white shadow-lg">
+                      {LANGUAGE_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => { handleLanguageChange(opt.value); setLangDropdownOpen(false); }}
+                          className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-50 ${
+                            opt.value === language ? 'font-medium text-zinc-900' : 'text-zinc-600'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="flex flex-col gap-3">
-                {downloaded === null ? (
-                  <p className="text-sm text-zinc-400">Checking...</p>
-                ) : downloaded ? (
-                  <p className="flex items-center gap-2 text-sm text-emerald-400">
-                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              {/* Model — second, custom dropdown with download indicators */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-zinc-400 w-14">Model</span>
+                <div ref={modelDropdownRef} className="relative">
+                  <button
+                    onClick={() => !downloading && setModelDropdownOpen((o) => !o)}
+                    disabled={downloading}
+                    className="flex w-40 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer hover:border-zinc-300 justify-between"
+                  >
+                    <span>{MODEL_OPTIONS.find((o) => o.value === modelSize)?.label ?? modelSize}</span>
+                    <svg className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
                     </svg>
-                    Model ready
-                  </p>
-                ) : (
-                  <p className="flex items-center gap-2 text-sm text-zinc-400">
-                    <span className="inline-block h-2 w-2 rounded-full bg-zinc-300" />
-                    Not downloaded
-                  </p>
-                )}
+                  </button>
 
-                {error && (
-                  <p className="rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-xs text-red-400">
-                    {error}
-                  </p>
-                )}
+                  {modelDropdownOpen && (
+                    <div className="absolute left-0 top-full z-50 mt-1 min-w-full overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg">
+                      {MODEL_OPTIONS.map((opt) => {
+                        const isSelected = opt.value === modelSize;
+                        const isReady = downloadedModels.includes(opt.value);
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => {
+                              handleModelChange(opt.value);
+                              setModelDropdownOpen(false);
+                            }}
+                            className={`flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-50 ${
+                              isSelected ? 'font-medium text-zinc-900' : 'text-zinc-600'
+                            }`}
+                          >
+                            <span className="whitespace-nowrap">{opt.label}</span>
+                            {isReady ? (
+                              // Checkmark icon — model already downloaded
+                              <svg className="h-3.5 w-3.5 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                              </svg>
+                            ) : (
+                              // Cloud download icon — model not yet cached
+                              <svg className="h-3.5 w-3.5 shrink-0 text-zinc-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+                              </svg>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 {!downloaded && !downloading && (
                   <button
                     onClick={download}
-                    className="w-fit rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+                    className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
                   >
-                    Download Model
+                    Download
                   </button>
                 )}
 
                 {downloading && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-zinc-600">
-                        Downloading...{progress > 0 ? ` ${progress}%` : ''}
-                      </p>
-                      <button
-                        onClick={cancel}
-                        className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-zinc-200 overflow-hidden">
+                  <div className="flex items-center gap-2">
+                    <div className="h-1.5 w-24 rounded-full bg-zinc-200 overflow-hidden">
                       {progress === 0 ? (
                         <div key="pulse" className="h-full w-full rounded-full bg-blue-500/40 animate-pulse" />
                       ) : (
@@ -149,9 +225,22 @@ export function ModesPage(props: ModelStatus) {
                         />
                       )}
                     </div>
+                    <span className="text-xs text-zinc-400">{progress > 0 ? `${progress}%` : '...'}</span>
+                    <button
+                      onClick={cancel}
+                      className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 )}
               </div>
+
+              {error && (
+                <p className="rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-xs text-red-400">
+                  {error}
+                </p>
+              )}
             </div>
 
             <button
@@ -163,8 +252,7 @@ export function ModesPage(props: ModelStatus) {
               </svg>
               Open models folder
             </button>
-          </div>
-        )}
+        </div>
 
         {/* API key section */}
         {engine === 'api' && (

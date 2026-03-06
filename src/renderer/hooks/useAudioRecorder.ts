@@ -8,7 +8,7 @@ interface UseAudioRecorderReturn {
   clearError: () => void;
 }
 
-export function useAudioRecorder(): UseAudioRecorderReturn {
+export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState('');
   const isRecordingRef = useRef(false);
@@ -17,8 +17,12 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const chunksRef = useRef<Float32Array[]>([]);
 
+  // Bug #2: race condition flags for push-to-talk
+  const isSettingUpRef = useRef(false);
+  const pendingStopRef = useRef(false);
+
   const startRecording = useCallback(async () => {
-    if (isRecordingRef.current) return;
+    if (isRecordingRef.current || isSettingUpRef.current) return;
     try {
       const { ready, error: readyError } = await window.dictator.checkTranscriptionReady();
       if (!ready) {
@@ -26,21 +30,28 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         return;
       }
       setError('');
-      isRecordingRef.current = true;
-      setIsRecording(true);
-      window.dictator.startRecording();
+      isSettingUpRef.current = true;
+      pendingStopRef.current = false;
 
+      // Bug #1: get mic BEFORE notifying main process
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
         },
       });
 
+      // Mic acquired — now tell main process
+      isRecordingRef.current = true;
+      setIsRecording(true);
+      window.dictator.startRecording();
+
       mediaStreamRef.current = stream;
 
-      const audioContext = new AudioContext();
+      // Force 16kHz: Whisper only needs 16kHz, this makes IPC payload 3x smaller
+      const audioContext = new AudioContext({ sampleRate: 16000 });
       audioContextRef.current = audioContext;
 
       const source = audioContext.createMediaStreamSource(stream);
@@ -52,18 +63,46 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
         chunksRef.current.push(new Float32Array(inputData));
+
+        // RMS → voice activity level for overlay lip-sync
+        let sum = 0;
+        for (let i = 0; i < inputData.length; i++) {
+          sum += inputData[i] * inputData[i];
+        }
+        const rms = Math.sqrt(sum / inputData.length);
+        const level = Math.min(1, rms / 0.15);
+        window.dictator.sendVoiceActivity(level);
       };
 
       source.connect(processor);
       processor.connect(audioContext.destination);
+
+      isSettingUpRef.current = false;
+
+      // Bug #2: if stop was requested during setup, execute it now
+      if (pendingStopRef.current) {
+        pendingStopRef.current = false;
+        stopRecording();
+      }
     } catch (err) {
       console.error('Failed to start recording:', err);
+      isSettingUpRef.current = false;
+      pendingStopRef.current = false;
       isRecordingRef.current = false;
       setIsRecording(false);
+      setError(err instanceof Error ? err.message : 'Failed to access microphone');
+      // Safety: in case startRecording IPC was already sent
+      window.dictator.stopRecording();
     }
   }, []);
 
   const stopRecording = useCallback(async () => {
+    // Bug #2: if still setting up, defer the stop
+    if (isSettingUpRef.current) {
+      pendingStopRef.current = true;
+      return;
+    }
+
     if (!isRecordingRef.current) return;
     isRecordingRef.current = false;
     setIsRecording(false);
@@ -91,13 +130,13 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         offset += chunk.length;
       }
 
-      const wavPath = await window.dictator.saveWav(merged.buffer, audioContext.sampleRate);
-
-      await audioContext.close();
+      const sampleRate = audioContext.sampleRate;
+      // Don't await — release mic hardware in background, don't block transcription
+      audioContext.close();
       audioContextRef.current = null;
 
       // Fire-and-forget: result arrives via onTranscriptionResult event
-      window.dictator.transcribe(wavPath);
+      window.dictator.transcribeBuffer(merged.buffer, sampleRate);
     }
 
     chunksRef.current = [];

@@ -1,5 +1,5 @@
 import { pipeline, env } from '@xenova/transformers';
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 import type { AppSettings } from '../../shared/types';
 import Store from 'electron-store';
 import * as path from 'node:path';
@@ -13,6 +13,7 @@ const MODEL_MAP: Record<string, string> = {
   small: 'Xenova/whisper-small',
   medium: 'Xenova/whisper-medium',
   large: 'Xenova/whisper-large-v2',
+  'large-v3': 'Xenova/whisper-large-v3',
 };
 
 env.allowLocalModels = false;
@@ -117,6 +118,54 @@ export class TranscriptionService {
     return MODELS_CACHE_DIR;
   }
 
+  async transcribeFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
+    const engine = (this.store.get('transcription.engine') as string) ?? 'local';
+    return engine === 'api'
+      ? this.transcribeApiFromBuffer(audioBuffer, sampleRate)
+      : this.transcribeLocalFromBuffer(audioBuffer, sampleRate);
+  }
+
+  private async transcribeApiFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
+    const apiKey = (this.store.get('transcription.openaiApiKey') as string) ?? '';
+    if (!apiKey) throw new Error('OpenAI API key is not set. Go to Modes and enter your key.');
+
+    const language = (this.store.get('transcription.language') as string) ?? 'auto';
+    const client = new OpenAI({ apiKey });
+
+    const float32 = ipcBufferToFloat32(audioBuffer);
+    const wavBuffer = encodeWav(float32, sampleRate);
+    const file = await toFile(Buffer.from(wavBuffer), 'audio.wav', { type: 'audio/wav' });
+
+    const response = await client.audio.transcriptions.create({
+      model: 'whisper-1',
+      file,
+      ...(language !== 'auto' && { language }),
+    });
+
+    return response.text.trim();
+  }
+
+  private async transcribeLocalFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
+    const modelId = this.getModelId();
+    const language = (this.store.get('transcription.language') as string) ?? 'auto';
+
+    if (!this.pipe || this.loadedModelId !== modelId) {
+      if (!this.isModelDownloaded()) {
+        throw new Error('Model not downloaded. Visit Modes to download it.');
+      }
+      await this.loadFromCache();
+    }
+
+    const float32 = ipcBufferToFloat32(audioBuffer);
+    const audio = resampleFloat32(float32, sampleRate, 16000);
+
+    const options: Record<string, unknown> = { task: 'transcribe' };
+    if (language !== 'auto') options.language = language;
+
+    const result = await this.pipe(audio, options);
+    return ((result as { text: string }).text ?? '').trim();
+  }
+
   async transcribeApi(wavPath: string): Promise<string> {
     const apiKey = (this.store.get('transcription.openaiApiKey') as string) ?? '';
     if (!apiKey) throw new Error('OpenAI API key is not set. Go to Modes and enter your key.');
@@ -152,7 +201,7 @@ export class TranscriptionService {
 
     const audio = readWavAsFloat32(wavPath, 16000);
 
-    const options: Record<string, unknown> = {};
+    const options: Record<string, unknown> = { task: 'transcribe' };
     if (language !== 'auto') {
       options.language = language;
     }
@@ -160,6 +209,59 @@ export class TranscriptionService {
     const result = await this.pipe(audio, options);
     return ((result as { text: string }).text ?? '').trim();
   }
+}
+
+/** Converts IPC-transferred ArrayBuffer (arrives as Node.js Buffer) to Float32Array. */
+function ipcBufferToFloat32(buffer: ArrayBuffer): Float32Array {
+  const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  return new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+}
+
+/** Linear interpolation resample. */
+function resampleFloat32(samples: Float32Array, fromRate: number, toRate: number): Float32Array {
+  if (fromRate === toRate) return samples;
+  const ratio = fromRate / toRate;
+  const outLength = Math.floor(samples.length / ratio);
+  const out = new Float32Array(outLength);
+  for (let i = 0; i < outLength; i++) {
+    const pos = i * ratio;
+    const idx = Math.floor(pos);
+    const frac = pos - idx;
+    const a = samples[idx] ?? 0;
+    const b = samples[idx + 1] ?? a;
+    out[i] = a + frac * (b - a);
+  }
+  return out;
+}
+
+/** Encodes Float32 PCM mono samples as a 16-bit WAV ArrayBuffer (for API upload). */
+function encodeWav(samples: Float32Array, sampleRate: number): ArrayBuffer {
+  const bytesPerSample = 2;
+  const dataLength = samples.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(buffer);
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataLength, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataLength, true);
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return buffer;
 }
 
 /**

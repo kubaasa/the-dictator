@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 export function useModelStatus() {
   const [downloaded, setDownloaded] = useState<boolean | null>(null);
+  const [downloadedModels, setDownloadedModels] = useState<string[]>([]);
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
@@ -10,9 +11,12 @@ export function useModelStatus() {
   const cleanupRef = useRef<(() => void) | null>(null);
 
   const recheck = useCallback(async () => {
-    setDownloaded(null);
-    const { downloaded } = await window.dictator.checkModelStatus();
-    setDownloaded(downloaded);
+    const [status, models] = await Promise.all([
+      window.dictator.checkModelStatus(),
+      window.dictator.getDownloadedModels(),
+    ]);
+    setDownloaded(status.downloaded);
+    setDownloadedModels(models);
   }, []);
 
   useEffect(() => {
@@ -38,6 +42,7 @@ export function useModelStatus() {
       setDownloaded(true);
       setDownloading(false);
       setProgress(100);
+      window.dictator.getDownloadedModels().then(setDownloadedModels);
     });
 
     const removeError = window.dictator.onModelError((msg) => {
@@ -57,7 +62,7 @@ export function useModelStatus() {
     setProgress(0);
   }, []);
 
-  return { downloaded, downloading, progress, error, download, cancel, recheck };
+  return { downloaded, downloadedModels, downloading, progress, error, download, cancel, recheck };
 }
 
 export type ModelStatus = ReturnType<typeof useModelStatus>;
