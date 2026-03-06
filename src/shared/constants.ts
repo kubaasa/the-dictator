@@ -17,6 +17,7 @@ export const IPC = {
   HOTKEY_TOGGLE: 'hotkey:toggle',
 
   // Transcription
+  TRANSCRIPTION_CHECK_READY: 'transcription:check-ready',
   TRANSCRIPTION_START: 'transcription:start',
   TRANSCRIPTION_RESULT: 'transcription:result',
   TRANSCRIPTION_ERROR: 'transcription:error',

@@ -1,4 +1,4 @@
-import { pipeline, read_audio, env } from '@xenova/transformers';
+import { pipeline, env } from '@xenova/transformers';
 import OpenAI from 'openai';
 import type { AppSettings } from '../../shared/types';
 import Store from 'electron-store';
@@ -40,14 +40,18 @@ export class TranscriptionService {
     return MODEL_MAP[modelSize] ?? MODEL_MAP['base'];
   }
 
-  isModelDownloaded(): boolean {
-    const modelId = this.getModelId();
+  isModelDownloaded(modelSize?: string): boolean {
+    const modelId = modelSize ? (MODEL_MAP[modelSize] ?? MODEL_MAP['base']) : this.getModelId();
     const onnxDir = path.join(this.getModelsCacheDir(), modelId, 'onnx');
     try {
       return fs.readdirSync(onnxDir).some((f) => f.endsWith('.onnx'));
     } catch {
       return false;
     }
+  }
+
+  getDownloadedModels(): string[] {
+    return Object.keys(MODEL_MAP).filter((size) => this.isModelDownloaded(size));
   }
 
   async downloadModel(onProgress: (pct: number) => void): Promise<void> {
@@ -129,20 +133,24 @@ export class TranscriptionService {
     return response.text.trim();
   }
 
+  private async loadFromCache(): Promise<void> {
+    const modelId = this.getModelId();
+    this.pipe = await pipeline('automatic-speech-recognition', modelId);
+    this.loadedModelId = modelId;
+  }
+
   async transcribeLocal(wavPath: string): Promise<string> {
     const modelId = this.getModelId();
     const language = (this.store.get('transcription.language') as string) ?? 'auto';
 
-    if (!this.pipe) {
-      throw new Error('Model not downloaded. Visit Modes to download it.');
+    if (!this.pipe || this.loadedModelId !== modelId) {
+      if (!this.isModelDownloaded()) {
+        throw new Error('Model not downloaded. Visit Modes to download it.');
+      }
+      await this.loadFromCache();
     }
 
-    // Reload if model setting changed
-    if (this.loadedModelId !== modelId) {
-      throw new Error('Model not downloaded. Visit Modes to download it.');
-    }
-
-    const audio = await read_audio(wavPath, 16000);
+    const audio = readWavAsFloat32(wavPath, 16000);
 
     const options: Record<string, unknown> = {};
     if (language !== 'auto') {
@@ -152,4 +160,67 @@ export class TranscriptionService {
     const result = await this.pipe(audio, options);
     return ((result as { text: string }).text ?? '').trim();
   }
+}
+
+/**
+ * Reads a WAV file (PCM format) and returns a Float32Array of mono samples
+ * resampled to the target sample rate. Replaces @xenova/transformers read_audio
+ * which requires AudioContext (browser-only API, unavailable in Node.js).
+ */
+function readWavAsFloat32(wavPath: string, targetSampleRate: number): Float32Array {
+  const buf = fs.readFileSync(wavPath);
+
+  const audioFormat = buf.readUInt16LE(20); // 1 = PCM, 3 = IEEE float
+  const numChannels = buf.readUInt16LE(22);
+  const sampleRate = buf.readUInt32LE(24);
+  const bitsPerSample = buf.readUInt16LE(34);
+
+  // Find "data" chunk — skip any extra chunks between fmt and data
+  let dataOffset = 36;
+  while (dataOffset < buf.length - 8) {
+    const chunkId = buf.subarray(dataOffset, dataOffset + 4).toString('ascii');
+    const chunkSize = buf.readUInt32LE(dataOffset + 4);
+    if (chunkId === 'data') {
+      dataOffset += 8;
+      break;
+    }
+    dataOffset += 8 + chunkSize;
+  }
+
+  const bytesPerSample = bitsPerSample / 8;
+  const numSamples = Math.floor((buf.length - dataOffset) / (bytesPerSample * numChannels));
+
+  // Convert PCM to mono Float32
+  const samples = new Float32Array(numSamples);
+  for (let i = 0; i < numSamples; i++) {
+    const baseOffset = dataOffset + i * bytesPerSample * numChannels;
+    let mono = 0;
+    for (let ch = 0; ch < numChannels; ch++) {
+      const chOffset = baseOffset + ch * bytesPerSample;
+      if (bitsPerSample === 16 && audioFormat === 1) {
+        mono += buf.readInt16LE(chOffset) / 32768.0;
+      } else if (bitsPerSample === 32 && audioFormat === 3) {
+        mono += buf.readFloatLE(chOffset);
+      } else if (bitsPerSample === 32 && audioFormat === 1) {
+        mono += buf.readInt32LE(chOffset) / 2147483648.0;
+      }
+    }
+    samples[i] = mono / numChannels;
+  }
+
+  if (sampleRate === targetSampleRate) return samples;
+
+  // Linear interpolation resample
+  const ratio = sampleRate / targetSampleRate;
+  const outLength = Math.floor(samples.length / ratio);
+  const resampled = new Float32Array(outLength);
+  for (let i = 0; i < outLength; i++) {
+    const pos = i * ratio;
+    const idx = Math.floor(pos);
+    const frac = pos - idx;
+    const a = samples[idx] ?? 0;
+    const b = samples[idx + 1] ?? a;
+    resampled[i] = a + frac * (b - a);
+  }
+  return resampled;
 }

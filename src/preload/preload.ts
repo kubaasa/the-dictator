@@ -11,6 +11,7 @@ export interface DictatorAPI {
   onRecordingStateChanged: (callback: (state: RecordingState) => void) => () => void;
 
   // Transcription
+  checkTranscriptionReady: () => Promise<{ ready: boolean; error?: string }>;
   transcribe: (wavPath: string) => Promise<void>;
   onTranscriptionResult: (callback: (result: TranscriptionResult) => void) => () => void;
   onTranscriptionError: (callback: (message: string) => void) => () => void;
@@ -52,6 +53,7 @@ const api: DictatorAPI = {
   },
 
   // Transcription
+  checkTranscriptionReady: () => ipcRenderer.invoke(IPC.TRANSCRIPTION_CHECK_READY),
   transcribe: (wavPath) => ipcRenderer.invoke(IPC.TRANSCRIPTION_START, wavPath),
   onTranscriptionResult: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, result: TranscriptionResult) => callback(result);

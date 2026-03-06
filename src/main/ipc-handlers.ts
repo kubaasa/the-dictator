@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, shell } from 'electron';
+import { ipcMain, BrowserWindow, shell, clipboard } from 'electron';
 import { IPC } from '../shared/constants';
 import type { AppSettings, RecordingState } from '../shared/types';
 import { AudioRecorderService } from './services/audio-recorder.service';
@@ -36,6 +36,20 @@ export function registerIpcHandlers(
     },
   );
 
+  // Transcription readiness check (before recording starts)
+  ipcMain.handle(IPC.TRANSCRIPTION_CHECK_READY, () => {
+    const engine = (store.get('transcription.engine') as string) ?? 'local';
+    if (engine === 'api') {
+      const apiKey = (store.get('transcription.openaiApiKey') as string) ?? '';
+      if (!apiKey) return { ready: false, error: 'OpenAI API key is not set. Go to Modes and enter your key.' };
+    } else {
+      if (!transcriptionService.isModelDownloaded()) {
+        return { ready: false, error: 'Model not downloaded. Go to Modes to download it.' };
+      }
+    }
+    return { ready: true };
+  });
+
   // Transcription
   ipcMain.handle(IPC.TRANSCRIPTION_START, async (event, wavPath: string) => {
     broadcastState('transcribing');
@@ -45,6 +59,12 @@ export function registerIpcHandlers(
         ? await transcriptionService.transcribeApi(wavPath)
         : await transcriptionService.transcribeLocal(wavPath);
       broadcastState('done');
+      const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
+      console.log('[Dictator] Transcription done. autoPaste=%s, text="%s"', autoPaste, text);
+      if (autoPaste) {
+        clipboard.writeText(text);
+        console.log('[Dictator] Text copied to clipboard');
+      }
       event.sender.send(IPC.TRANSCRIPTION_RESULT, { text, wavPath });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -64,9 +84,26 @@ export function registerIpcHandlers(
   });
 
   // Model
-  ipcMain.handle(IPC.MODEL_STATUS, () => ({
-    downloaded: transcriptionService.isModelDownloaded(),
-  }));
+  ipcMain.handle(IPC.MODEL_STATUS, () => {
+    if (transcriptionService.isModelDownloaded()) {
+      return { downloaded: true };
+    }
+
+    // Current model not on disk — scan cache for any downloaded model and auto-fix the setting
+    const MODEL_QUALITY_ORDER = ['large', 'medium', 'small', 'base', 'base.en', 'tiny', 'tiny.en'];
+    const downloadedModels = transcriptionService.getDownloadedModels();
+
+    if (downloadedModels.length > 0) {
+      const bestModel = MODEL_QUALITY_ORDER.find((m) => downloadedModels.includes(m)) ?? downloadedModels[0];
+      store.set('transcription', { ...store.store.transcription, localModelSize: bestModel });
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(IPC.SETTINGS_ON_CHANGE, store.store);
+      }
+      return { downloaded: true };
+    }
+
+    return { downloaded: false };
+  });
 
   ipcMain.handle(IPC.MODEL_DOWNLOAD, async (event) => {
     try {

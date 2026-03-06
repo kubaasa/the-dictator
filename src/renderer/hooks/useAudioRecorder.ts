@@ -2,12 +2,15 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 
 interface UseAudioRecorderReturn {
   isRecording: boolean;
+  error: string;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
+  clearError: () => void;
 }
 
 export function useAudioRecorder(): UseAudioRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
+  const [error, setError] = useState('');
   const isRecordingRef = useRef(false);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -17,6 +20,12 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current) return;
     try {
+      const { ready, error: readyError } = await window.dictator.checkTranscriptionReady();
+      if (!ready) {
+        setError(readyError ?? 'Transcription not ready');
+        return;
+      }
+      setError('');
       isRecordingRef.current = true;
       setIsRecording(true);
       window.dictator.startRecording();
@@ -106,5 +115,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     return unsub;
   }, [startRecording, stopRecording]);
 
-  return { isRecording, startRecording, stopRecording };
+  const clearError = useCallback(() => setError(''), []);
+
+  return { isRecording, error, startRecording, stopRecording, clearError };
 }

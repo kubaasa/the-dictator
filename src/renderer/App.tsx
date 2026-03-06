@@ -19,16 +19,16 @@ export function App() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100 select-none">
+    <div className="flex min-h-screen flex-col bg-white text-zinc-900 select-none">
       {/* Header — full width drag region */}
-      <header className="drag-region flex items-center justify-between px-5 py-3 border-b border-zinc-800/60">
+      <header className="drag-region flex items-center justify-between px-5 py-3 border-b border-zinc-200">
         <div className="no-drag flex items-center gap-2">
           <span className={`inline-block h-2 w-2 rounded-full ${
             recordingState === 'recording' ? 'bg-red-500 animate-pulse' :
             recordingState === 'processing' ? 'bg-amber-500 animate-pulse' :
-            'bg-zinc-700'
+            'bg-zinc-300'
           }`} />
-          <span className="text-xs text-zinc-500 capitalize">{recordingState}</span>
+          <span className="text-xs text-zinc-400 capitalize">{recordingState}</span>
         </div>
       </header>
 

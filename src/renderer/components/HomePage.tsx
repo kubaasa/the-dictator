@@ -7,8 +7,9 @@ interface HomePageProps {
 }
 
 export function HomePage({ recordingState }: HomePageProps) {
-  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
-  const { result, error, clearResult } = useTranscriptionResult(recordingState);
+  const { isRecording, error: recorderError, startRecording, stopRecording, clearError } = useAudioRecorder();
+  const { result, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
+  const error = recorderError || transcriptionError;
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-8 pb-16">
@@ -28,8 +29,8 @@ export function HomePage({ recordingState }: HomePageProps) {
             isRecording
               ? 'bg-red-600 shadow-[0_0_40px_rgba(239,68,68,0.3)] hover:bg-red-700'
               : recordingState === 'transcribing'
-              ? 'cursor-not-allowed bg-zinc-800 opacity-50'
-              : 'bg-zinc-800 hover:bg-zinc-700 hover:shadow-[0_0_30px_rgba(239,68,68,0.15)]'
+              ? 'cursor-not-allowed bg-zinc-900 opacity-50'
+              : 'bg-zinc-900 hover:bg-zinc-800 hover:shadow-[0_0_30px_rgba(239,68,68,0.15)]'
           }`}
         >
           {isRecording ? (
@@ -47,7 +48,7 @@ export function HomePage({ recordingState }: HomePageProps) {
       {/* Open recordings folder */}
       <button
         onClick={() => window.dictator.openRecordingsFolder()}
-        className="flex items-center gap-2 rounded-lg border border-zinc-800 px-4 py-2 text-xs text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300"
+        className="flex items-center gap-2 rounded-lg border border-zinc-200 px-4 py-2 text-xs text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
@@ -57,14 +58,14 @@ export function HomePage({ recordingState }: HomePageProps) {
 
       {/* Status text */}
       <div className="flex flex-col items-center gap-1">
-        <p className="text-sm font-medium text-zinc-400">
+        <p className="text-sm font-medium text-zinc-600">
           {recordingState === 'transcribing'
             ? 'Transcribing...'
             : isRecording
             ? 'Recording... click to stop'
             : 'Click to start recording'}
         </p>
-        <p className="text-xs text-zinc-600">Ctrl + Shift + Space</p>
+        <p className="text-xs text-zinc-400">Ctrl + Shift + Space</p>
       </div>
 
       {/* Transcription result */}
@@ -80,18 +81,18 @@ export function HomePage({ recordingState }: HomePageProps) {
                 readOnly
                 value={result}
                 rows={5}
-                className="w-full resize-none rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 focus:outline-none"
+                className="w-full resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900 focus:outline-none"
               />
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => navigator.clipboard.writeText(result)}
-                  className="rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-800"
+                  className="rounded-lg border border-zinc-200 px-4 py-1.5 text-xs text-zinc-600 transition-colors hover:bg-zinc-100"
                 >
                   Copy
                 </button>
                 <button
-                  onClick={clearResult}
-                  className="rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-800"
+                  onClick={() => { clearResult(); clearError(); }}
+                  className="rounded-lg border border-zinc-200 px-4 py-1.5 text-xs text-zinc-600 transition-colors hover:bg-zinc-100"
                 >
                   Clear
                 </button>

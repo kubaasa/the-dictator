@@ -55,16 +55,16 @@ export function ModesPage(props: ModelStatus) {
 
         {/* Engine toggle */}
         <div>
-          <h2 className="mb-3 text-base font-semibold text-zinc-100">Transcription Engine</h2>
-          <div className="flex rounded-lg border border-zinc-800 bg-zinc-900/50 p-1 w-fit gap-1">
+          <h2 className="mb-3 text-base font-semibold text-zinc-900">Transcription Engine</h2>
+          <div className="flex rounded-lg border border-zinc-200 bg-zinc-50 p-1 w-fit gap-1">
             {(['local', 'api'] as const).map((e) => (
               <button
                 key={e}
                 onClick={() => handleEngineChange(e)}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   engine === e
-                    ? 'bg-zinc-700 text-zinc-100'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                    ? 'bg-white text-zinc-900 shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-600'
                 }`}
               >
                 {e === 'local' ? 'Local (offline)' : 'OpenAI API'}
@@ -76,26 +76,26 @@ export function ModesPage(props: ModelStatus) {
         {/* Local model section */}
         {engine === 'local' && (
           <div>
-            <h2 className="mb-3 text-base font-semibold text-zinc-100">Local Whisper Model</h2>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 flex flex-col gap-5">
+            <h2 className="mb-3 text-base font-semibold text-zinc-900">Local Whisper Model</h2>
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 flex flex-col gap-5">
               <div className="flex items-center gap-3">
                 <span className="text-sm text-zinc-400 w-14">Model</span>
                 <select
                   value={modelSize}
                   onChange={(e) => handleModelChange(e.target.value)}
                   disabled={downloading}
-                  className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {MODEL_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
-                <span className="text-xs text-zinc-600">change requires re-download</span>
+                <span className="text-xs text-zinc-400">change requires re-download</span>
               </div>
 
               <div className="flex flex-col gap-3">
                 {downloaded === null ? (
-                  <p className="text-sm text-zinc-500">Checking...</p>
+                  <p className="text-sm text-zinc-400">Checking...</p>
                 ) : downloaded ? (
                   <p className="flex items-center gap-2 text-sm text-emerald-400">
                     <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -104,8 +104,8 @@ export function ModesPage(props: ModelStatus) {
                     Model ready
                   </p>
                 ) : (
-                  <p className="flex items-center gap-2 text-sm text-zinc-500">
-                    <span className="inline-block h-2 w-2 rounded-full bg-zinc-600" />
+                  <p className="flex items-center gap-2 text-sm text-zinc-400">
+                    <span className="inline-block h-2 w-2 rounded-full bg-zinc-300" />
                     Not downloaded
                   </p>
                 )}
@@ -119,7 +119,7 @@ export function ModesPage(props: ModelStatus) {
                 {!downloaded && !downloading && (
                   <button
                     onClick={download}
-                    className="w-fit rounded-lg bg-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-600"
+                    className="w-fit rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
                   >
                     Download Model
                   </button>
@@ -128,17 +128,17 @@ export function ModesPage(props: ModelStatus) {
                 {downloading && (
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm text-zinc-400">
+                      <p className="text-sm text-zinc-600">
                         Downloading...{progress > 0 ? ` ${progress}%` : ''}
                       </p>
                       <button
                         onClick={cancel}
-                        className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                        className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
                       >
                         Cancel
                       </button>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
+                    <div className="h-2 w-full rounded-full bg-zinc-200 overflow-hidden">
                       {progress === 0 ? (
                         <div key="pulse" className="h-full w-full rounded-full bg-blue-500/40 animate-pulse" />
                       ) : (
@@ -156,7 +156,7 @@ export function ModesPage(props: ModelStatus) {
 
             <button
               onClick={() => window.dictator.openModelsFolder()}
-              className="flex items-center gap-2 self-start rounded-lg border border-zinc-800 px-4 py-2 text-xs text-zinc-500 transition-colors hover:border-zinc-700 hover:text-zinc-300 mt-4"
+              className="flex items-center gap-2 self-start rounded-lg border border-zinc-200 px-4 py-2 text-xs text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600 mt-4"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
@@ -169,9 +169,9 @@ export function ModesPage(props: ModelStatus) {
         {/* API key section */}
         {engine === 'api' && (
           <div>
-            <h2 className="mb-3 text-base font-semibold text-zinc-100">OpenAI API Key</h2>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 flex flex-col gap-4">
-              <p className="text-xs text-zinc-500">
+            <h2 className="mb-3 text-base font-semibold text-zinc-900">OpenAI API Key</h2>
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 flex flex-col gap-4">
+              <p className="text-xs text-zinc-400">
                 Used for Whisper API transcription. Your key is stored locally and never sent anywhere except OpenAI.
               </p>
               <div className="flex gap-2">
@@ -180,11 +180,11 @@ export function ModesPage(props: ModelStatus) {
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="sk-..."
-                  className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-800 placeholder-zinc-300 focus:outline-none focus:border-zinc-400"
                 />
                 <button
                   onClick={handleApiKeySave}
-                  className="rounded-lg bg-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-600"
+                  className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
                 >
                   {apiKeySaved ? 'Saved ✓' : 'Save'}
                 </button>
