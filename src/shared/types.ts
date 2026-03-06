@@ -1,3 +1,8 @@
+export interface TranscriptionResult {
+  text: string;
+  wavPath: string;
+}
+
 export type DictationMode = 'voice' | 'message' | 'email' | 'chat' | 'custom';
 export type TranscriptionEngine = 'local' | 'api';
 export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'none';

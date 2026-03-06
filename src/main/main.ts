@@ -5,6 +5,7 @@ import Store from 'electron-store';
 import { TrayManager } from './tray';
 import { AudioRecorderService } from './services/audio-recorder.service';
 import { HotkeyService } from './services/hotkey.service';
+import { TranscriptionService } from './services/transcription.service';
 import { registerIpcHandlers } from './ipc-handlers';
 import { DEFAULT_SETTINGS, type AppSettings, type RecordingState } from '../shared/types';
 import { IPC } from '../shared/constants';
@@ -16,6 +17,7 @@ if (started) {
 const store = new Store<AppSettings>({ defaults: DEFAULT_SETTINGS });
 const trayManager = new TrayManager();
 const audioRecorder = new AudioRecorderService();
+const transcriptionService = new TranscriptionService(store);
 
 // Hotkey sends toggle to the main renderer window (which owns getUserMedia)
 function sendToggleToRenderer(): void {
@@ -142,7 +144,7 @@ app.on('ready', () => {
   overlayWindow = createOverlayWindow();
 
   trayManager.create(mainWindow);
-  registerIpcHandlers(store, audioRecorder);
+  registerIpcHandlers(store, audioRecorder, transcriptionService, broadcastState);
   setupRecordingIpc();
 
   const { shortcut, mode } = store.get('hotkey');

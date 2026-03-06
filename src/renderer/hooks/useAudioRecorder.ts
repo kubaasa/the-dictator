@@ -83,10 +83,12 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       }
 
       const wavPath = await window.dictator.saveWav(merged.buffer, audioContext.sampleRate);
-      console.log('Recording saved to:', wavPath);
 
       await audioContext.close();
       audioContextRef.current = null;
+
+      // Fire-and-forget: result arrives via onTranscriptionResult event
+      window.dictator.transcribe(wavPath);
     }
 
     chunksRef.current = [];

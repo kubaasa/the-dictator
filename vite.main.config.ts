@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   build: {
     rollupOptions: {
-      external: ['uiohook-napi'],
+      external: ['uiohook-napi', '@xenova/transformers', 'openai'],
     },
   },
 });

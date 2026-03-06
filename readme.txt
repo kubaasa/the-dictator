@@ -11,9 +11,26 @@ Audio recording działa przez Web Audio API → IPC → WAV w main process.
 
 Faza 2 (hotkey) — zainstalowano uiohook-napi, dodano HOTKEY_TOGGLE do IPC,
 podłączono globalny hotkey do toggle nagrywania w rendererze.
-Vite main config ma external na uiohook-napi.
+Vite main config ma external na uiohook-napi. HotkeyService zaimplementowany w main process.
 
-UI został dopracowany: przycisk z animowanymi pierścieniami, drag region w headerze, widok main/settings.
+UI został dopracowany: przycisk z animowanymi pierścieniami, drag region w headerze.
+
+Faza 3 (transkrypcja offline) — pierwotnie nodejs-whisper, następnie przepisano na @xenova/transformers
+(pure-JS ONNX runtime, brak CMake). TranscriptionService w main process ładuje pipeline z HuggingFace.
+Model wybierany z listy: tiny / base / small / medium. Pobierany automatycznie z progress-barem
+(tylko pliki >20 MB liczone do postępu — unikanie fałszywych skoków). Możliwy cancel downloadu
+przez AbortController z monkey-patchem global.fetch. Status modelu: downloaded / downloading / not downloaded.
+
+Faza 4 (transkrypcja online) — zaimplementowano obsługę OpenAI Whisper API (whisper-1).
+TranscriptionService ma metodę transcribeApi() korzystającą z oficjalnego openai SDK.
+Klucz API przechowywany w electron-store, nigdy nie opuszcza lokalnej maszyny poza wywołaniem OpenAI.
+Obsługa języka (auto lub konkretny język) dla obu silników.
+
+UI — przepisano layout na dwupanelowy: Sidebar + widok główny.
+Sidebar z nawigacją Home / Modes, z możliwością zwinięcia do ikon.
+Strona Modes: toggle Local (offline) / OpenAI API, wybór rozmiaru modelu,
+progress-bar pobierania, przycisk "Open models folder".
+Strona Home: nagrywanie, stan transkrypcji, textarea z wynikiem, przyciski Copy i Clear.
 
 
 Status faz
@@ -22,10 +39,10 @@ Status faz
 Faza  | Zakres                              | Status
 ------|-------------------------------------|-----------------------------
 1     | Szkielet + audio recording          | Done
-2     | Global hotkey + push-to-talk        | W trakcie — hook podłączony, brakuje pełnego HotkeyService w main i HotkeyRecorder w UI
-3     | Transkrypcja offline (whisper.cpp)   | Do zrobienia
-4     | Transkrypcja online (OpenAI API)     | Do zrobienia
-5     | AI post-processing + tryby           | Do zrobienia
+2     | Global hotkey + push-to-talk        | Done
+3     | Transkrypcja offline (@xenova)      | Done
+4     | Transkrypcja online (OpenAI API)    | Done
+5     | AI post-processing + tryby          | Do zrobienia
 6     | Auto-paste (nut-js)                  | Do zrobienia
 7     | Settings UI (pełny)                  | Do zrobienia
 8     | Overlay + UX polish                  | Do zrobienia
@@ -36,5 +53,5 @@ Faza  | Zakres                              | Status
 Następny krok
 -------------
 
-Dokończyć Fazę 2 — napisać HotkeyService w main process (klasa opakowująca uiohook-napi
-z konfiguracją skrótu, obsługą toggle i push-to-talk) oraz HotkeyRecorder w UI do zmiany skrótu.
+Faza 5 — AI post-processing + tryby dyktowania (np. tryb notatek, e-mail, kod).
+Przetwarzanie transkryptu przez model językowy przed wklejeniem do schowka.

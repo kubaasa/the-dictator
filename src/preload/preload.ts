@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/constants';
-import type { AppSettings, RecordingState } from '../shared/types';
+import type { AppSettings, RecordingState, TranscriptionResult } from '../shared/types';
 
 export interface DictatorAPI {
   // Recording
@@ -9,6 +9,19 @@ export interface DictatorAPI {
   saveWav: (audioBuffer: ArrayBuffer, sampleRate: number) => Promise<string>;
   getRecordingState: () => Promise<RecordingState>;
   onRecordingStateChanged: (callback: (state: RecordingState) => void) => () => void;
+
+  // Transcription
+  transcribe: (wavPath: string) => Promise<void>;
+  onTranscriptionResult: (callback: (result: TranscriptionResult) => void) => () => void;
+  onTranscriptionError: (callback: (message: string) => void) => () => void;
+
+  // Model
+  checkModelStatus: () => Promise<{ downloaded: boolean }>;
+  downloadModel: () => Promise<void>;
+  cancelDownload: () => void;
+  onModelProgress: (callback: (pct: number) => void) => () => void;
+  onModelDone: (callback: () => void) => () => void;
+  onModelError: (callback: (msg: string) => void) => () => void;
 
   // Settings
   getSettings: () => Promise<AppSettings>;
@@ -21,6 +34,8 @@ export interface DictatorAPI {
   // App
   quit: () => void;
   showSettings: () => void;
+  openRecordingsFolder: () => void;
+  openModelsFolder: () => void;
 }
 
 const api: DictatorAPI = {
@@ -34,6 +49,39 @@ const api: DictatorAPI = {
     const handler = (_event: Electron.IpcRendererEvent, state: RecordingState) => callback(state);
     ipcRenderer.on(IPC.RECORDING_STATE_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.RECORDING_STATE_CHANGED, handler);
+  },
+
+  // Transcription
+  transcribe: (wavPath) => ipcRenderer.invoke(IPC.TRANSCRIPTION_START, wavPath),
+  onTranscriptionResult: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, result: TranscriptionResult) => callback(result);
+    ipcRenderer.on(IPC.TRANSCRIPTION_RESULT, handler);
+    return () => ipcRenderer.removeListener(IPC.TRANSCRIPTION_RESULT, handler);
+  },
+  onTranscriptionError: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: string) => callback(message);
+    ipcRenderer.on(IPC.TRANSCRIPTION_ERROR, handler);
+    return () => ipcRenderer.removeListener(IPC.TRANSCRIPTION_ERROR, handler);
+  },
+
+  // Model
+  checkModelStatus: () => ipcRenderer.invoke(IPC.MODEL_STATUS),
+  downloadModel: () => ipcRenderer.invoke(IPC.MODEL_DOWNLOAD),
+  cancelDownload: () => ipcRenderer.send(IPC.MODEL_DOWNLOAD_CANCEL),
+  onModelProgress: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, pct: number) => callback(pct);
+    ipcRenderer.on(IPC.MODEL_DOWNLOAD_PROGRESS, handler);
+    return () => ipcRenderer.removeListener(IPC.MODEL_DOWNLOAD_PROGRESS, handler);
+  },
+  onModelDone: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on(IPC.MODEL_DOWNLOAD_DONE, handler);
+    return () => ipcRenderer.removeListener(IPC.MODEL_DOWNLOAD_DONE, handler);
+  },
+  onModelError: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, msg: string) => callback(msg);
+    ipcRenderer.on(IPC.MODEL_DOWNLOAD_ERROR, handler);
+    return () => ipcRenderer.removeListener(IPC.MODEL_DOWNLOAD_ERROR, handler);
   },
 
   // Settings
@@ -55,6 +103,8 @@ const api: DictatorAPI = {
   // App
   quit: () => ipcRenderer.send(IPC.APP_QUIT),
   showSettings: () => ipcRenderer.send(IPC.APP_SHOW_SETTINGS),
+  openRecordingsFolder: () => ipcRenderer.send(IPC.APP_OPEN_RECORDINGS_FOLDER),
+  openModelsFolder: () => ipcRenderer.send(IPC.APP_OPEN_MODELS_FOLDER),
 };
 
 contextBridge.exposeInMainWorld('dictator', api);
