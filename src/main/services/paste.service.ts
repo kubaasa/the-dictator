@@ -22,7 +22,7 @@ const GET_HWND_ARGS = [
 function buildPasteArgs(hwnd: string): string[] {
   return [
     '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
-    `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PasteFgWin{[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);}'; $h=[IntPtr]${hwnd}; [PasteFgWin]::ShowWindow($h,9); [PasteFgWin]::SetForegroundWindow($h); Start-Sleep -Milliseconds 200; Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')`,
+    `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PasteFgWin{[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);}'; $h=[IntPtr]${hwnd}; [PasteFgWin]::ShowWindow($h,9); [PasteFgWin]::SetForegroundWindow($h); Start-Sleep -Milliseconds 80; Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')`,
   ];
 }
 

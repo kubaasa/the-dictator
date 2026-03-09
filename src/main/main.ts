@@ -59,17 +59,15 @@ function createMainWindow(): BrowserWindow {
   }
 
   win.once('ready-to-show', () => {
-    win.show();
+    // App starts hidden in tray — don't show the window
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
       win.webContents.openDevTools();
     }
   });
 
   win.on('close', (e) => {
-    if (store.get('general.minimizeToTray')) {
-      e.preventDefault();
-      win.hide();
-    }
+    e.preventDefault();
+    win.hide();
   });
 
   return win;
@@ -85,7 +83,7 @@ function createOverlayWindow(): BrowserWindow {
     skipTaskbar: true,
     resizable: false,
     focusable: true,
-    show: false,
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -122,11 +120,7 @@ function broadcastState(state: RecordingState): void {
     win.webContents.send(IPC.RECORDING_STATE_CHANGED, state);
   }
 
-  if (state === 'idle' || state === 'done') {
-    overlayWindow?.hide();
-  } else {
-    overlayWindow?.show();
-  }
+  // Overlay is always visible — only state changes, no hide/show
 }
 
 // Recording control via IPC from renderer
@@ -159,6 +153,11 @@ app.on('ready', () => {
 
   const { shortcut, mode } = store.get('hotkey');
   hotkeyService.start(shortcut, mode);
+
+  // Preload local transcription model in background (eliminates 2-3s delay on first use)
+  transcriptionService.preloadModel().catch((err) => {
+    console.warn('[Dictator] Model preload failed (non-critical):', err.message);
+  });
 });
 
 app.on('window-all-closed', () => {
