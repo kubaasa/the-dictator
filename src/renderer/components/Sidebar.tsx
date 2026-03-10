@@ -38,7 +38,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <aside className={`flex flex-col gap-1 border-r border-zinc-200 py-3 transition-all duration-300 overflow-hidden ${collapsed ? 'w-14' : 'w-1/5'}`}>
+    <aside className={`flex flex-col gap-1 border-r border-zinc-800 py-3 transition-all duration-300 overflow-hidden ${collapsed ? 'w-14' : 'w-1/5'}`}>
       {navItems.map((item) => {
         const isActive = item.id === activeView;
         return (
@@ -47,7 +47,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
             onClick={() => onNavigate(item.id)}
             title={collapsed ? item.label : undefined}
             className={`flex flex-row items-center gap-3 rounded-lg px-3 py-2 w-full transition-colors ${
-              isActive ? 'text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'
+              isActive ? 'text-zinc-100' : 'text-zinc-600 hover:text-zinc-300'
             }`}
           >
             {item.icon}
@@ -62,7 +62,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       {/* Toggle button */}
       <button
         onClick={() => setCollapsed((c) => !c)}
-        className="flex items-center justify-center rounded-lg px-3 py-2 w-full text-zinc-400 hover:text-zinc-600 transition-colors"
+        className="flex items-center justify-center rounded-lg px-3 py-2 w-full text-zinc-600 hover:text-zinc-300 transition-colors"
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         <svg

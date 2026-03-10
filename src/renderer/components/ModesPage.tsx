@@ -28,6 +28,39 @@ const LANGUAGE_OPTIONS = [
   { value: 'sv', label: 'Swedish' },
 ];
 
+const DICTATION_MODES = [
+  {
+    id: 'fast',
+    name: 'Szybki',
+    description: 'Zoptymalizowany pod szybkie dyktowanie. Mniejsza dokładność interpunkcji, maksymalna prędkość.',
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'precise',
+    name: 'Precyzyjny',
+    description: 'Wyższa dokładność transkrypcji i poprawna interpunkcja. Wolniejsze przetwarzanie.',
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'silent',
+    name: 'Cichy',
+    description: 'Minimalne powiadomienia, brak dźwięków. Idealny do skupionej pracy.',
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 9.75 19.5 12m0 0 2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6 4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
+      </svg>
+    ),
+  },
+];
+
 export function ModesPage(props: ModelStatus) {
   const { downloaded, downloadedModels, downloading, progress, error, download, cancel, recheck } = props;
   const [engine, setEngine] = useState<'local' | 'api'>('api');
@@ -37,6 +70,9 @@ export function ModesPage(props: ModelStatus) {
   const [apiKeySaved, setApiKeySaved] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
+  const [dictationMode, setDictationMode] = useState<string>(() => {
+    return localStorage.getItem('dictator_mode') || 'fast';
+  });
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const langDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -113,153 +149,194 @@ export function ModesPage(props: ModelStatus) {
     setTimeout(() => setApiKeySaved(false), 2000);
   };
 
+  const handleDictationModeChange = (id: string) => {
+    setDictationMode(id);
+    localStorage.setItem('dictator_mode', id);
+  };
+
   return (
-    <main className="flex-1 overflow-y-auto p-6">
+    <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
       <div className="mx-auto max-w-md flex flex-col gap-6">
 
-        {/* Local model section */}
+        {/* Dictation modes */}
         <div>
-            <h2 className="mb-3 text-base font-semibold text-zinc-900">Modes</h2>
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 flex flex-col gap-5">
-              {/* Language — first */}
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-zinc-400 w-14">Language</span>
-                <div ref={langDropdownRef} className="relative">
-                  <button
-                    onClick={() => setLangDropdownOpen((o) => !o)}
-                    className="flex w-40 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 cursor-pointer hover:border-zinc-300 justify-between"
-                  >
-                    <span>{LANGUAGE_OPTIONS.find((o) => o.value === language)?.label ?? language}</span>
-                    <svg className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${langDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  {langDropdownOpen && (
-                    <div className="absolute left-0 top-full z-50 mt-1 w-40 overflow-y-auto max-h-64 rounded-lg border border-zinc-200 bg-white shadow-lg">
-                      {LANGUAGE_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          onClick={() => { handleLanguageChange(opt.value); setLangDropdownOpen(false); }}
-                          className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-50 ${
-                            opt.value === language ? 'font-medium text-zinc-900' : 'text-zinc-600'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Model — second, custom dropdown with download indicators */}
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-zinc-400 w-14">Model</span>
-                <div ref={modelDropdownRef} className="relative">
-                  <button
-                    onClick={() => !downloading && setModelDropdownOpen((o) => !o)}
-                    disabled={downloading}
-                    className="flex w-40 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer hover:border-zinc-300 justify-between"
-                  >
-                    <span>{MODEL_OPTIONS.find((o) => o.value === modelSize)?.label ?? modelSize}</span>
-                    <svg className={`h-3.5 w-3.5 text-zinc-400 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  {modelDropdownOpen && (
-                    <div className="absolute left-0 top-full z-50 mt-1 min-w-full overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg">
-                      {MODEL_OPTIONS.map((opt) => {
-                        const isSelected = opt.value === modelSize;
-                        const isReady = downloadedModels.includes(opt.value);
-                        return (
-                          <button
-                            key={opt.value}
-                            onClick={() => {
-                              handleModelChange(opt.value);
-                              setModelDropdownOpen(false);
-                            }}
-                            className={`flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-50 ${
-                              isSelected ? 'font-medium text-zinc-900' : 'text-zinc-600'
-                            }`}
-                          >
-                            <span className="whitespace-nowrap">{opt.label}</span>
-                            {isReady ? (
-                              // Checkmark icon — model already downloaded
-                              <svg className="h-3.5 w-3.5 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                              </svg>
-                            ) : (
-                              // Cloud download icon — model not yet cached
-                              <svg className="h-3.5 w-3.5 shrink-0 text-zinc-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
-                              </svg>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {!downloaded && !downloading && (
-                  <button
-                    onClick={download}
-                    className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
-                  >
-                    Download
-                  </button>
-                )}
-
-                {downloading && (
-                  <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-24 rounded-full bg-zinc-200 overflow-hidden">
-                      {progress === 0 ? (
-                        <div key="pulse" className="h-full w-full rounded-full bg-blue-500/40 animate-pulse" />
-                      ) : (
-                        <div
-                          key="bar"
-                          className="h-full rounded-full bg-blue-500 transition-all duration-300"
-                          style={{ width: `${progress}%` }}
-                        />
+          <h2 className="mb-3 text-xs font-semibold text-zinc-600 uppercase tracking-wider">Tryb dyktowania</h2>
+          <div className="flex flex-col gap-2">
+            {DICTATION_MODES.map((mode) => {
+              const isActive = dictationMode === mode.id;
+              return (
+                <button
+                  key={mode.id}
+                  onClick={() => handleDictationModeChange(mode.id)}
+                  className={`flex items-start gap-4 rounded-xl border p-4 text-left transition-all duration-200 ${
+                    isActive
+                      ? 'border-zinc-500 bg-zinc-800 shadow-[0_0_20px_rgba(255,255,255,0.03)]'
+                      : 'border-zinc-800 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-800/60'
+                  }`}
+                >
+                  <span className={`mt-0.5 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-zinc-600'}`}>
+                    {mode.icon}
+                  </span>
+                  <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-sm font-semibold transition-colors ${isActive ? 'text-white' : 'text-zinc-400'}`}>
+                        {mode.name}
+                      </span>
+                      {isActive && (
+                        <svg className="h-4 w-4 shrink-0 text-zinc-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                        </svg>
                       )}
                     </div>
-                    <span className="text-xs text-zinc-400">{progress > 0 ? `${progress}%` : '...'}</span>
-                    <button
-                      onClick={cancel}
-                      className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
-                    >
-                      Cancel
-                    </button>
+                    <span className={`text-xs leading-relaxed transition-colors ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                      {mode.description}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Transcription config */}
+        <div>
+          <h2 className="mb-3 text-xs font-semibold text-zinc-600 uppercase tracking-wider">Transkrypcja</h2>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-5">
+
+            {/* Language */}
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-zinc-500 w-16 shrink-0">Language</span>
+              <div ref={langDropdownRef} className="relative">
+                <button
+                  onClick={() => setLangDropdownOpen((o) => !o)}
+                  className="flex w-40 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 cursor-pointer hover:border-zinc-600 justify-between transition-colors"
+                >
+                  <span>{LANGUAGE_OPTIONS.find((o) => o.value === language)?.label ?? language}</span>
+                  <svg className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${langDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {langDropdownOpen && (
+                  <div className="absolute left-0 top-full z-50 mt-1 w-40 overflow-y-auto max-h-64 rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl">
+                    {LANGUAGE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => { handleLanguageChange(opt.value); setLangDropdownOpen(false); }}
+                        className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-700 ${
+                          opt.value === language ? 'font-medium text-white' : 'text-zinc-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Model */}
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-zinc-500 w-16 shrink-0">Model</span>
+              <div ref={modelDropdownRef} className="relative">
+                <button
+                  onClick={() => !downloading && setModelDropdownOpen((o) => !o)}
+                  disabled={downloading}
+                  className="flex w-40 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer hover:border-zinc-600 justify-between transition-colors"
+                >
+                  <span>{MODEL_OPTIONS.find((o) => o.value === modelSize)?.label ?? modelSize}</span>
+                  <svg className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {modelDropdownOpen && (
+                  <div className="absolute left-0 top-full z-50 mt-1 min-w-full overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl">
+                    {MODEL_OPTIONS.map((opt) => {
+                      const isSelected = opt.value === modelSize;
+                      const isReady = downloadedModels.includes(opt.value);
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => { handleModelChange(opt.value); setModelDropdownOpen(false); }}
+                          className={`flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-700 ${
+                            isSelected ? 'font-medium text-white' : 'text-zinc-400'
+                          }`}
+                        >
+                          <span className="whitespace-nowrap">{opt.label}</span>
+                          {isReady ? (
+                            <svg className="h-3.5 w-3.5 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                            </svg>
+                          ) : (
+                            <svg className="h-3.5 w-3.5 shrink-0 text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {error && (
-                <p className="rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-xs text-red-400">
-                  {error}
-                </p>
+              {!downloaded && !downloading && (
+                <button
+                  onClick={download}
+                  className="rounded-lg bg-zinc-700 px-3 py-1.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+                >
+                  Download
+                </button>
+              )}
+
+              {downloading && (
+                <div className="flex items-center gap-2">
+                  <div className="h-1.5 w-24 rounded-full bg-zinc-700 overflow-hidden">
+                    {progress === 0 ? (
+                      <div key="pulse" className="h-full w-full rounded-full bg-blue-500/40 animate-pulse" />
+                    ) : (
+                      <div
+                        key="bar"
+                        className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      />
+                    )}
+                  </div>
+                  <span className="text-xs text-zinc-500">{progress > 0 ? `${progress}%` : '...'}</span>
+                  <button
+                    onClick={cancel}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
               )}
             </div>
 
-            <button
-              onClick={() => window.dictator.openModelsFolder()}
-              className="flex items-center gap-2 self-start rounded-lg border border-zinc-200 px-4 py-2 text-xs text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600 mt-4"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
-              </svg>
-              Open models folder
-            </button>
+            {error && (
+              <p className="rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-xs text-red-400">
+                {error}
+              </p>
+            )}
+          </div>
+
+          <button
+            onClick={() => window.dictator.openModelsFolder()}
+            className="flex items-center gap-2 self-start rounded-lg border border-zinc-800 px-4 py-2 text-xs text-zinc-600 transition-colors hover:border-zinc-700 hover:text-zinc-400 mt-4"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
+            </svg>
+            Open models folder
+          </button>
         </div>
 
         {/* API key section */}
         {engine === 'api' && (
           <div>
-            <h2 className="mb-3 text-base font-semibold text-zinc-900">OpenAI API Key</h2>
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-5 flex flex-col gap-4">
-              <p className="text-xs text-zinc-400">
+            <h2 className="mb-3 text-xs font-semibold text-zinc-600 uppercase tracking-wider">OpenAI API Key</h2>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-4">
+              <p className="text-xs text-zinc-600">
                 Used for Whisper API transcription. Your key is stored locally and never sent anywhere except OpenAI.
               </p>
               <div className="flex gap-2">
@@ -268,11 +345,11 @@ export function ModesPage(props: ModelStatus) {
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="sk-..."
-                  className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-800 placeholder-zinc-300 focus:outline-none focus:border-zinc-400"
+                  className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
                 />
                 <button
                   onClick={handleApiKeySave}
-                  className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+                  className="rounded-lg bg-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
                 >
                   {apiKeySaved ? 'Saved ✓' : 'Save'}
                 </button>
