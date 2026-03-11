@@ -3,10 +3,16 @@ import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import type { RecordingState } from '../../shared/types';
 
+// Average human typing speed used for "time saved" calculation
+const AVG_TYPING_WPM = 40;
+
 interface RecordingEntry {
   id: string;
   date: string;
   text: string;
+  wordCount: number;
+  durationSeconds: number;
+  appName?: string;
 }
 
 interface HomePageProps {
@@ -14,9 +20,77 @@ interface HomePageProps {
   selectedDeviceId?: string | null;
 }
 
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function getWeekBounds(): { start: number; end: number } {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 1=Mon...
+  const diffToMonday = (day === 0 ? -6 : 1 - day);
+  const monday = new Date(now);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(now.getDate() + diffToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+  return { start: monday.getTime(), end: sunday.getTime() };
+}
+
+function computeStats(entries: RecordingEntry[]) {
+  const { start, end } = getWeekBounds();
+  const thisWeek = entries.filter((e) => {
+    const t = new Date(e.date).getTime();
+    return t >= start && t <= end;
+  });
+
+  // Words this week — guard against legacy entries missing wordCount
+  const wordsThisWeek = thisWeek.reduce((sum, e) => sum + (e.wordCount ?? 0), 0);
+
+  // Apps used this week (unique, non-empty process names)
+  const appsThisWeek = new Set(
+    thisWeek.map((e) => e.appName).filter((a): a is string => !!a && a !== 'unknown'),
+  ).size;
+
+  // Time saved this week (in minutes): time it would take to type - actual recording duration
+  const savedMinutes = thisWeek.reduce((sum, e) => {
+    const words = e.wordCount ?? 0;
+    const duration = e.durationSeconds ?? 0;
+    if (duration <= 0 || words <= 0) return sum;
+    const typingMinutes = words / AVG_TYPING_WPM;
+    const recordingMinutes = duration / 60;
+    return sum + Math.max(0, typingMinutes - recordingMinutes);
+  }, 0);
+
+  // Average speed (WPM) — across all entries with valid duration and word count
+  const withDuration = entries.filter((e) => (e.durationSeconds ?? 0) > 0 && (e.wordCount ?? 0) > 0);
+  let avgWpm: string;
+  if (withDuration.length === 0) {
+    avgWpm = '—';
+  } else {
+    const total = withDuration.reduce((sum, e) => sum + (e.wordCount ?? 0) / ((e.durationSeconds ?? 1) / 60), 0);
+    const rounded = Math.round(total / withDuration.length);
+    avgWpm = isFinite(rounded) ? `${rounded} wpm` : '—';
+  }
+
+  const savedDisplay =
+    !isFinite(savedMinutes) || savedMinutes <= 0
+      ? '—'
+      : savedMinutes < 1
+      ? '<1 min'
+      : `${Math.round(savedMinutes)} min`;
+
+  return {
+    avgWpm,
+    wordsThisWeek: isFinite(wordsThisWeek) && wordsThisWeek > 0 ? wordsThisWeek.toLocaleString() : '—',
+    appsThisWeek: appsThisWeek > 0 ? appsThisWeek.toString() : '—',
+    savedDisplay,
+  };
+}
+
 export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
-  const { isRecording, error: recorderError, startRecording, stopRecording, clearError } = useAudioRecorder(selectedDeviceId);
-  const { result, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
+  const { isRecording, error: recorderError, lastDurationSeconds, startRecording, stopRecording, clearError } = useAudioRecorder(selectedDeviceId);
+  const { result, appName, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
   const error = recorderError || transcriptionError;
 
   const [recordings, setRecordings] = useState<RecordingEntry[]>(() => {
@@ -31,6 +105,9 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
         id: Date.now().toString(),
         date: new Date().toISOString(),
         text: result.trim(),
+        wordCount: countWords(result),
+        durationSeconds: lastDurationSeconds,
+        appName,
       };
       setRecordings(prev => {
         const updated = [entry, ...prev].slice(0, 50);
@@ -40,9 +117,11 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
     }
   }, [result]);
 
+  const { avgWpm, wordsThisWeek, appsThisWeek, savedDisplay } = computeStats(recordings);
+
   const stats = [
     {
-      value: '—',
+      value: avgWpm,
       label: 'Average speed',
       icon: (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -51,7 +130,7 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
       ),
     },
     {
-      value: '0',
+      value: wordsThisWeek,
       label: 'Words this week',
       icon: (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -60,7 +139,7 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
       ),
     },
     {
-      value: '0',
+      value: appsThisWeek,
       label: 'Apps used',
       icon: (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -69,7 +148,7 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
       ),
     },
     {
-      value: '0 min',
+      value: savedDisplay,
       label: 'Saved this week',
       icon: (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -78,15 +157,6 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
       ),
     },
   ];
-
-  const formatDate = (iso: string) => {
-    const d = new Date(iso);
-    return (
-      d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' }) +
-      ' ' +
-      d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
-    );
-  };
 
   return (
     <main className="flex flex-1 flex-col gap-6 pb-6 overflow-y-auto animate-fade-in">
@@ -189,32 +259,6 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
         </div>
       )}
 
-      {/* Recent recordings */}
-      <div className="mx-6">
-        <h2 className="mb-3 text-xs font-semibold text-zinc-600 uppercase tracking-wider">Ostatnie nagrania</h2>
-        {recordings.length === 0 ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-5 py-8 flex flex-col items-center gap-2">
-            <svg className="h-8 w-8 text-zinc-700" fill="none" viewBox="0 0 24 24" strokeWidth={1.2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
-            </svg>
-            <p className="text-sm text-zinc-600">Brak nagrań</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2 max-h-52 overflow-y-auto pr-1">
-            {recordings.map((rec) => (
-              <div
-                key={rec.id}
-                className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 flex flex-col gap-1 hover:border-zinc-700 transition-colors"
-              >
-                <span className="text-xs text-zinc-600">{formatDate(rec.date)}</span>
-                <span className="text-sm text-zinc-300 line-clamp-1">
-                  {rec.text.length > 80 ? rec.text.slice(0, 80) + '…' : rec.text}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </main>
   );
 }

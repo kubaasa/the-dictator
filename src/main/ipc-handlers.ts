@@ -55,12 +55,13 @@ export function registerIpcHandlers(
       clipboard.writeText(text);
       console.log('[Dictator] Text copied to clipboard');
 
+      const appName = pasteService.getAppName() ?? undefined;
       if (autoPaste && pasteService.hasTarget()) {
         await pasteService.simulatePaste();
         // Re-write after paste so transcribed text stays in clipboard for manual use
         clipboard.writeText(text);
       }
-      event.sender.send(IPC.TRANSCRIPTION_RESULT, { text });
+      event.sender.send(IPC.TRANSCRIPTION_RESULT, { text, appName });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       broadcastState('error');

@@ -3,6 +3,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 interface UseAudioRecorderReturn {
   isRecording: boolean;
   error: string;
+  lastDurationSeconds: number;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   clearError: () => void;
@@ -11,7 +12,9 @@ interface UseAudioRecorderReturn {
 export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState('');
+  const [lastDurationSeconds, setLastDurationSeconds] = useState(0);
   const isRecordingRef = useRef(false);
+  const recordingStartTimeRef = useRef<number | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -46,6 +49,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
       // Mic acquired — now tell main process
       isRecordingRef.current = true;
+      recordingStartTimeRef.current = Date.now();
       setIsRecording(true);
       window.dictator.startRecording();
 
@@ -110,6 +114,10 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     if (!isRecordingRef.current) return;
     isRecordingRef.current = false;
     setIsRecording(false);
+    if (recordingStartTimeRef.current !== null) {
+      setLastDurationSeconds((Date.now() - recordingStartTimeRef.current) / 1000);
+      recordingStartTimeRef.current = null;
+    }
     window.dictator.stopRecording();
 
     if (mediaStreamRef.current) {
@@ -160,5 +168,5 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
   const clearError = useCallback(() => setError(''), []);
 
-  return { isRecording, error, startRecording, stopRecording, clearError };
+  return { isRecording, error, lastDurationSeconds, startRecording, stopRecording, clearError };
 }

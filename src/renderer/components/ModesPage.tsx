@@ -28,38 +28,6 @@ const LANGUAGE_OPTIONS = [
   { value: 'sv', label: 'Swedish' },
 ];
 
-const DICTATION_MODES = [
-  {
-    id: 'fast',
-    name: 'Szybki',
-    description: 'Zoptymalizowany pod szybkie dyktowanie. Mniejsza dokładność interpunkcji, maksymalna prędkość.',
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
-      </svg>
-    ),
-  },
-  {
-    id: 'precise',
-    name: 'Precyzyjny',
-    description: 'Wyższa dokładność transkrypcji i poprawna interpunkcja. Wolniejsze przetwarzanie.',
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
-      </svg>
-    ),
-  },
-  {
-    id: 'silent',
-    name: 'Cichy',
-    description: 'Minimalne powiadomienia, brak dźwięków. Idealny do skupionej pracy.',
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 9.75 19.5 12m0 0 2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6 4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
-      </svg>
-    ),
-  },
-];
 
 export function ModesPage(props: ModelStatus) {
   const { downloaded, downloadedModels, downloading, progress, error, download, cancel, recheck } = props;
@@ -70,9 +38,6 @@ export function ModesPage(props: ModelStatus) {
   const [apiKeySaved, setApiKeySaved] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
-  const [dictationMode, setDictationMode] = useState<string>(() => {
-    return localStorage.getItem('dictator_mode') || 'fast';
-  });
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const langDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -149,54 +114,9 @@ export function ModesPage(props: ModelStatus) {
     setTimeout(() => setApiKeySaved(false), 2000);
   };
 
-  const handleDictationModeChange = (id: string) => {
-    setDictationMode(id);
-    localStorage.setItem('dictator_mode', id);
-  };
-
   return (
     <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
       <div className="mx-auto max-w-md flex flex-col gap-6">
-
-        {/* Dictation modes */}
-        <div>
-          <h2 className="mb-3 text-xs font-semibold text-zinc-600 uppercase tracking-wider">Tryb dyktowania</h2>
-          <div className="flex flex-col gap-2">
-            {DICTATION_MODES.map((mode) => {
-              const isActive = dictationMode === mode.id;
-              return (
-                <button
-                  key={mode.id}
-                  onClick={() => handleDictationModeChange(mode.id)}
-                  className={`flex items-start gap-4 rounded-xl border p-4 text-left transition-all duration-200 ${
-                    isActive
-                      ? 'border-zinc-500 bg-zinc-800 shadow-[0_0_20px_rgba(255,255,255,0.03)]'
-                      : 'border-zinc-800 bg-zinc-900 hover:border-zinc-700 hover:bg-zinc-800/60'
-                  }`}
-                >
-                  <span className={`mt-0.5 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-zinc-600'}`}>
-                    {mode.icon}
-                  </span>
-                  <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={`text-sm font-semibold transition-colors ${isActive ? 'text-white' : 'text-zinc-400'}`}>
-                        {mode.name}
-                      </span>
-                      {isActive && (
-                        <svg className="h-4 w-4 shrink-0 text-zinc-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                        </svg>
-                      )}
-                    </div>
-                    <span className={`text-xs leading-relaxed transition-colors ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                      {mode.description}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         {/* Transcription config */}
         <div>

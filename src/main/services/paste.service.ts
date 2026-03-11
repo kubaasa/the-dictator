@@ -13,10 +13,10 @@ const EXCLUDED_SHELL_CLASSES = new Set([
   'NotifyIconOverflowWindow', // System tray overflow
 ]);
 
-// PowerShell: returns "hwnd|topLevelWindowClass" for the foreground window
+// PowerShell: returns "hwnd|topLevelWindowClass|processName" for the foreground window
 const GET_HWND_ARGS = [
   '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
-  `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;public class WinCapE{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern int GetClassName(IntPtr h,StringBuilder s,int n);}'; $h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder(256); [WinCapE]::GetClassName($h,$sb,256)|Out-Null; "$h|$($sb.ToString())"`,
+  `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;using System.Diagnostics;public class WinCapE{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern int GetClassName(IntPtr h,StringBuilder s,int n);[DllImport("user32.dll")]public static extern int GetWindowThreadProcessId(IntPtr h,out int pid);}'; $h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder(256); [WinCapE]::GetClassName($h,$sb,256)|Out-Null; $pid=0; [WinCapE]::GetWindowThreadProcessId($h,[ref]$pid)|Out-Null; $pname=try{[System.Diagnostics.Process]::GetProcessById($pid).ProcessName}catch{'unknown'}; "$h|$($sb.ToString())|$pname"`,
 ];
 
 function buildPasteArgs(hwnd: string): string[] {
@@ -28,6 +28,7 @@ function buildPasteArgs(hwnd: string): string[] {
 
 export class PasteService {
   private targetHwnd: string | null = null;
+  private targetAppName: string | null = null;
 
   // Call when recording STARTS — captures the focused window if it's a valid paste target
   captureTarget(): void {
@@ -38,6 +39,7 @@ export class PasteService {
         const parts = stdout.trim().split('|');
         const hwnd = parts[0]?.trim() ?? '';
         const windowClass = parts[1]?.trim() ?? '';
+        const processName = parts[2]?.trim() ?? 'unknown';
 
         if (!hwnd || !/^\d+$/.test(hwnd) || hwnd === '0') return;
 
@@ -51,9 +53,14 @@ export class PasteService {
         }
 
         this.targetHwnd = hwnd;
-        console.log('[Dictator] Captured paste target HWND: %s (class: %s)', hwnd, windowClass);
+        this.targetAppName = processName;
+        console.log('[Dictator] Captured paste target HWND: %s (class: %s, process: %s)', hwnd, windowClass, processName);
       })
       .catch((err) => console.warn('[Dictator] captureTarget failed:', err.message));
+  }
+
+  getAppName(): string | null {
+    return this.targetAppName;
   }
 
   private isOwnWindow(hwnd: string): boolean {
@@ -76,6 +83,7 @@ export class PasteService {
     if (process.platform !== 'win32' || !this.targetHwnd) return;
     const hwnd = this.targetHwnd;
     this.targetHwnd = null;
+    this.targetAppName = null;
 
     try {
       await execFileAsync('powershell', buildPasteArgs(hwnd), { timeout: 5000 });

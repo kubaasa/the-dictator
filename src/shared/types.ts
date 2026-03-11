@@ -1,8 +1,9 @@
 export interface TranscriptionResult {
   text: string;
+  durationSeconds?: number;
+  appName?: string;
 }
 
-export type DictationMode = 'voice' | 'message' | 'email' | 'chat' | 'custom';
 export type TranscriptionEngine = 'local' | 'api';
 export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'none';
 export type RecordingState = 'idle' | 'recording' | 'transcribing' | 'processing' | 'done' | 'error';
@@ -29,7 +30,6 @@ export interface AppSettings {
     mode: HotkeyMode;
   };
   dictation: {
-    currentMode: DictationMode;
     customPrompt: string;
     autoPaste: boolean;
     restoreClipboard: boolean;
@@ -63,7 +63,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     mode: 'toggle',
   },
   dictation: {
-    currentMode: 'voice',
     customPrompt: '',
     autoPaste: true,
     restoreClipboard: true,
