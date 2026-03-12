@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import type { RecordingState } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
+import type { useAudioRecorder } from '../hooks/useAudioRecorder';
 
 
 interface RecordingEntry {
@@ -16,7 +16,7 @@ interface RecordingEntry {
 
 interface HomePageProps {
   recordingState: RecordingState;
-  selectedDeviceId?: string | null;
+  audioRecorder: ReturnType<typeof useAudioRecorder>;
 }
 
 function countWords(text: string): number {
@@ -61,8 +61,8 @@ function computeStats(entries: RecordingEntry[]) {
   };
 }
 
-export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
-  const { isRecording, error: recorderError, lastDurationSeconds, startRecording, stopRecording, clearError } = useAudioRecorder(selectedDeviceId);
+export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
+  const { isRecording, error: recorderError, lastDurationSeconds, startRecording, stopRecording, clearError } = audioRecorder;
   const { result, appName, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
   const error = recorderError || transcriptionError;
 

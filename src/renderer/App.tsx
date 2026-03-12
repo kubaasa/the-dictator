@@ -4,13 +4,15 @@ import { Sidebar } from './components/Sidebar';
 import { HomePage } from './components/HomePage';
 import { ModesPage } from './components/ModesPage';
 import { ShortcutsPage } from './components/ShortcutsPage';
+import { WidgetPage } from './components/WidgetPage';
 import { MicrophoneSelector } from './components/MicrophoneSelector';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
+import { useAudioRecorder } from './hooks/useAudioRecorder';
 import type { DictationMode } from '../shared/types';
 
-type ActiveView = 'home' | 'modes' | 'shortcuts';
+type ActiveView = 'home' | 'modes' | 'shortcuts' | 'widget';
 
 const MODES_CYCLE: DictationMode[] = ['voice', 'email', 'chat', 'note', 'custom'];
 
@@ -20,6 +22,7 @@ export function App() {
   const modelStatus = useModelStatus();
   const [activeView, setActiveView] = useState<ActiveView>('home');
   const micSelector = useMicrophoneSelector();
+  const audioRecorder = useAudioRecorder(micSelector.selectedDeviceId);
 
   // Cycle dictation mode on hotkey
   const cycleDictationMode = useCallback(async () => {
@@ -61,9 +64,10 @@ export function App() {
         <Sidebar activeView={activeView} onNavigate={setActiveView} />
 
         <div className="flex flex-1 flex-col overflow-hidden">
-          {activeView === 'home' && <HomePage recordingState={recordingState} selectedDeviceId={micSelector.selectedDeviceId} />}
+          {activeView === 'home' && <HomePage recordingState={recordingState} audioRecorder={audioRecorder} />}
           {activeView === 'modes' && <ModesPage {...modelStatus} />}
           {activeView === 'shortcuts' && <ShortcutsPage />}
+          {activeView === 'widget' && <WidgetPage />}
         </div>
       </div>
     </div>

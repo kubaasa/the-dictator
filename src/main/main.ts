@@ -10,6 +10,7 @@ import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
 import { DEFAULT_SETTINGS, type AppSettings, type RecordingState } from '../shared/types';
 import { IPC } from '../shared/constants';
+import { getOverlaySize } from './ipc-handlers';
 
 if (started) {
   app.quit();
@@ -73,6 +74,9 @@ function createMainWindow(): BrowserWindow {
     );
   }
 
+  // Prevent Chromium from throttling JS when the window is hidden (tray mode)
+  win.webContents.setBackgroundThrottling(false);
+
   win.once('ready-to-show', () => {
     // App starts hidden in tray — don't show the window
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -89,9 +93,12 @@ function createMainWindow(): BrowserWindow {
 }
 
 function createOverlayWindow(): BrowserWindow {
+  const widget = store.get('widget') ?? DEFAULT_SETTINGS.widget;
+  const [initW, initH] = getOverlaySize(widget.activeWidget, widget.size);
+
   const win = new BrowserWindow({
-    width: 160,
-    height: 160,
+    width: initW,
+    height: initH,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -106,11 +113,23 @@ function createOverlayWindow(): BrowserWindow {
     },
   });
 
-  // Position in top-right corner
+  // Restore last saved position or default to top-right corner
   const { screen } = require('electron');
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenW } = primaryDisplay.workAreaSize;
-  win.setPosition(screenW - 180, 20);
+  const savedX = store.get('widget.x') as number | undefined;
+  const savedY = store.get('widget.y') as number | undefined;
+  if (savedX !== undefined && savedY !== undefined) {
+    win.setPosition(savedX, savedY);
+  } else {
+    const { width: screenW } = screen.getPrimaryDisplay().workAreaSize;
+    win.setPosition(screenW - initW - 20, 20);
+  }
+
+  // Save position whenever the user moves the widget
+  win.on('moved', () => {
+    const { x, y } = win.getBounds();
+    store.set('widget.x', x);
+    store.set('widget.y', y);
+  });
 
   // Blur immediately on focus so the overlay never steals focus from other apps
   win.on('focus', () => win.blur());
@@ -162,7 +181,7 @@ app.on('ready', () => {
   overlayWindow = createOverlayWindow();
 
   trayManager.create(mainWindow);
-  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService);
+  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow);
   setupRecordingIpc();
 
   const hotkey = store.get('hotkey');

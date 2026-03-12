@@ -1,12 +1,20 @@
 import { ipcMain, BrowserWindow, shell, clipboard } from 'electron';
 import { IPC } from '../shared/constants';
-import type { AppSettings, RecordingState } from '../shared/types';
+import type { AppSettings, RecordingState, WidgetType } from '../shared/types';
 import { TranscriptionService } from './services/transcription.service';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
 import { HotkeyService } from './services/hotkey.service';
 import Store from 'electron-store';
 import { DEFAULT_SETTINGS } from '../shared/types';
+
+// size is 0–1; returns [width, height] in pixels
+export function getOverlaySize(_widget: WidgetType, size: number): [number, number] {
+  const t = Math.max(0, Math.min(1, size));
+  const w = Math.round(160 + t * 340); // 160–500px
+  const h = Math.round(50  + t * 80);  // 50–130px
+  return [w, h];
+}
 
 export function registerIpcHandlers(
   store: Store<AppSettings>,
@@ -15,6 +23,7 @@ export function registerIpcHandlers(
   pasteService: PasteService,
   aiService: AIService,
   hotkeyService: HotkeyService,
+  getOverlayWindow: () => BrowserWindow | null,
 ): void {
   // Settings
   ipcMain.handle(IPC.SETTINGS_GET, () => {
@@ -48,6 +57,19 @@ export function registerIpcHandlers(
       const hotkey = store.get('hotkey');
       hotkeyService.updateShortcuts(hotkey.shortcuts);
       hotkeyService.setMode(hotkey.mode);
+    }
+
+    // Resize overlay when widget settings change
+    if (settings.widget) {
+      const overlayWindow = getOverlayWindow();
+      if (overlayWindow) {
+        const widget = store.get('widget');
+        const [w, h] = getOverlaySize(widget.activeWidget, widget.size);
+
+        // Keep top-left corner anchored — setBounds is atomic (no flicker between calls)
+        const { x, y } = overlayWindow.getBounds();
+        overlayWindow.setBounds({ x, y, width: w, height: h });
+      }
     }
 
     return store.store;

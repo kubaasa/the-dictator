@@ -5,6 +5,7 @@ export interface TranscriptionResult {
 }
 
 export type TranscriptionEngine = 'local' | 'api';
+export type WidgetType = 'voicebar';
 export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'none';
 export type DictationMode = 'voice' | 'email' | 'chat' | 'note' | 'custom';
 export type RecordingState = 'idle' | 'recording' | 'transcribing' | 'processing' | 'done' | 'error';
@@ -41,6 +42,13 @@ export interface AppSettings {
     restoreClipboard: boolean;
   };
   vocabulary: string[];
+  widget: {
+    activeWidget: WidgetType;
+    size: number; // 0–1 continuous scale
+    opacity: number;
+    x?: number;
+    y?: number;
+  };
   general: {
     autoStart: boolean;
     minimizeToTray: boolean;
@@ -79,6 +87,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     restoreClipboard: true,
   },
   vocabulary: [],
+  widget: {
+    activeWidget: 'voicebar',
+    size: 0.5,
+    opacity: 1.0,
+  },
   general: {
     autoStart: false,
     minimizeToTray: true,
