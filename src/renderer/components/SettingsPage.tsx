@@ -115,12 +115,12 @@ export function SettingsPage() {
           <div className="space-y-4">
             <h3 className="text-base font-semibold text-zinc-200">Hotkey Settings</h3>
             <div>
-              <label className="mb-1 block text-zinc-400">Current shortcut</label>
+              <label className="mb-1 block text-zinc-400">Toggle recording</label>
               <div className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-200">
-                {settings.hotkey.shortcut}
+                {settings.hotkey.shortcuts?.toggleRecording ?? 'Ctrl+Shift+Space'}
               </div>
               <p className="mt-1 text-xs text-zinc-500">
-                Hotkey recording will be available in Phase 2.
+                Use the Shortcuts page for full shortcut editing.
               </p>
             </div>
             <div>

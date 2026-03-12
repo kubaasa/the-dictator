@@ -12,6 +12,8 @@ export const IPC = {
 
   // Hotkey → renderer (main tells renderer to toggle recording)
   HOTKEY_TOGGLE: 'hotkey:toggle',
+  HOTKEY_CANCEL: 'hotkey:cancel',
+  HOTKEY_MODE_SELECT: 'hotkey:mode-select',
 
   // Transcription
   TRANSCRIPTION_CHECK_READY: 'transcription:check-ready',
@@ -36,3 +38,9 @@ export const IPC = {
   APP_SHOW_SETTINGS: 'app:show-settings',
   APP_OPEN_MODELS_FOLDER: 'app:open-models-folder',
 } as const;
+
+export const DICTATION_MODE_PROMPTS: Record<string, string> = {
+  email: `You are a dictation assistant. Rewrite the following dictated text as a well-structured, professional email. Fix grammar, punctuation, and formatting. Keep the original meaning and tone. Output ONLY the processed text, no explanations.`,
+  chat: `You are a dictation assistant. Clean up the following dictated text for a casual chat message. Fix obvious errors but keep the informal, conversational tone. Output ONLY the processed text, no explanations.`,
+  note: `You are a dictation assistant. Convert the following dictated text into a concise, well-organized note. Use bullet points where appropriate. Fix grammar and punctuation. Output ONLY the processed text, no explanations.`,
+};

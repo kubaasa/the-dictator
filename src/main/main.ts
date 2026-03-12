@@ -7,6 +7,7 @@ import { HotkeyService } from './services/hotkey.service';
 import { TranscriptionService } from './services/transcription.service';
 import { registerIpcHandlers } from './ipc-handlers';
 import { PasteService } from './services/paste.service';
+import { AIService } from './services/ai.service';
 import { DEFAULT_SETTINGS, type AppSettings, type RecordingState } from '../shared/types';
 import { IPC } from '../shared/constants';
 
@@ -18,6 +19,7 @@ const store = new Store<AppSettings>({ defaults: DEFAULT_SETTINGS });
 const trayManager = new TrayManager();
 const transcriptionService = new TranscriptionService(store);
 const pasteService = new PasteService();
+const aiService = new AIService(store);
 
 // Hotkey sends toggle to the main renderer window (which owns getUserMedia)
 function sendToggleToRenderer(): void {
@@ -26,9 +28,21 @@ function sendToggleToRenderer(): void {
   }
 }
 
+function sendCancelToRenderer(): void {
+  if (mainWindow) {
+    mainWindow.webContents.send(IPC.HOTKEY_CANCEL);
+  }
+}
+
+function sendModeSelectToRenderer(): void {
+  if (mainWindow) {
+    mainWindow.webContents.send(IPC.HOTKEY_MODE_SELECT);
+  }
+}
+
 const hotkeyService = new HotkeyService(
-  () => { pasteService.captureTarget(); sendToggleToRenderer(); }, // onStart: capture target first
-  sendToggleToRenderer,                                            // onStop: just toggle
+  () => { pasteService.captureTarget(); sendToggleToRenderer(); },
+  sendToggleToRenderer,
 );
 
 let mainWindow: BrowserWindow | null = null;
@@ -42,6 +56,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 600,
     minHeight: 500,
     show: false,
+    autoHideMenuBar: true,
     title: 'The Dictator',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -130,8 +145,7 @@ function setupRecordingIpc(): void {
   });
 
   ipcMain.on(IPC.RECORDING_STOP, () => {
-    // Don't broadcast 'idle' here — state stays 'recording' until
-    // transcription handler sets 'transcribing', preventing overlay flicker.
+    broadcastState('idle');
   });
 
   ipcMain.on(IPC.VOICE_ACTIVITY, (_, level: number) => {
@@ -148,11 +162,16 @@ app.on('ready', () => {
   overlayWindow = createOverlayWindow();
 
   trayManager.create(mainWindow);
-  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService);
+  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService);
   setupRecordingIpc();
 
-  const { shortcut, mode } = store.get('hotkey');
-  hotkeyService.start(shortcut, mode);
+  const hotkey = store.get('hotkey');
+  const shortcuts = hotkey?.shortcuts ?? DEFAULT_SETTINGS.hotkey.shortcuts;
+  const mode = hotkey?.mode ?? DEFAULT_SETTINGS.hotkey.mode;
+  hotkeyService.start(shortcuts, mode, {
+    onCancel: sendCancelToRenderer,
+    onModeSelect: sendModeSelectToRenderer,
+  });
 
   // Preload local transcription model in background (eliminates 2-3s delay on first use)
   transcriptionService.preloadModel().catch((err) => {

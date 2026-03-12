@@ -3,6 +3,8 @@ import { IPC } from '../shared/constants';
 import type { AppSettings, RecordingState } from '../shared/types';
 import { TranscriptionService } from './services/transcription.service';
 import { PasteService } from './services/paste.service';
+import { AIService } from './services/ai.service';
+import { HotkeyService } from './services/hotkey.service';
 import Store from 'electron-store';
 import { DEFAULT_SETTINGS } from '../shared/types';
 
@@ -11,9 +13,24 @@ export function registerIpcHandlers(
   transcriptionService: TranscriptionService,
   broadcastState: (state: RecordingState) => void,
   pasteService: PasteService,
+  aiService: AIService,
+  hotkeyService: HotkeyService,
 ): void {
   // Settings
   ipcMain.handle(IPC.SETTINGS_GET, () => {
+    // Migrate old hotkey.shortcut → hotkey.shortcuts format
+    const hotkey = store.get('hotkey') as Record<string, unknown>;
+    if (hotkey && !hotkey.shortcuts && typeof hotkey.shortcut === 'string') {
+      const migrated = {
+        shortcuts: {
+          toggleRecording: hotkey.shortcut as string,
+          cancelRecording: DEFAULT_SETTINGS.hotkey.shortcuts.cancelRecording,
+          modeSelect: DEFAULT_SETTINGS.hotkey.shortcuts.modeSelect,
+        },
+        mode: hotkey.mode ?? DEFAULT_SETTINGS.hotkey.mode,
+      };
+      store.set('hotkey', migrated);
+    }
     return store.store;
   });
 
@@ -25,6 +42,14 @@ export function registerIpcHandlers(
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(IPC.SETTINGS_ON_CHANGE, store.store);
     }
+
+    // Update hotkey service if shortcuts or mode changed
+    if (settings.hotkey) {
+      const hotkey = store.get('hotkey');
+      hotkeyService.updateShortcuts(hotkey.shortcuts);
+      hotkeyService.setMode(hotkey.mode);
+    }
+
     return store.store;
   });
 
@@ -44,10 +69,37 @@ export function registerIpcHandlers(
 
   // Transcription — receives raw audio buffer directly, no disk I/O
   ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, async (event, audioBuffer: ArrayBuffer, sampleRate: number) => {
+    // Silence detection: skip transcription if audio is below speech threshold.
+    // Prevents Whisper hallucinations like [muzyka], [music], [cisza] on silence.
+    const samples = new Float32Array(audioBuffer);
+    const rms = Math.sqrt(samples.reduce((sum, s) => sum + s * s, 0) / samples.length);
+    if (rms < 0.01) {
+      broadcastState('idle');
+      return;
+    }
+
     broadcastState('transcribing');
     try {
-      const text = await transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate);
+      const rawText = await transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate);
+
+      // Safety net: filter known Whisper hallucinations that appear on near-silence audio
+      const HALLUCINATION_RE = /^\s*[\[(]?(muzyka|music|cisza|silence|szum|noise|applause|oklaski|śmiech|laughter)[\])]?\s*$/i;
+      if (!rawText || HALLUCINATION_RE.test(rawText)) {
+        broadcastState('idle');
+        return;
+      }
+
+      broadcastState('processing');
+      let text: string;
+      try {
+        text = await aiService.process(rawText);
+      } catch (aiErr) {
+        console.warn('[Dictator] AI processing failed, using raw text:', aiErr);
+        text = rawText;
+      }
+
       broadcastState('done');
+      setTimeout(() => broadcastState('idle'), 1500);
       const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
       console.log('[Dictator] Transcription done. autoPaste=%s, text="%s"', autoPaste, text);
 

@@ -154,6 +154,31 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     chunksRef.current = [];
   }, []);
 
+  const cancelRecording = useCallback(() => {
+    if (!isRecordingRef.current && !isSettingUpRef.current) return;
+
+    isRecordingRef.current = false;
+    isSettingUpRef.current = false;
+    pendingStopRef.current = false;
+    setIsRecording(false);
+    setError('');
+
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    chunksRef.current = [];
+    window.dictator.stopRecording();
+  }, []);
+
   // Listen for global hotkey toggle from main process
   useEffect(() => {
     const unsub = window.dictator.onHotkeyToggle(() => {
@@ -165,6 +190,14 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     });
     return unsub;
   }, [startRecording, stopRecording]);
+
+  // Listen for cancel hotkey
+  useEffect(() => {
+    const unsub = window.dictator.onHotkeyCancel(() => {
+      cancelRecording();
+    });
+    return unsub;
+  }, [cancelRecording]);
 
   const clearError = useCallback(() => setError(''), []);
 

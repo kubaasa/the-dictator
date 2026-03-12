@@ -35,6 +35,8 @@ export interface DictatorAPI {
 
   // Hotkey
   onHotkeyToggle: (callback: () => void) => () => void;
+  onHotkeyCancel: (callback: () => void) => () => void;
+  onHotkeyModeSelect: (callback: () => void) => () => void;
 
   // App
   quit: () => void;
@@ -111,6 +113,16 @@ const api: DictatorAPI = {
     const handler = () => callback();
     ipcRenderer.on(IPC.HOTKEY_TOGGLE, handler);
     return () => ipcRenderer.removeListener(IPC.HOTKEY_TOGGLE, handler);
+  },
+  onHotkeyCancel: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on(IPC.HOTKEY_CANCEL, handler);
+    return () => ipcRenderer.removeListener(IPC.HOTKEY_CANCEL, handler);
+  },
+  onHotkeyModeSelect: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on(IPC.HOTKEY_MODE_SELECT, handler);
+    return () => ipcRenderer.removeListener(IPC.HOTKEY_MODE_SELECT, handler);
   },
 
   // App

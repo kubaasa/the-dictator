@@ -2,9 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import type { RecordingState } from '../../shared/types';
+import { DEFAULT_SETTINGS } from '../../shared/types';
 
-// Average human typing speed used for "time saved" calculation
-const AVG_TYPING_WPM = 40;
 
 interface RecordingEntry {
   id: string;
@@ -24,45 +23,26 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function getWeekBounds(): { start: number; end: number } {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun, 1=Mon...
-  const diffToMonday = (day === 0 ? -6 : 1 - day);
-  const monday = new Date(now);
-  monday.setHours(0, 0, 0, 0);
-  monday.setDate(now.getDate() + diffToMonday);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  sunday.setHours(23, 59, 59, 999);
-  return { start: monday.getTime(), end: sunday.getTime() };
-}
-
 function computeStats(entries: RecordingEntry[]) {
-  const { start, end } = getWeekBounds();
-  const thisWeek = entries.filter((e) => {
-    const t = new Date(e.date).getTime();
-    return t >= start && t <= end;
-  });
+  // Total words across all recordings
+  const totalWords = entries.reduce((sum, e) => sum + (e.wordCount ?? 0), 0);
 
-  // Words this week — guard against legacy entries missing wordCount
-  const wordsThisWeek = thisWeek.reduce((sum, e) => sum + (e.wordCount ?? 0), 0);
+  // Total recorded time across all recordings
+  const totalSeconds = entries.reduce((sum, e) => sum + (e.durationSeconds ?? 0), 0);
+  let totalTimeDisplay: string;
+  if (totalSeconds <= 0) {
+    totalTimeDisplay = '—';
+  } else if (totalSeconds < 60) {
+    totalTimeDisplay = `${Math.round(totalSeconds)}s`;
+  } else if (totalSeconds < 3600) {
+    totalTimeDisplay = `${Math.round(totalSeconds / 60)} min`;
+  } else {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.round((totalSeconds % 3600) / 60);
+    totalTimeDisplay = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
 
-  // Apps used this week (unique, non-empty process names)
-  const appsThisWeek = new Set(
-    thisWeek.map((e) => e.appName).filter((a): a is string => !!a && a !== 'unknown'),
-  ).size;
-
-  // Time saved this week (in minutes): time it would take to type - actual recording duration
-  const savedMinutes = thisWeek.reduce((sum, e) => {
-    const words = e.wordCount ?? 0;
-    const duration = e.durationSeconds ?? 0;
-    if (duration <= 0 || words <= 0) return sum;
-    const typingMinutes = words / AVG_TYPING_WPM;
-    const recordingMinutes = duration / 60;
-    return sum + Math.max(0, typingMinutes - recordingMinutes);
-  }, 0);
-
-  // Average speed (WPM) — across all entries with valid duration and word count
+  // Average pace (WPM) across all entries with valid duration and word count
   const withDuration = entries.filter((e) => (e.durationSeconds ?? 0) > 0 && (e.wordCount ?? 0) > 0);
   let avgWpm: string;
   if (withDuration.length === 0) {
@@ -73,18 +53,11 @@ function computeStats(entries: RecordingEntry[]) {
     avgWpm = isFinite(rounded) ? `${rounded} wpm` : '—';
   }
 
-  const savedDisplay =
-    !isFinite(savedMinutes) || savedMinutes <= 0
-      ? '—'
-      : savedMinutes < 1
-      ? '<1 min'
-      : `${Math.round(savedMinutes)} min`;
-
   return {
+    totalWords: totalWords > 0 ? totalWords.toLocaleString() : '—',
+    totalTimeDisplay,
+    totalRecordings: entries.length > 0 ? entries.length.toString() : '—',
     avgWpm,
-    wordsThisWeek: isFinite(wordsThisWeek) && wordsThisWeek > 0 ? wordsThisWeek.toLocaleString() : '—',
-    appsThisWeek: appsThisWeek > 0 ? appsThisWeek.toString() : '—',
-    savedDisplay,
   };
 }
 
@@ -92,6 +65,18 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
   const { isRecording, error: recorderError, lastDurationSeconds, startRecording, stopRecording, clearError } = useAudioRecorder(selectedDeviceId);
   const { result, appName, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
   const error = recorderError || transcriptionError;
+
+  const [toggleShortcut, setToggleShortcut] = useState(DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
+
+  useEffect(() => {
+    window.dictator.getSettings().then((s) => {
+      setToggleShortcut(s.hotkey.shortcuts?.toggleRecording ?? DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
+    });
+    const unsub = window.dictator.onSettingsChange((s) => {
+      setToggleShortcut(s.hotkey.shortcuts?.toggleRecording ?? DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
+    });
+    return unsub;
+  }, []);
 
   const [recordings, setRecordings] = useState<RecordingEntry[]>(() => {
     try { return JSON.parse(localStorage.getItem('dictator_recordings') || '[]'); } catch { return []; }
@@ -117,21 +102,12 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
     }
   }, [result]);
 
-  const { avgWpm, wordsThisWeek, appsThisWeek, savedDisplay } = computeStats(recordings);
+  const { totalWords, totalTimeDisplay, totalRecordings, avgWpm } = computeStats(recordings);
 
   const stats = [
     {
-      value: avgWpm,
-      label: 'Average speed',
-      icon: (
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
-        </svg>
-      ),
-    },
-    {
-      value: wordsThisWeek,
-      label: 'Words this week',
+      value: totalWords,
+      label: 'Total words',
       icon: (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
@@ -139,20 +115,29 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
       ),
     },
     {
-      value: appsThisWeek,
-      label: 'Apps used',
+      value: totalTimeDisplay,
+      label: 'Time recorded',
       icon: (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0H3" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
         </svg>
       ),
     },
     {
-      value: savedDisplay,
-      label: 'Saved this week',
+      value: totalRecordings,
+      label: 'Total recordings',
       icon: (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+        </svg>
+      ),
+    },
+    {
+      value: avgWpm,
+      label: 'AVG Pace',
+      icon: (
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
         </svg>
       ),
     },
@@ -165,17 +150,19 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
         {stats.map((stat, i) => (
           <div
             key={i}
-            className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 flex flex-col gap-2 hover:border-zinc-700 hover:bg-zinc-800/80 transition-all duration-200 cursor-default"
+            className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 flex flex-row items-center gap-3 hover:border-zinc-700 hover:bg-zinc-800/80 transition-all duration-200 cursor-default"
           >
-            <span className="text-zinc-500">{stat.icon}</span>
-            <span className="text-lg font-bold text-white">{stat.value}</span>
-            <span className="text-xs text-zinc-500">{stat.label}</span>
+            <span className="text-zinc-500 shrink-0">{stat.icon}</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-zinc-500">{stat.label}</span>
+              <span className="text-lg font-bold text-white">{stat.value}</span>
+            </div>
           </div>
         ))}
       </div>
 
       {/* Recording button */}
-      <div className="flex flex-col items-center gap-5 mt-2">
+      <div className="flex flex-1 flex-col items-center justify-center gap-5">
         <div className="relative flex items-center justify-center">
           {isRecording && (
             <>
@@ -221,7 +208,7 @@ export function HomePage({ recordingState, selectedDeviceId }: HomePageProps) {
               ? 'Nagrywanie — kliknij aby zatrzymać'
               : 'Kliknij aby nagrać'}
           </p>
-          <p className="text-xs text-zinc-600">Ctrl + Shift + Space</p>
+          <p className="text-xs text-zinc-600">{toggleShortcut.replace(/\+/g, ' + ')}</p>
         </div>
       </div>
 

@@ -6,6 +6,7 @@ export interface TranscriptionResult {
 
 export type TranscriptionEngine = 'local' | 'api';
 export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'none';
+export type DictationMode = 'voice' | 'email' | 'chat' | 'note' | 'custom';
 export type RecordingState = 'idle' | 'recording' | 'transcribing' | 'processing' | 'done' | 'error';
 export type HotkeyMode = 'toggle' | 'push-to-talk';
 
@@ -26,10 +27,15 @@ export interface AppSettings {
     ollamaModel: string;
   };
   hotkey: {
-    shortcut: string;
+    shortcuts: {
+      toggleRecording: string;
+      cancelRecording: string;
+      modeSelect: string;
+    };
     mode: HotkeyMode;
   };
   dictation: {
+    currentMode: DictationMode;
     customPrompt: string;
     autoPaste: boolean;
     restoreClipboard: boolean;
@@ -59,10 +65,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
     ollamaModel: 'llama3',
   },
   hotkey: {
-    shortcut: 'Ctrl+Shift+Space',
+    shortcuts: {
+      toggleRecording: 'Ctrl+Shift+Space',
+      cancelRecording: 'Ctrl+Shift+Escape',
+      modeSelect: 'Ctrl+Shift+M',
+    },
     mode: 'toggle',
   },
   dictation: {
+    currentMode: 'voice',
     customPrompt: '',
     autoPaste: true,
     restoreClipboard: true,
