@@ -54,8 +54,8 @@ function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 900,
     height: 700,
-    minWidth: 600,
-    minHeight: 500,
+    minWidth: 900,
+    minHeight: 800,
     show: false,
     autoHideMenuBar: true,
     title: 'The Dictator',
@@ -79,9 +79,6 @@ function createMainWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => {
     // App starts hidden in tray — don't show the window
-    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-      win.webContents.openDevTools();
-    }
   });
 
   win.on('close', (e) => {
