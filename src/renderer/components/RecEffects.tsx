@@ -78,9 +78,10 @@ export function ViewfinderCorners({ color = '#166534', size = 24, animated = fal
 /* ─── RecIndicator ─── */
 interface RecIndicatorProps {
   isRecording: boolean;
+  compact?: boolean;
 }
 
-export function RecIndicator({ isRecording }: RecIndicatorProps) {
+export function RecIndicator({ isRecording, compact = false }: RecIndicatorProps) {
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef<number | null>(null);
   const rafRef = useRef<number>(0);
@@ -112,10 +113,22 @@ export function RecIndicator({ isRecording }: RecIndicatorProps) {
     return `${h}:${m}:${s}:${f}`;
   };
 
-  if (!isRecording) return null;
+  if (compact) {
+    return (
+      <div className={`flex items-center gap-1.5 font-mono transition-all duration-300 ${
+        isRecording ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+      }`}>
+        <span className="inline-block h-2 w-2 rounded-full bg-red-600 animate-rec-blink shrink-0" />
+        <span className="text-red-500 font-bold text-[10px] uppercase tracking-wider">[REC]</span>
+        <span className="text-green-500 text-[10px] tracking-wider">{formatTimecode(elapsed)}</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex items-center gap-3 font-mono text-lg uppercase tracking-wider">
+    <div className={`flex items-center gap-3 font-mono text-lg uppercase tracking-wider transition-all duration-300 ${
+      isRecording ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+    }`}>
       <span className="inline-block h-3 w-3 rounded-full bg-red-600 animate-rec-blink" />
       <span className="text-red-500 font-bold">[REC]</span>
       <span className="text-green-500">{formatTimecode(elapsed)}</span>

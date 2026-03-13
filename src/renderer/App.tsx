@@ -8,7 +8,7 @@ import { ModesPage } from './components/ModesPage';
 import { ShortcutsPage } from './components/ShortcutsPage';
 import { WidgetPage } from './components/WidgetPage';
 import { MicrophoneSelector } from './components/MicrophoneSelector';
-import { ScanLines, NoiseOverlay, Vignette } from './components/RecEffects';
+import { ScanLines, NoiseOverlay, Vignette, RecIndicator } from './components/RecEffects';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
@@ -56,8 +56,11 @@ export function App() {
 
       {/* Right column: header + content */}
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-        <header className="drag-region flex items-center justify-end px-5 py-3 border-b border-neutral-800/50">
-          <MicrophoneSelector {...micSelector} />
+        <header className="drag-region flex items-center px-5 py-3 border-b border-neutral-800/50">
+          {activeView !== 'home' && <RecIndicator compact isRecording={audioRecorder.isRecording} />}
+          <div className="ml-auto">
+            <MicrophoneSelector {...micSelector} />
+          </div>
         </header>
 
         <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
