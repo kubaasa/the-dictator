@@ -28,12 +28,12 @@ export function WidgetPage() {
 
   return (
     <div className="flex flex-col gap-8 p-6 overflow-y-auto h-full">
-      <h2 className="text-lg font-semibold text-zinc-100">Widget</h2>
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-400">Widget</h2>
 
       {/* Size */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Size</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-400">Size</span>
           <span className="text-xs text-zinc-400">{Math.round(size * 100)}%</span>
         </div>
         <input
@@ -54,7 +54,7 @@ export function WidgetPage() {
       {/* Opacity */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Opacity</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-400">Opacity</span>
           <span className="text-xs text-zinc-400">{Math.round(opacity * 100)}%</span>
         </div>
         <input

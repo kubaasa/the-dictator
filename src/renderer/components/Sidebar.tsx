@@ -26,15 +26,6 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    id: 'history',
-    label: 'History',
-    icon: (
-      <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-      </svg>
-    ),
-  },
-  {
     id: 'modes',
     label: 'Modes',
     icon: (
@@ -59,6 +50,15 @@ const navItems: NavItem[] = [
     icon: (
       <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+      </svg>
+    ),
+  },
+  {
+    id: 'history',
+    label: 'History',
+    icon: (
+      <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
       </svg>
     ),
   },
@@ -110,7 +110,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       {/* App name */}
       {!collapsed && (
         <div className="px-3 py-1 flex justify-center">
-          <span className="text-sm font-semibold tracking-wide text-zinc-400 uppercase whitespace-nowrap">
+          <span className="text-[11px] font-semibold tracking-[0.25em] text-zinc-400 uppercase whitespace-nowrap">
             The Dictator
           </span>
         </div>

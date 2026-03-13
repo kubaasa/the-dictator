@@ -59,10 +59,9 @@ let currentState: RecordingState = 'idle';
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 900,
-    height: 700,
-    minWidth: 900,
-    minHeight: 800,
+    width: 1200,
+    height: 800,
+    resizable: false,
     show: false,
     autoHideMenuBar: true,
     title: 'The Dictator',
@@ -186,10 +185,50 @@ function setupRecordingIpc(): void {
 }
 
 app.on('ready', () => {
-  // Serve local audio files via recording:// protocol (file:// blocked from http: origin)
-  protocol.handle('recording', (request) => {
-    const filePath = request.url.replace('recording:///', '');
-    return net.fetch('file:///' + filePath);
+  // Serve local audio files via recording:// with proper Range request support.
+  // The HTML5 audio element requires Range responses (HTTP 206) for buffering/seeking.
+  // net.fetch('file://') doesn't handle Range headers, so we do it manually.
+  protocol.handle('recording', async (request) => {
+    const filePath = decodeURIComponent(request.url.replace('recording:///', ''));
+    try {
+      const stat = await fs.promises.stat(filePath);
+      const fileSize = stat.size;
+      const rangeHeader = request.headers.get('range');
+
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+          const chunkSize = end - start + 1;
+          const fh = await fs.promises.open(filePath, 'r');
+          const buf = Buffer.alloc(chunkSize);
+          await fh.read(buf, 0, chunkSize, start);
+          await fh.close();
+          return new Response(buf, {
+            status: 206,
+            headers: {
+              'Content-Type': 'audio/webm',
+              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+              'Content-Length': String(chunkSize),
+              'Accept-Ranges': 'bytes',
+            },
+          });
+        }
+      }
+
+      const buf = await fs.promises.readFile(filePath);
+      return new Response(buf, {
+        status: 200,
+        headers: {
+          'Content-Type': 'audio/webm',
+          'Content-Length': String(fileSize),
+          'Accept-Ranges': 'bytes',
+        },
+      });
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
   });
 
   mainWindow = createMainWindow();

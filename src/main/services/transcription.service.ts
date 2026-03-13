@@ -34,6 +34,8 @@ export class TranscriptionService {
   private loadingPromise: Promise<void> | null = null;
   private openaiClient: OpenAI | null = null;
   private openaiClientKey: string | null = null;
+  private transcriptionCount = 0;
+  private static readonly PIPELINE_RESET_INTERVAL = 15;
 
   constructor(private store: Store<AppSettings>) {
     env.cacheDir = MODELS_CACHE_DIR;
@@ -184,11 +186,29 @@ export class TranscriptionService {
     // Skip resampling if audio is already at 16kHz (renderer records at 16kHz)
     const audio = sampleRate === 16000 ? float32 : resampleFloat32(float32, sampleRate, 16000);
 
-    const options: Record<string, unknown> = { task: 'transcribe' };
+    const options: Record<string, unknown> = {
+      task: 'transcribe',
+      // Handle recordings longer than Whisper's 30s context window
+      chunk_length_s: 30,
+      stride_length_s: 5,
+    };
     if (language !== 'auto') options.language = language;
 
     const result = await this.pipe(audio, options);
-    return ((result as { text: string }).text ?? '').trim();
+    const text = ((result as { text: string }).text ?? '').trim();
+
+    // Reset WASM heap periodically — ONNX Runtime heap grows monotonically,
+    // causing slowdowns after many recordings. Reload in background so the
+    // next call doesn't block.
+    this.transcriptionCount++;
+    if (this.transcriptionCount % TranscriptionService.PIPELINE_RESET_INTERVAL === 0) {
+      this.pipe = null;
+      this.loadedModelId = null;
+      this.loadingPromise = null;
+      this.loadFromCache().catch((e) => console.warn('[Dictator] Background model reload failed:', e));
+    }
+
+    return text;
   }
 
   async transcribeApi(wavPath: string): Promise<string> {

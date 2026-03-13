@@ -154,7 +154,7 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
           >
             <span className="text-zinc-500 shrink-0">{stat.icon}</span>
             <div className="flex flex-col gap-0.5">
-              <span className="text-xs text-zinc-500">{stat.label}</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500">{stat.label}</span>
               <span className="text-lg font-bold text-white">{stat.value}</span>
             </div>
           </div>

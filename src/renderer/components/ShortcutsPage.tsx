@@ -158,7 +158,7 @@ export function ShortcutsPage() {
   return (
     <main className="flex-1 overflow-y-auto p-6">
       <section>
-        <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-4">Keyboard Shortcuts</h2>
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 mb-4">Keyboard Shortcuts</h2>
 
         <div className="space-y-3">
           {SHORTCUT_CONFIGS.map((config) => {
@@ -171,21 +171,11 @@ export function ShortcutsPage() {
                 className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3"
               >
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium text-zinc-200">{config.label}</span>
-                  <span className="text-xs text-zinc-500">{config.description}</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-200">{config.label}</span>
+                  <span className="text-[11px] text-zinc-500">{config.description}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {!isDefault && (
-                    <button
-                      onClick={() => resetShortcut(config.key)}
-                      className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-                      title="Reset to default"
-                    >
-                      Reset
-                    </button>
-                  )}
-
                   <div
                     ref={isListening ? inputRef : undefined}
                     tabIndex={0}
@@ -211,9 +201,6 @@ export function ShortcutsPage() {
           <p className="mt-3 text-sm text-red-400">{error}</p>
         )}
 
-        <p className="mt-4 text-xs text-zinc-600">
-          Click a shortcut field, then press your desired key combination (modifier + key). Press Escape to cancel.
-        </p>
       </section>
     </main>
   );

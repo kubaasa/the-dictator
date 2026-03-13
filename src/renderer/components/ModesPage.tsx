@@ -246,12 +246,12 @@ export function ModesPage(props: ModelStatus) {
 
         {/* Section 1: Transcription config */}
         <div>
-          <h2 className="mb-3 text-xs font-semibold text-zinc-600 uppercase tracking-wider">Transkrypcja</h2>
+          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500">Transkrypcja</h2>
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-5">
 
             {/* Language */}
             <div className="flex items-center gap-3">
-              <span className="text-sm text-zinc-500 w-16 shrink-0">Language</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Language</span>
               <div ref={langDropdownRef} className="relative">
                 <button
                   onClick={() => setLangDropdownOpen((o) => !o)}
@@ -283,7 +283,7 @@ export function ModesPage(props: ModelStatus) {
 
             {/* Model */}
             <div className="flex items-center gap-3">
-              <span className="text-sm text-zinc-500 w-16 shrink-0">Model</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Model</span>
               <div ref={modelDropdownRef} className="relative">
                 <button
                   onClick={() => !downloading && setModelDropdownOpen((o) => !o)}
@@ -329,7 +329,7 @@ export function ModesPage(props: ModelStatus) {
               {!downloaded && !downloading && (
                 <button
                   onClick={download}
-                  className="rounded-lg bg-zinc-700 px-3 py-1.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+                  className="rounded-lg bg-zinc-700 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-200 transition-colors hover:bg-zinc-600"
                 >
                   Download
                 </button>
@@ -351,7 +351,7 @@ export function ModesPage(props: ModelStatus) {
                   <span className="text-xs text-zinc-500">{progress > 0 ? `${progress}%` : '...'}</span>
                   <button
                     onClick={cancel}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                    className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 hover:text-zinc-300 transition-colors"
                   >
                     Cancel
                   </button>
@@ -368,7 +368,7 @@ export function ModesPage(props: ModelStatus) {
 
           <button
             onClick={() => window.dictator.openModelsFolder()}
-            className="flex items-center gap-2 self-start rounded-lg border border-zinc-800 px-4 py-2 text-xs text-zinc-600 transition-colors hover:border-zinc-700 hover:text-zinc-400 mt-4"
+            className="flex items-center gap-2 self-start rounded-lg border border-zinc-800 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-600 transition-colors hover:border-zinc-700 hover:text-zinc-400 mt-4"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
@@ -380,7 +380,7 @@ export function ModesPage(props: ModelStatus) {
         {/* API key section (transcription) */}
         {engine === 'api' && (
           <div>
-            <h2 className="mb-3 text-xs font-semibold text-zinc-600 uppercase tracking-wider">OpenAI API Key</h2>
+            <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500">OpenAI API Key</h2>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-4">
               <p className="text-xs text-zinc-600">
                 Used for Whisper API transcription. Your key is stored locally and never sent anywhere except OpenAI.
@@ -395,7 +395,7 @@ export function ModesPage(props: ModelStatus) {
                 />
                 <button
                   onClick={handleApiKeySave}
-                  className="rounded-lg bg-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+                  className="rounded-lg bg-zinc-700 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-200 transition-colors hover:bg-zinc-600"
                 >
                   {apiKeySaved ? 'Saved' : 'Save'}
                 </button>
@@ -406,7 +406,7 @@ export function ModesPage(props: ModelStatus) {
 
         {/* Section 2: Dictation modes */}
         <div className={!isAiEnabled ? 'opacity-50 pointer-events-none' : ''}>
-          <h2 className="mb-3 text-xs font-semibold text-zinc-600 uppercase tracking-wider">Dictation Mode</h2>
+          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500">Dictation Mode</h2>
           {!isAiEnabled && (
             <p className="mb-3 text-xs text-zinc-600">Select an AI provider below to enable dictation modes.</p>
           )}
@@ -424,7 +424,7 @@ export function ModesPage(props: ModelStatus) {
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d={mode.icon} />
                 </svg>
-                <span className="text-xs font-medium">{mode.label}</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.25em]">{mode.label}</span>
                 <span className="text-[10px] text-zinc-600 leading-tight">{mode.description}</span>
               </button>
             ))}
@@ -446,12 +446,12 @@ export function ModesPage(props: ModelStatus) {
 
         {/* Section 3: AI Provider config */}
         <div>
-          <h2 className="mb-3 text-xs font-semibold text-zinc-600 uppercase tracking-wider">AI Provider</h2>
+          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500">AI Provider</h2>
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-4">
 
             {/* Provider dropdown */}
             <div className="flex items-center gap-3">
-              <span className="text-sm text-zinc-500 w-16 shrink-0">Provider</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Provider</span>
               <div ref={providerDropdownRef} className="relative">
                 <button
                   onClick={() => setProviderDropdownOpen((o) => !o)}
@@ -485,7 +485,7 @@ export function ModesPage(props: ModelStatus) {
             {aiProvider === 'openai' && (
               <>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-zinc-500 w-16 shrink-0">Model</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Model</span>
                   <div ref={aiModelDropdownRef} className="relative">
                     <button
                       onClick={() => setAiModelDropdownOpen((o) => !o)}
@@ -523,7 +523,7 @@ export function ModesPage(props: ModelStatus) {
                   />
                   <button
                     onClick={handleAiKeySave}
-                    className="rounded-lg bg-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+                    className="rounded-lg bg-zinc-700 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-200 transition-colors hover:bg-zinc-600"
                   >
                     {aiKeySaved ? 'Saved' : 'Save'}
                   </button>
@@ -535,7 +535,7 @@ export function ModesPage(props: ModelStatus) {
             {aiProvider === 'anthropic' && (
               <>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-zinc-500 w-16 shrink-0">Model</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Model</span>
                   <div ref={aiModelDropdownRef} className="relative">
                     <button
                       onClick={() => setAiModelDropdownOpen((o) => !o)}
@@ -573,7 +573,7 @@ export function ModesPage(props: ModelStatus) {
                   />
                   <button
                     onClick={handleAiKeySave}
-                    className="rounded-lg bg-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+                    className="rounded-lg bg-zinc-700 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-200 transition-colors hover:bg-zinc-600"
                   >
                     {aiKeySaved ? 'Saved' : 'Save'}
                   </button>
@@ -585,7 +585,7 @@ export function ModesPage(props: ModelStatus) {
             {aiProvider === 'ollama' && (
               <>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-zinc-500 w-16 shrink-0">URL</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">URL</span>
                   <input
                     type="text"
                     value={aiOllamaUrl}
@@ -595,7 +595,7 @@ export function ModesPage(props: ModelStatus) {
                   />
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-zinc-500 w-16 shrink-0">Model</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Model</span>
                   <input
                     type="text"
                     value={aiOllamaModel}
