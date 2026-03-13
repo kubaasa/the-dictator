@@ -179,7 +179,7 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
                 ? 'border-red-500/50 bg-red-600 shadow-[0_0_50px_rgba(239,68,68,0.4),0_0_100px_rgba(239,68,68,0.15)] hover:bg-red-700'
                 : recordingState === 'transcribing'
                 ? 'cursor-not-allowed border-zinc-700 bg-zinc-800 opacity-50'
-                : 'border-zinc-700 bg-zinc-900 hover:border-zinc-500 hover:bg-zinc-800 hover:shadow-[0_0_30px_rgba(255,255,255,0.04)] animate-idle-pulse'
+                : 'border-red-500 bg-zinc-900 hover:bg-zinc-800'
             }`}
           >
             {isRecording ? (
@@ -192,8 +192,8 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z" />
               </svg>
             ) : (
-              <svg className="h-10 w-10 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+              <svg className="h-full w-full" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" fill="#DC2626" />
               </svg>
             )}
           </button>

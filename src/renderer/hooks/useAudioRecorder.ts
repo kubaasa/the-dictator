@@ -17,6 +17,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   const recordingStartTimeRef = useRef<number | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const chunksRef = useRef<Float32Array[]>([]);
   const vadFrameCounterRef = useRef(0);
@@ -24,6 +25,43 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   // Bug #2: race condition flags for push-to-talk
   const isSettingUpRef = useRef(false);
   const pendingStopRef = useRef(false);
+
+  // MediaRecorder for WebM audio (saved to history)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<Blob[]>([]);
+
+  // Coordination between MediaRecorder.onstop and onTranscriptionResult
+  const recordingIdRef = useRef<string>('');
+  const pendingAudioBufferRef = useRef<ArrayBuffer | null>(null);
+  const transcriptionResultIdRef = useRef<string | null>(null);
+
+  // Called from both sides — sends audio when both id and buffer are ready
+  const trySendAudio = useCallback((id: string, buffer?: ArrayBuffer) => {
+    if (buffer) pendingAudioBufferRef.current = buffer;
+    if (id) transcriptionResultIdRef.current = id;
+
+    if (
+      transcriptionResultIdRef.current &&
+      transcriptionResultIdRef.current === recordingIdRef.current &&
+      pendingAudioBufferRef.current
+    ) {
+      const buf = pendingAudioBufferRef.current;
+      const rid = transcriptionResultIdRef.current;
+      pendingAudioBufferRef.current = null;
+      transcriptionResultIdRef.current = null;
+      window.dictator.audio.save(rid, buf).catch((e) => console.warn('[Dictator] audio save failed:', e));
+    }
+  }, []);
+
+  // Listen for transcription result to coordinate audio save
+  useEffect(() => {
+    const unsub = window.dictator.onTranscriptionResult((result) => {
+      if (result.id) {
+        trySendAudio(result.id);
+      }
+    });
+    return unsub;
+  }, [trySendAudio]);
 
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current || isSettingUpRef.current) return;
@@ -47,6 +85,33 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         },
       });
 
+      // Generate unique id for this recording before transcription starts
+      recordingIdRef.current = Date.now().toString();
+      pendingAudioBufferRef.current = null;
+      transcriptionResultIdRef.current = null;
+
+      // Start MediaRecorder to collect WebM audio for history
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : '';
+      if (mimeType) {
+        mediaChunksRef.current = [];
+        const mr = new MediaRecorder(stream, { mimeType });
+        mr.ondataavailable = (e) => {
+          if (e.data.size > 0) mediaChunksRef.current.push(e.data);
+        };
+        mr.onstop = async () => {
+          const blob = new Blob(mediaChunksRef.current, { type: mimeType });
+          mediaChunksRef.current = [];
+          const buffer = await blob.arrayBuffer();
+          trySendAudio(recordingIdRef.current, buffer);
+        };
+        mr.start();
+        mediaRecorderRef.current = mr;
+      }
+
       // Mic acquired — now tell main process
       isRecordingRef.current = true;
       recordingStartTimeRef.current = Date.now();
@@ -60,6 +125,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       audioContextRef.current = audioContext;
 
       const source = audioContext.createMediaStreamSource(stream);
+      sourceRef.current = source;
 
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
@@ -120,11 +186,21 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     }
     window.dictator.stopRecording();
 
+    // Stop MediaRecorder before stopping stream tracks so it captures all audio
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop(); // onstop fires async with the collected blob
+      mediaRecorderRef.current = null;
+    }
+
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
 
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
+    }
     if (processorRef.current) {
       processorRef.current.disconnect();
       processorRef.current = null;
@@ -148,7 +224,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       audioContextRef.current = null;
 
       // Fire-and-forget: result arrives via onTranscriptionResult event
-      window.dictator.transcribeBuffer(merged.buffer, sampleRate);
+      window.dictator.transcribeBuffer(merged.buffer, sampleRate, recordingIdRef.current);
     }
 
     chunksRef.current = [];
@@ -163,9 +239,21 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     setIsRecording(false);
     setError('');
 
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+      mediaRecorderRef.current = null;
+    }
+    mediaChunksRef.current = [];
+    pendingAudioBufferRef.current = null;
+    transcriptionResultIdRef.current = null;
+
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
+    }
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
     }
     if (processorRef.current) {
       processorRef.current.disconnect();

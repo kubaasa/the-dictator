@@ -1,10 +1,13 @@
-import { ipcMain, BrowserWindow, shell, clipboard } from 'electron';
+import { ipcMain, BrowserWindow, shell, clipboard, app } from 'electron';
+import path from 'node:path';
+import fs from 'node:fs';
 import { IPC } from '../shared/constants';
-import type { AppSettings, RecordingState, WidgetType } from '../shared/types';
+import type { AppSettings, RecordingState, WidgetType, RecordingEntry } from '../shared/types';
 import { TranscriptionService } from './services/transcription.service';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
 import { HotkeyService } from './services/hotkey.service';
+import { HistoryService } from './services/history.service';
 import Store from 'electron-store';
 import { DEFAULT_SETTINGS } from '../shared/types';
 
@@ -24,7 +27,11 @@ export function registerIpcHandlers(
   aiService: AIService,
   hotkeyService: HotkeyService,
   getOverlayWindow: () => BrowserWindow | null,
+  historyService: HistoryService,
 ): void {
+  const recordingsDir = path.join(app.getPath('userData'), 'recordings');
+  fs.mkdirSync(recordingsDir, { recursive: true });
+
   // Settings
   ipcMain.handle(IPC.SETTINGS_GET, () => {
     // Migrate old hotkey.shortcut → hotkey.shortcuts format
@@ -89,8 +96,8 @@ export function registerIpcHandlers(
     return { ready: true };
   });
 
-  // Transcription — receives raw audio buffer directly, no disk I/O
-  ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, async (event, audioBuffer: ArrayBuffer, sampleRate: number) => {
+  // Transcription — receives raw audio buffer + sampleRate + recordingId from renderer
+  ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, async (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string) => {
     // Silence detection: skip transcription if audio is below speech threshold.
     // Prevents Whisper hallucinations like [muzyka], [music], [cisza] on silence.
     const samples = new Float32Array(audioBuffer);
@@ -135,13 +142,51 @@ export function registerIpcHandlers(
         // Re-write after paste so transcribed text stays in clipboard for manual use
         clipboard.writeText(text);
       }
-      event.sender.send(IPC.TRANSCRIPTION_RESULT, { text, appName });
+
+      // Save to history
+      const entryId = recordingId ?? Date.now().toString();
+      const durationSeconds = samples.length / sampleRate;
+      const mode = (store.get('dictation.currentMode') as string) ?? 'voice';
+      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+      const entry: RecordingEntry = {
+        id: entryId,
+        date: new Date().toISOString(),
+        text,
+        wordCount,
+        durationSeconds,
+        appName,
+        mode,
+      };
+      try {
+        historyService.add(entry);
+      } catch (dbErr) {
+        console.error('[Dictator] Failed to save recording to history DB:', dbErr);
+      }
+
+      event.sender.send(IPC.TRANSCRIPTION_RESULT, { id: entryId, text, appName, durationSeconds });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       broadcastState('error');
       setTimeout(() => broadcastState('idle'), 3000);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, msg);
     }
+  });
+
+  // Save audio file sent from renderer (WebM blob)
+  ipcMain.handle(IPC.AUDIO_SAVE, async (_event, id: string, audioBuffer: ArrayBuffer) => {
+    const filePath = path.join(recordingsDir, `${id}.webm`);
+    await fs.promises.writeFile(filePath, Buffer.from(audioBuffer));
+    historyService.updateAudioPath(id, filePath);
+    return filePath;
+  });
+
+  // History handlers
+  ipcMain.handle(IPC.HISTORY_GET_ALL, () => historyService.getAll());
+  ipcMain.handle(IPC.HISTORY_DELETE, (_event, id: string) => historyService.delete(id));
+  ipcMain.handle(IPC.HISTORY_SEARCH, (_event, query: string) => historyService.search(query));
+  ipcMain.handle(IPC.HISTORY_CLEAR_ALL, () => historyService.clearAll());
+  ipcMain.handle(IPC.HISTORY_MIGRATE, (_event, entries: RecordingEntry[]) => {
+    for (const entry of entries) historyService.add(entry);
   });
 
   // Open models cache folder in system file explorer

@@ -36,6 +36,16 @@ export const IPC = {
   // Overlay button → main → renderer toggle
   OVERLAY_TOGGLE: 'overlay:toggle',
 
+  // History
+  HISTORY_GET_ALL: 'history:get-all',
+  HISTORY_DELETE: 'history:delete',
+  HISTORY_SEARCH: 'history:search',
+  HISTORY_CLEAR_ALL: 'history:clear-all',
+  HISTORY_MIGRATE: 'history:migrate',
+
+  // Audio
+  AUDIO_SAVE: 'audio:save',
+
   // App
   APP_QUIT: 'app:quit',
   APP_SHOW_SETTINGS: 'app:show-settings',

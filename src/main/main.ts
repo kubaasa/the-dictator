@@ -1,10 +1,12 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, net } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
 import { TrayManager } from './tray';
 import { HotkeyService } from './services/hotkey.service';
 import { TranscriptionService } from './services/transcription.service';
+import { HistoryService } from './services/history.service';
 import { registerIpcHandlers } from './ipc-handlers';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
@@ -15,6 +17,11 @@ import { getOverlaySize } from './ipc-handlers';
 if (started) {
   app.quit();
 }
+
+// Must be called before app 'ready'
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'recording', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } },
+]);
 
 const store = new Store<AppSettings>({ defaults: DEFAULT_SETTINGS });
 const trayManager = new TrayManager();
@@ -179,11 +186,21 @@ function setupRecordingIpc(): void {
 }
 
 app.on('ready', () => {
+  // Serve local audio files via recording:// protocol (file:// blocked from http: origin)
+  protocol.handle('recording', (request) => {
+    const filePath = request.url.replace('recording:///', '');
+    return net.fetch('file:///' + filePath);
+  });
+
   mainWindow = createMainWindow();
   overlayWindow = createOverlayWindow();
 
+  const recordingsDir = path.join(app.getPath('userData'), 'recordings');
+  fs.mkdirSync(recordingsDir, { recursive: true });
+  const historyService = new HistoryService(path.join(app.getPath('userData'), 'history.db'));
+
   trayManager.create(mainWindow);
-  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow);
+  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService);
   setupRecordingIpc();
 
   const hotkey = store.get('hotkey');

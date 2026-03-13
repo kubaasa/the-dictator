@@ -10,7 +10,9 @@ const config: ForgeConfig = {
     asar: true,
     name: 'The Dictator',
   },
-  rebuildConfig: {},
+  rebuildConfig: {
+    onlyModules: ['better-sqlite3', 'uiohook-napi'],
+  },
   makers: [
     new MakerSquirrel({}),
     new MakerZIP({}, ['darwin']),

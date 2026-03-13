@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { OverlayWindow } from './components/OverlayWindow';
 import { Sidebar } from './components/Sidebar';
+import type { View as ActiveView } from './components/Sidebar';
 import { HomePage } from './components/HomePage';
+import { HistoryPage } from './components/HistoryPage';
 import { ModesPage } from './components/ModesPage';
 import { ShortcutsPage } from './components/ShortcutsPage';
 import { WidgetPage } from './components/WidgetPage';
@@ -11,8 +13,6 @@ import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
 import type { DictationMode } from '../shared/types';
-
-type ActiveView = 'home' | 'modes' | 'shortcuts' | 'widget';
 
 const MODES_CYCLE: DictationMode[] = ['voice', 'email', 'chat', 'note', 'custom'];
 
@@ -44,27 +44,19 @@ export function App() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100 select-none">
-      {/* Header — full width drag region */}
-      <header className="drag-region flex items-center justify-between px-5 py-3 border-b border-zinc-800">
-        <div className="no-drag flex items-center gap-2">
-          <span className={`inline-block h-2 w-2 rounded-full ${
-            recordingState === 'recording' ? 'bg-red-500 animate-pulse' :
-            recordingState === 'transcribing' ? 'bg-amber-500 animate-pulse' :
-            recordingState === 'processing' ? 'bg-amber-500 animate-pulse' :
-            'bg-zinc-700'
-          }`} />
-          <span className="text-xs text-zinc-400 capitalize">{recordingState}</span>
-        </div>
-        <MicrophoneSelector {...micSelector} />
-      </header>
+    <div className="flex h-screen bg-zinc-950 text-zinc-100 select-none">
+      {/* Sidebar — full height */}
+      <Sidebar activeView={activeView} onNavigate={setActiveView} />
 
-      {/* Body: sidebar + content */}
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar activeView={activeView} onNavigate={setActiveView} />
+      {/* Right column: header + content */}
+      <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+        <header className="drag-region flex items-center justify-end px-5 py-3 border-b border-zinc-800">
+          <MicrophoneSelector {...micSelector} />
+        </header>
 
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
           {activeView === 'home' && <HomePage recordingState={recordingState} audioRecorder={audioRecorder} />}
+          {activeView === 'history' && <HistoryPage />}
           {activeView === 'modes' && <ModesPage {...modelStatus} />}
           {activeView === 'shortcuts' && <ShortcutsPage />}
           {activeView === 'widget' && <WidgetPage />}

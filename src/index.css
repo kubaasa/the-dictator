@@ -3,7 +3,17 @@
 html,
 body,
 #app {
+  height: 100%;
+  overflow: hidden;
   background: transparent;
+}
+
+/* Hide scrollbars globally — scroll still works */
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
 }
 
 @keyframes ping-slow {

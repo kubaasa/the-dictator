@@ -1,7 +1,19 @@
 export interface TranscriptionResult {
+  id?: string;
   text: string;
   durationSeconds?: number;
   appName?: string;
+}
+
+export interface RecordingEntry {
+  id: string;
+  date: string;
+  text: string;
+  wordCount: number;
+  durationSeconds: number;
+  appName?: string;
+  audioPath?: string;
+  mode?: string;
 }
 
 export type TranscriptionEngine = 'local' | 'api';

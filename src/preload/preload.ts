@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/constants';
-import type { AppSettings, RecordingState, TranscriptionResult } from '../shared/types';
+import type { AppSettings, RecordingState, TranscriptionResult, RecordingEntry } from '../shared/types';
 
 export interface DictatorAPI {
   // Recording
@@ -11,7 +11,7 @@ export interface DictatorAPI {
 
   // Transcription
   checkTranscriptionReady: () => Promise<{ ready: boolean; error?: string }>;
-  transcribeBuffer: (audioBuffer: ArrayBuffer, sampleRate: number) => Promise<void>;
+  transcribeBuffer: (audioBuffer: ArrayBuffer, sampleRate: number, id?: string) => Promise<void>;
   onTranscriptionResult: (callback: (result: TranscriptionResult) => void) => () => void;
   onTranscriptionError: (callback: (message: string) => void) => () => void;
 
@@ -41,6 +41,20 @@ export interface DictatorAPI {
   // Overlay
   requestToggleRecording: () => void;
 
+  // History
+  history: {
+    getAll: () => Promise<RecordingEntry[]>;
+    delete: (id: string) => Promise<void>;
+    search: (query: string) => Promise<RecordingEntry[]>;
+    clearAll: () => Promise<void>;
+    migrate: (entries: RecordingEntry[]) => Promise<void>;
+  };
+
+  // Audio
+  audio: {
+    save: (id: string, buffer: ArrayBuffer) => Promise<string>;
+  };
+
   // App
   quit: () => void;
   showSettings: () => void;
@@ -60,8 +74,8 @@ const api: DictatorAPI = {
 
   // Transcription
   checkTranscriptionReady: () => ipcRenderer.invoke(IPC.TRANSCRIPTION_CHECK_READY),
-  transcribeBuffer: (audioBuffer, sampleRate) =>
-    ipcRenderer.invoke(IPC.TRANSCRIPTION_START_BUFFER, audioBuffer, sampleRate),
+  transcribeBuffer: (audioBuffer, sampleRate, id) =>
+    ipcRenderer.invoke(IPC.TRANSCRIPTION_START_BUFFER, audioBuffer, sampleRate, id),
   onTranscriptionResult: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, result: TranscriptionResult) => callback(result);
     ipcRenderer.on(IPC.TRANSCRIPTION_RESULT, handler);
@@ -130,6 +144,20 @@ const api: DictatorAPI = {
 
   // Overlay
   requestToggleRecording: () => ipcRenderer.send(IPC.OVERLAY_TOGGLE),
+
+  // History
+  history: {
+    getAll: () => ipcRenderer.invoke(IPC.HISTORY_GET_ALL),
+    delete: (id) => ipcRenderer.invoke(IPC.HISTORY_DELETE, id),
+    search: (query) => ipcRenderer.invoke(IPC.HISTORY_SEARCH, query),
+    clearAll: () => ipcRenderer.invoke(IPC.HISTORY_CLEAR_ALL),
+    migrate: (entries) => ipcRenderer.invoke(IPC.HISTORY_MIGRATE, entries),
+  },
+
+  // Audio
+  audio: {
+    save: (id, buffer) => ipcRenderer.invoke(IPC.AUDIO_SAVE, id, buffer),
+  },
 
   // App
   quit: () => ipcRenderer.send(IPC.APP_QUIT),
