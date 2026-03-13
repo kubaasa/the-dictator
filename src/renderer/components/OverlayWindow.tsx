@@ -15,7 +15,7 @@ interface WidgetSettings {
 export function OverlayWindow({ state }: OverlayWindowProps) {
   const voiceLevel = useVoiceActivity();
   const [widgetSettings, setWidgetSettings] = useState<WidgetSettings>({
-    size: 'medium',
+    size: 0.5,
     opacity: 1.0,
   });
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { RecordingState } from '../../../shared/types';
 
 interface VoiceBarProps {
@@ -8,8 +8,11 @@ interface VoiceBarProps {
   size: number; // 0–1 continuous scale
 }
 
-const BAR_COUNT = 28;
+const BAR_COUNT = 6;
 const SILENCE_THRESHOLD = 0.04;
+const BASE_COLOR = 'rgba(255,255,255,0.88)';
+const TRANSCRIBE_COLOR = '#FB923C';
+const ERROR_COLOR = '#F87171';
 
 // Pre-computed per-bar properties — stable across renders
 const BARS = Array.from({ length: BAR_COUNT }, (_, i) => {
@@ -23,38 +26,57 @@ const BARS = Array.from({ length: BAR_COUNT }, (_, i) => {
   const seed = Math.sin(i * 127.1 + 311.7) * 43758.5453;
   const rand = seed - Math.floor(seed);
 
-  // Each bar reacts at slightly different gain (0.5–1.0)
-  const multiplier = 0.5 + rand * 0.5;
-
-  // Idle animation timing
-  const idleAnimDuration = (2.2 + rand * 0.6).toFixed(2);
-  const idleAnimDelay = (-(rand * 2.5)).toFixed(2);
-
-  // Silence pulsing: slightly varied timing per bar
-  const silenceDuration = (2.2 + (rand - 0.5) * 0.6).toFixed(2);
-  const silenceDelay = (-(rand * 2.5)).toFixed(2);
-
-  // Transcribe wave delay: distance from center → progressive delay
-  const centerDist = Math.abs(i - (BAR_COUNT - 1) / 2);
-  const transcribeDelay = (centerDist * 0.04).toFixed(2);
+  // Each bar reacts at slightly different gain (0.75–1.0)
+  const multiplier = 0.75 + rand * 0.25;
 
   // Micro-jitter factor per bar (±5%)
   const jitter = 0.95 + rand * 0.1;
 
+  // Idle: static height based on bell-curve (~15% max height)
+  const idleScale = (0.08 + envelope * 0.07).toFixed(3);
+
+  // Silence animation delay: index * 80ms
+  const silenceDelay = (i * 0.08).toFixed(2);
+
+  // Transcribe scanner delay: left-to-right, index * 45ms
+  const transcribeDelay = (i * 0.045).toFixed(3);
+
   return {
     envelope, multiplier, rand, jitter,
-    idleAnimDuration, idleAnimDelay,
-    silenceDuration, silenceDelay,
-    transcribeDelay,
+    idleScale, silenceDelay, transcribeDelay,
   };
 });
+
+// Keyframes injected once
+const KEYFRAMES = `
+@keyframes vb-silence {
+  0%, 100% { transform: scaleY(0.1); }
+  50%      { transform: scaleY(0.2); }
+}
+@keyframes vb-transcribe {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(0.85); }
+}
+@keyframes vb-done-collapse {
+  from { transform: scaleY(var(--from-scale, 0.15)); }
+  to   { transform: scaleY(0.05); }
+}
+@keyframes vb-error-shake {
+  0%   { transform: translateX(0); }
+  20%  { transform: translateX(3px); }
+  40%  { transform: translateX(-3px); }
+  60%  { transform: translateX(2px); }
+  80%  { transform: translateX(0); }
+  100% { transform: translateX(0); }
+}
+`;
 
 export function VoiceBar({ voiceLevel, state, opacity, size }: VoiceBarProps) {
   const t = Math.max(0, Math.min(1, size));
 
-  const barWidth = Math.round(3 + t * 6);   // 3–9px
-  const maxBarH  = Math.round(22 + t * 52); // 22–74px
-  const gap      = Math.round(2 + t * 5);   // 2–7px
+  const barWidth = Math.round(2 + t * 3);   // 2–5px
+  const maxBarH  = Math.round(18 + t * 46); // 18–64px
+  const gap      = Math.round(3 + t * 4);   // 3–7px
 
   const isRecording    = state === 'recording';
   const isTranscribing = state === 'transcribing' || state === 'processing';
@@ -62,149 +84,104 @@ export function VoiceBar({ voiceLevel, state, opacity, size }: VoiceBarProps) {
   const isError        = state === 'error';
   const isIdle         = !isRecording && !isTranscribing && !isDone && !isError;
 
-  const level       = Math.min(1, Math.max(0, voiceLevel));
-  const isSilent    = isRecording && level < SILENCE_THRESHOLD;
-  const curvedLevel = Math.pow(level, 0.6);
+  const level    = Math.min(1, Math.max(0, voiceLevel));
+  const isSilent = isRecording && level < SILENCE_THRESHOLD;
 
-  // Pill glow: proportional to voiceLevel during recording
-  const glowIntensity = isRecording ? 2 + level * 16 : 0;
-  const glowAlpha     = isRecording ? (0.08 + curvedLevel * 0.18).toFixed(3) : '0';
+  const [isHovered, setIsHovered] = useState(false);
 
-  // Pill border: brightens with voiceLevel
-  const borderAlpha = isRecording
-    ? (0.15 + level * 0.25).toFixed(3)
-    : isTranscribing ? '0.18'
-    : isDone ? '0.15'
-    : '0.12';
+  // Expand when active or hovered
+  const isExpanded = isHovered || isRecording || isTranscribing || isError;
 
-  // Bar glow per state
-  const barGlow = isRecording && !isSilent
-    ? `0 0 ${Math.round(glowIntensity)}px rgba(255,255,255,${(0.15 + curvedLevel * 0.35).toFixed(2)})`
-    : isTranscribing ? '0 0 8px rgba(96,165,250,0.6)'
-    : isDone ? '0 0 6px rgba(52,211,153,0.4)'
-    : 'none';
+  const collapsedH = 10;
+  const expandedH  = maxBarH + gap * 4;
 
-  // Bar gradient per state
-  const barBackground = isTranscribing
-    ? 'linear-gradient(to bottom, #60A5FA, #22D3EE)'
-    : isDone  ? '#34D399'
-    : isError ? '#ef4444'
-    : 'linear-gradient(to bottom, rgba(255,255,255,1), rgba(200,210,220,0.7))';
-
-  // Transcribing glow on pill
-  const pillShadow = isRecording && glowIntensity > 0
-    ? `0 0 ${Math.round(glowIntensity)}px rgba(255,255,255,${glowAlpha}), inset 0 0 ${Math.round(glowIntensity * 0.4)}px rgba(255,255,255,${(Number(glowAlpha) * 0.5).toFixed(3)})`
-    : isTranscribing ? '0 0 12px rgba(96,165,250,0.3)'
-    : isDone ? '0 0 8px rgba(52,211,153,0.2)'
-    : 'none';
+  const pillHeight = isExpanded ? expandedH : collapsedH;
 
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <style>{`
-        @keyframes vb-idle {
-          0%, 100% { transform: scaleY(var(--idle-scale)); opacity: 0.35; }
-          50%       { transform: scaleY(calc(var(--idle-scale) * 2.2)); opacity: 0.55; }
-        }
-        @keyframes vb-silence {
-          0%, 100% { transform: scaleY(0.08); opacity: 0.4; }
-          50%       { transform: scaleY(0.15); opacity: 0.6; }
-        }
-        @keyframes vb-transcribe {
-          0%, 100% { transform: scaleY(0.2); opacity: 0.6; }
-          50%       { transform: scaleY(0.9); opacity: 1.0; }
-        }
-        @keyframes vb-done {
-          0%, 100% { transform: scaleY(0.12); opacity: 0.4; }
-          50%       { transform: scaleY(0.45); opacity: 0.8; }
-        }
-        @keyframes vb-error-shake {
-          0%, 100% { transform: translateX(0); }
-          25%      { transform: translateX(-2px); }
-          75%      { transform: translateX(2px); }
-        }
-      `}</style>
+      <style>{KEYFRAMES}</style>
 
       {/* Pill container */}
       <div
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         style={{
-          width: 'calc(100vw - 8px)',
-          height: 'calc(100vh - 8px)',
+          width: 'fit-content',
+          height: pillHeight,
           borderRadius: 9999,
           opacity,
-          background: 'rgba(10, 10, 14, 0.78)',
+          background: 'rgba(8, 8, 8, 0.88)',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
-          border: `1px solid rgba(255,255,255,${borderAlpha})`,
-          boxShadow: pillShadow,
+          border: '0.5px solid rgba(255,255,255,0.85)',
+          boxShadow: 'none',
           WebkitAppRegion: 'drag',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           gap,
           overflow: 'hidden',
-          padding: `0 ${gap * 2}px`,
+          padding: `0 ${gap * 3}px`,
           boxSizing: 'border-box',
-          transition: 'box-shadow 0.08s ease-out, border-color 0.15s ease-out',
-          animation: isError ? 'vb-error-shake 0.1s ease-in-out 3' : 'none',
+          transition: 'height 420ms cubic-bezier(0.4, 0, 0.2, 1)',
+          animation: isError ? 'vb-error-shake 0.3s ease-in-out 2' : 'none',
         } as React.CSSProperties}
       >
         {BARS.map((bar, i) => {
           const {
-            envelope, multiplier, rand, jitter,
-            idleAnimDuration, idleAnimDelay,
-            silenceDuration, silenceDelay,
-            transcribeDelay,
+            envelope, multiplier, jitter,
+            idleScale, silenceDelay, transcribeDelay,
           } = bar;
+
+          const barColor = isError ? ERROR_COLOR : isTranscribing ? TRANSCRIBE_COLOR : BASE_COLOR;
 
           let transform: string | undefined;
           let animation = 'none';
-          let transition = 'transform 0.3s ease-out, background-color 0.3s ease';
+          let transition = 'transform 0.3s ease-out, opacity 200ms ease-out';
+          let barOpacity: number;
+          let filter: string | undefined;
 
-          if (isRecording) {
-            transition = 'transform 0.08s ease-out';
+          if (isIdle) {
+            transform = `scaleY(${idleScale})`;
+            barOpacity = 0.4;
+            filter = undefined;
 
+          } else if (isRecording) {
             if (isSilent) {
-              // Silence: slow subtle pulse with per-bar offset
-              animation = `vb-silence ${silenceDuration}s ease-in-out ${silenceDelay}s infinite`;
-              transform = undefined;
+              // Static low bars — no animation when silent
+              transform = `scaleY(${idleScale})`;
+              barOpacity = 0.45;
+              filter = undefined;
+              transition = 'transform 150ms ease-out, opacity 200ms ease-out';
             } else {
-              // Speech: real-time response with micro-jitter
-              const barScale = Math.max(0.04, curvedLevel * envelope * multiplier * jitter);
+              const curvedLevel = Math.pow(level, 0.45);
+              const barScale = Math.min(1.0, Math.max(0.05, curvedLevel * envelope * multiplier * jitter));
               transform = `scaleY(${barScale.toFixed(4)})`;
+              transition = 'transform 50ms linear, opacity 200ms ease-out';
+              barOpacity = 0.6 + curvedLevel * 0.4;
+              filter = undefined;
             }
 
           } else if (isTranscribing) {
-            // Synchronized wave from center
-            animation = `vb-transcribe 1.0s ease-in-out ${transcribeDelay}s infinite`;
+            animation = `vb-transcribe 1.2s linear ${transcribeDelay}s infinite`;
+            barOpacity = 0.80;
+            filter = undefined;
+            transition = 'opacity 200ms ease-out';
 
           } else if (isDone) {
-            animation = `vb-done ${idleAnimDuration}s ease-in-out ${idleAnimDelay}s infinite`;
-
-          } else if (isError) {
-            transform = 'scaleY(0.3)';
+            animation = `vb-done-collapse 400ms cubic-bezier(0.4, 0, 1, 1) forwards`;
+            barOpacity = 0.7;
+            filter = undefined;
+            transition = 'opacity 200ms ease-out';
 
           } else {
-            // Idle: very short bars with slow breathing
-            const idleScale = (0.06 + envelope * 0.06).toFixed(3);
-            animation = `vb-idle ${idleAnimDuration}s ease-in-out ${idleAnimDelay}s infinite`;
-            return (
-              <div
-                key={i}
-                style={{
-                  width: barWidth,
-                  height: maxBarH,
-                  borderRadius: barWidth / 2,
-                  background: barBackground,
-                  transformOrigin: 'center',
-                  flexShrink: 0,
-                  animation,
-                  transition,
-                  filter: barGlow !== 'none' ? `drop-shadow(${barGlow})` : undefined,
-                  '--idle-scale': idleScale,
-                } as React.CSSProperties}
-              />
-            );
+            transform = 'scaleY(0.3)';
+            barOpacity = 0.9;
+            filter = undefined;
           }
+
+          // Fade bars in/out with pill expand/collapse
+          const finalOpacity = isExpanded ? barOpacity : 0;
 
           return (
             <div
@@ -213,14 +190,16 @@ export function VoiceBar({ voiceLevel, state, opacity, size }: VoiceBarProps) {
                 width: barWidth,
                 height: maxBarH,
                 borderRadius: barWidth / 2,
-                background: barBackground,
+                background: barColor,
                 transformOrigin: 'center',
                 flexShrink: 0,
                 transform,
                 animation,
                 transition,
-                filter: barGlow !== 'none' ? `drop-shadow(${barGlow})` : undefined,
-              }}
+                opacity: finalOpacity,
+                filter,
+                '--from-scale': idleScale,
+              } as React.CSSProperties}
             />
           );
         })}
