@@ -38,6 +38,7 @@ export interface AppSettings {
     anthropicModel: string;
     ollamaUrl: string;
     ollamaModel: string;
+    temperature: number;
   };
   hotkey: {
     shortcuts: {
@@ -49,7 +50,7 @@ export interface AppSettings {
   };
   dictation: {
     currentMode: DictationMode;
-    customPrompt: string;
+    modePrompts: Record<DictationMode, string>;
     autoPaste: boolean;
     restoreClipboard: boolean;
   };
@@ -72,7 +73,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   transcription: {
     engine: 'api',
     localModelSize: 'base',
-    language: 'auto',
+    language: 'en',
     openaiApiKey: '',
   },
   ai: {
@@ -83,6 +84,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     anthropicModel: 'claude-sonnet-4-20250514',
     ollamaUrl: 'http://localhost:11434',
     ollamaModel: 'llama3',
+    temperature: 0.3,
   },
   hotkey: {
     shortcuts: {
@@ -94,7 +96,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   dictation: {
     currentMode: 'voice',
-    customPrompt: '',
+    modePrompts: {
+      voice: 'You are a dictation assistant. Output the transcribed text exactly as spoken, fixing only obvious speech recognition errors. Output ONLY the processed text, no explanations.',
+      email: 'You are a dictation assistant. Rewrite the following dictated text as a well-structured, professional email. Fix grammar, punctuation, and formatting. Keep the original meaning and tone. Output ONLY the processed text, no explanations.',
+      chat: 'You are a dictation assistant. Clean up the following dictated text for a casual chat message. Fix obvious errors but keep the informal, conversational tone. Output ONLY the processed text, no explanations.',
+      note: 'You are a dictation assistant. Convert the following dictated text into a concise, well-organized note. Use bullet points where appropriate. Fix grammar and punctuation. Output ONLY the processed text, no explanations.',
+      custom: '',
+    },
     autoPaste: true,
     restoreClipboard: true,
   },

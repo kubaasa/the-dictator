@@ -46,6 +46,9 @@ export const IPC = {
   // Audio
   AUDIO_SAVE: 'audio:save',
 
+  // AI
+  AI_TEST_PROMPT: 'ai:test-prompt',
+
   // App
   APP_QUIT: 'app:quit',
   APP_SHOW_SETTINGS: 'app:show-settings',
@@ -53,7 +56,25 @@ export const IPC = {
 } as const;
 
 export const DICTATION_MODE_PROMPTS: Record<string, string> = {
+  voice: `You are a dictation assistant. Output the transcribed text exactly as spoken, fixing only obvious speech recognition errors. Output ONLY the processed text, no explanations.`,
   email: `You are a dictation assistant. Rewrite the following dictated text as a well-structured, professional email. Fix grammar, punctuation, and formatting. Keep the original meaning and tone. Output ONLY the processed text, no explanations.`,
   chat: `You are a dictation assistant. Clean up the following dictated text for a casual chat message. Fix obvious errors but keep the informal, conversational tone. Output ONLY the processed text, no explanations.`,
   note: `You are a dictation assistant. Convert the following dictated text into a concise, well-organized note. Use bullet points where appropriate. Fix grammar and punctuation. Output ONLY the processed text, no explanations.`,
+  custom: '',
+};
+
+export const WHISPER_MODEL_DESCRIPTIONS: Record<string, string> = {
+  tiny: 'Fastest, lowest accuracy',
+  base: 'Good balance of speed and accuracy',
+  small: 'Better accuracy, moderate speed',
+  medium: 'High accuracy, slower',
+  'large-v3': 'Best accuracy, slowest',
+};
+
+export const AI_MODEL_DESCRIPTIONS: Record<string, string> = {
+  'gpt-4o-mini': 'Fast & affordable',
+  'gpt-4o': 'Best OpenAI model',
+  'gpt-4-turbo': 'High quality, vision capable',
+  'claude-sonnet-4-20250514': 'Best quality & reasoning',
+  'claude-haiku-4-20250414': 'Fast & lightweight',
 };

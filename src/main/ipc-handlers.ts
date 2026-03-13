@@ -47,6 +47,24 @@ export function registerIpcHandlers(
       };
       store.set('hotkey', migrated);
     }
+
+    // Migrate old dictation.customPrompt → dictation.modePrompts format
+    const dictation = store.get('dictation') as Record<string, unknown>;
+    if (dictation && !dictation.modePrompts) {
+      const migrated = {
+        currentMode: dictation.currentMode ?? DEFAULT_SETTINGS.dictation.currentMode,
+        modePrompts: {
+          ...DEFAULT_SETTINGS.dictation.modePrompts,
+          ...(typeof dictation.customPrompt === 'string' && dictation.customPrompt
+            ? { custom: dictation.customPrompt }
+            : {}),
+        },
+        autoPaste: dictation.autoPaste ?? DEFAULT_SETTINGS.dictation.autoPaste,
+        restoreClipboard: dictation.restoreClipboard ?? DEFAULT_SETTINGS.dictation.restoreClipboard,
+      };
+      store.set('dictation', migrated);
+    }
+
     return store.store;
   });
 
@@ -187,6 +205,16 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.HISTORY_CLEAR_ALL, () => historyService.clearAll());
   ipcMain.handle(IPC.HISTORY_MIGRATE, (_event, entries: RecordingEntry[]) => {
     for (const entry of entries) historyService.add(entry);
+  });
+
+  // AI test prompt
+  ipcMain.handle(IPC.AI_TEST_PROMPT, async (_event, text: string, systemPrompt: string) => {
+    try {
+      const result = await aiService.testPrompt(text, systemPrompt);
+      return { success: true, result };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   // Open models cache folder in system file explorer

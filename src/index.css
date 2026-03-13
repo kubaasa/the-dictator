@@ -157,6 +157,32 @@ body,
   75% { transform: translateX(0.3px); }
 }
 
+/* Temperature slider */
+.temperature-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: #404040;
+  outline: none;
+  cursor: pointer;
+}
+
+.temperature-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #dc2626;
+  cursor: pointer;
+  border: 2px solid #1a1a1a;
+  transition: box-shadow 0.15s ease;
+}
+
+.temperature-slider::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
+}
+
 .btn-noise {
   position: relative;
 }

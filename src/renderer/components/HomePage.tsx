@@ -175,41 +175,55 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
           <button
             onClick={isRecording ? stopRecording : startRecording}
             disabled={recordingState === 'transcribing'}
-            className={`btn-noise flex h-28 w-28 items-center justify-center rounded-full border-2 transition-all duration-300 ${
-              isRecording
-                ? 'animate-rec-glitch border-red-600 bg-zinc-950'
-                : recordingState === 'transcribing'
-                ? 'cursor-not-allowed border-zinc-800 bg-zinc-950 opacity-40'
-                : 'border-red-600 bg-zinc-950 hover:bg-zinc-900/80'
-            }`}
+            className={`btn-noise relative flex h-28 w-28 items-center justify-center rounded-full border-2 bg-zinc-950 ${
+              isRecording ? 'animate-rec-glitch' : ''
+            } ${recordingState === 'transcribing' ? 'cursor-not-allowed' : 'hover:bg-zinc-900/80'}`}
+            style={{
+              borderColor: recordingState === 'transcribing' ? '#27272a' : '#DC2626',
+              opacity: recordingState === 'transcribing' ? 0.4 : 1,
+              transition: 'border-color 300ms, opacity 300ms, box-shadow 500ms',
+            }}
           >
-            {isRecording ? (
+            {/* Idle — red circle */}
+            <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
+              !isRecording && recordingState !== 'transcribing' ? 'opacity-100' : 'opacity-0'
+            }`}>
+              <svg className="h-full w-full" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" fill="#DC2626" />
+              </svg>
+            </div>
+
+            {/* Recording — stop square */}
+            <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
+              isRecording ? 'opacity-100' : 'opacity-0'
+            }`}>
               <svg className="h-9 w-9 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <rect x="6" y="6" width="12" height="12" rx="2" />
               </svg>
-            ) : recordingState === 'transcribing' ? (
+            </div>
+
+            {/* Transcribing — spinner */}
+            <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
+              recordingState === 'transcribing' ? 'opacity-100' : 'opacity-0'
+            }`}>
               <svg className="h-8 w-8 text-zinc-500 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z" />
               </svg>
-            ) : (
-              <svg className="h-full w-full" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="9" fill="#DC2626" />
-              </svg>
-            )}
+            </div>
           </button>
         </div>
 
         {/* Status */}
         <div className="flex flex-col items-center gap-2">
-          <p className="font-mono text-sm font-semibold tracking-[0.25em] uppercase text-neutral-300">
+          <p key={`${recordingState}-${isRecording}`} className="font-mono text-sm font-semibold tracking-[0.25em] uppercase text-neutral-300 animate-fade-in">
             {recordingState === 'transcribing'
               ? '[ TRANSCRIBING... ]'
               : isRecording
               ? '[ RECORDING ]'
               : '[ CLICK TO RECORD ]'}
           </p>
-          <p className="font-mono text-xs text-neutral-600 tracking-widest">
+          <p key={`sub-${isRecording}`} className="font-mono text-xs text-neutral-600 tracking-widest animate-fade-in">
             {isRecording ? 'click to stop' : toggleShortcut.replace(/\+/g, ' + ')}
           </p>
         </div>

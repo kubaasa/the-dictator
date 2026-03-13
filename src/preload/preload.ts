@@ -50,6 +50,11 @@ export interface DictatorAPI {
     migrate: (entries: RecordingEntry[]) => Promise<void>;
   };
 
+  // AI
+  ai: {
+    testPrompt: (text: string, systemPrompt: string) => Promise<{ success: boolean; result?: string; error?: string }>;
+  };
+
   // Audio
   audio: {
     save: (id: string, buffer: ArrayBuffer) => Promise<string>;
@@ -152,6 +157,11 @@ const api: DictatorAPI = {
     search: (query) => ipcRenderer.invoke(IPC.HISTORY_SEARCH, query),
     clearAll: () => ipcRenderer.invoke(IPC.HISTORY_CLEAR_ALL),
     migrate: (entries) => ipcRenderer.invoke(IPC.HISTORY_MIGRATE, entries),
+  },
+
+  // AI
+  ai: {
+    testPrompt: (text, systemPrompt) => ipcRenderer.invoke(IPC.AI_TEST_PROMPT, text, systemPrompt),
   },
 
   // Audio

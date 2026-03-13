@@ -20,6 +20,39 @@ const MODIFIER_CODES = new Set([
   'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight',
 ]);
 
+const KEY_DISPLAY_SYMBOLS: Record<string, string> = {
+  Space: 'Space', Escape: 'Esc', Enter: '↵', Tab: 'Tab', Backspace: '⌫',
+  Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+  Backslash: '\\', Semicolon: ';', Quote: "'", Backquote: '`',
+  Comma: ',', Period: '.', Slash: '/',
+};
+
+function formatKeyForDisplay(key: string): string {
+  return KEY_DISPLAY_SYMBOLS[key] ?? key;
+}
+
+function KeyBadge({ label }: { label: string }) {
+  return (
+    <span
+      className="inline-block rounded px-2 py-0.5 font-mono text-xs text-neutral-200 bg-neutral-700 border border-neutral-600"
+      style={{ boxShadow: '0 2px 0 #111111, inset 0 1px 0 rgba(255,255,255,0.08)' }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function ShortcutDisplay({ combo }: { combo: string }) {
+  const parts = combo.split('+');
+  return (
+    <span className="flex items-center gap-1.5">
+      {parts.map((part, i) => (
+        <KeyBadge key={i} label={formatKeyForDisplay(part)} />
+      ))}
+    </span>
+  );
+}
+
 // Maps e.code (physical key) → readable name that matches KEY_MAP in hotkey.service.ts
 function physicalKeyName(code: string): string | null {
   if (code.startsWith('Key')) return code.slice(3);        // KeyA → A
@@ -158,9 +191,9 @@ export function ShortcutsPage() {
   return (
     <main className="flex-1 overflow-y-auto p-6">
       <section>
-        <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Keyboard Shortcuts</h2>
+        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-5">Keyboard Shortcuts</h2>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {SHORTCUT_CONFIGS.map((config) => {
             const isListening = listeningFor === config.key;
             const isDefault = shortcuts[config.key] === DEFAULT_SETTINGS.hotkey.shortcuts[config.key];
@@ -168,11 +201,11 @@ export function ShortcutsPage() {
             return (
               <div
                 key={config.key}
-                className="flex items-center justify-between rounded-lg border border-neutral-800 bg-[#141414] px-4 py-3"
+                className="flex items-center justify-between rounded-lg border border-neutral-800 bg-[#141414] px-5 py-4"
               >
-                <div className="flex flex-col">
-                  <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-200">{config.label}</span>
-                  <span className="text-[11px] text-neutral-500">{config.description}</span>
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">{config.label}</span>
+                  <span className="text-xs text-neutral-500">{config.description}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -180,7 +213,7 @@ export function ShortcutsPage() {
                     ref={isListening ? inputRef : undefined}
                     tabIndex={0}
                     onClick={() => startListening(config.key)}
-                    className={`min-w-[180px] cursor-pointer rounded-md border px-3 py-1.5 text-center text-sm font-mono transition-colors ${
+                    className={`min-w-[200px] cursor-pointer rounded-md border px-4 py-2 flex items-center justify-center text-sm font-mono transition-colors ${
                       isListening
                         ? 'border-red-600 bg-red-600/10 text-red-400'
                         : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600'
@@ -188,7 +221,7 @@ export function ShortcutsPage() {
                   >
                     {isListening
                       ? (pendingKeys || 'AWAITING INPUT...')
-                      : shortcuts[config.key]
+                      : <ShortcutDisplay combo={shortcuts[config.key]} />
                     }
                   </div>
                 </div>
