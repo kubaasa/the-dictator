@@ -36,5 +36,13 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
 
   const { size, opacity } = widgetSettings;
 
-  return <VoiceBar voiceLevel={voiceLevel} state={state} opacity={opacity} size={size} />;
+  return (
+    <VoiceBar
+      voiceLevel={voiceLevel}
+      state={state}
+      opacity={opacity}
+      size={size}
+      onToggleRecording={() => window.dictator.requestToggleRecording()}
+    />
+  );
 }

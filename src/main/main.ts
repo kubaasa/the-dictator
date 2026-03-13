@@ -171,6 +171,11 @@ function setupRecordingIpc(): void {
   ipcMain.handle(IPC.RECORDING_STATE_CHANGED, () => {
     return currentState;
   });
+
+  ipcMain.on(IPC.OVERLAY_TOGGLE, () => {
+    pasteService.captureTarget(); // best-effort — window may have already lost focus
+    sendToggleToRenderer();
+  });
 }
 
 app.on('ready', () => {

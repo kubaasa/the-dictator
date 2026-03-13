@@ -33,6 +33,9 @@ export const IPC = {
   // Voice Activity
   VOICE_ACTIVITY: 'recording:voice-activity',
 
+  // Overlay button → main → renderer toggle
+  OVERLAY_TOGGLE: 'overlay:toggle',
+
   // App
   APP_QUIT: 'app:quit',
   APP_SHOW_SETTINGS: 'app:show-settings',

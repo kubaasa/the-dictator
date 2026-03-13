@@ -6,6 +6,7 @@ interface VoiceBarProps {
   state: RecordingState;
   opacity: number;
   size: number; // 0–1 continuous scale
+  onToggleRecording?: () => void;
 }
 
 const BAR_COUNT = 6;
@@ -71,7 +72,7 @@ const KEYFRAMES = `
 }
 `;
 
-export function VoiceBar({ voiceLevel, state, opacity, size }: VoiceBarProps) {
+export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }: VoiceBarProps) {
   const t = Math.max(0, Math.min(1, size));
 
   const barWidth = Math.round(2 + t * 3);   // 2–5px
@@ -106,6 +107,7 @@ export function VoiceBar({ voiceLevel, state, opacity, size }: VoiceBarProps) {
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         style={{
+          position: 'relative',
           width: 'fit-content',
           height: pillHeight,
           borderRadius: 9999,
@@ -127,6 +129,52 @@ export function VoiceBar({ voiceLevel, state, opacity, size }: VoiceBarProps) {
           animation: isError ? 'vb-error-shake 0.3s ease-in-out 2' : 'none',
         } as React.CSSProperties}
       >
+        {(isIdle || isRecording) && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(8, 8, 8, 0.75)',
+              borderRadius: 9999,
+              pointerEvents: 'none',
+              opacity: isHovered ? 1 : 0,
+              transition: 'opacity 180ms ease',
+              zIndex: 10,
+            } as React.CSSProperties}
+          >
+            <button
+              onMouseDown={(e) => { e.preventDefault(); if (isRecording) setIsHovered(false); onToggleRecording?.(); }}
+              style={{
+                WebkitAppRegion: 'no-drag',
+                cursor: 'pointer',
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                pointerEvents: isHovered ? 'auto' : 'none',
+              } as React.CSSProperties}
+            >
+              {isRecording ? (
+                // Stop: white rounded square
+                <svg width={Math.round(maxBarH * 0.75)} height={Math.round(maxBarH * 0.75)} viewBox="0 0 24 24">
+                  <rect x="5" y="5" width="14" height="14" rx="2.5" fill="rgba(255,255,255,0.92)" />
+                </svg>
+              ) : (
+                // Record: red circle with outer ring
+                <svg width={Math.round(maxBarH * 0.75)} height={Math.round(maxBarH * 0.75)} viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" fill="none" stroke="#EF4444" strokeWidth="1.5" />
+                  <circle cx="12" cy="12" r="6" fill="#EF4444" />
+                </svg>
+              )}
+            </button>
+          </div>
+        )}
+
         {BARS.map((bar, i) => {
           const {
             envelope, multiplier, jitter,
