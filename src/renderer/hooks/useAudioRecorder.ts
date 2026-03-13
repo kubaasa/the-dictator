@@ -4,6 +4,7 @@ interface UseAudioRecorderReturn {
   isRecording: boolean;
   error: string;
   lastDurationSeconds: number;
+  recordingStartTime: number | null;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   clearError: () => void;
@@ -13,6 +14,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState('');
   const [lastDurationSeconds, setLastDurationSeconds] = useState(0);
+  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const isRecordingRef = useRef(false);
   const recordingStartTimeRef = useRef<number | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -114,7 +116,9 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
       // Mic acquired — now tell main process
       isRecordingRef.current = true;
-      recordingStartTimeRef.current = Date.now();
+      const startTime = Date.now();
+      recordingStartTimeRef.current = startTime;
+      setRecordingStartTime(startTime);
       setIsRecording(true);
       window.dictator.startRecording();
 
@@ -184,6 +188,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       setLastDurationSeconds((Date.now() - recordingStartTimeRef.current) / 1000);
       recordingStartTimeRef.current = null;
     }
+    setRecordingStartTime(null);
     window.dictator.stopRecording();
 
     // Stop MediaRecorder before stopping stream tracks so it captures all audio
@@ -237,6 +242,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     isSettingUpRef.current = false;
     pendingStopRef.current = false;
     setIsRecording(false);
+    setRecordingStartTime(null);
     setError('');
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -289,5 +295,5 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
   const clearError = useCallback(() => setError(''), []);
 
-  return { isRecording, error, lastDurationSeconds, startRecording, stopRecording, clearError };
+  return { isRecording, error, lastDurationSeconds, recordingStartTime, startRecording, stopRecording, clearError };
 }

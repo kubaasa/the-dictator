@@ -78,31 +78,29 @@ export function ViewfinderCorners({ color = '#166534', size = 24, animated = fal
 /* ─── RecIndicator ─── */
 interface RecIndicatorProps {
   isRecording: boolean;
+  recordingStartTime?: number | null;
   compact?: boolean;
 }
 
-export function RecIndicator({ isRecording, compact = false }: RecIndicatorProps) {
+export function RecIndicator({ isRecording, recordingStartTime, compact = false }: RecIndicatorProps) {
   const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef<number | null>(null);
   const rafRef = useRef<number>(0);
 
   useEffect(() => {
     if (isRecording) {
-      startRef.current = Date.now();
+      // Use the canonical start time from the hook so remounts don't reset the timer
+      const startTime = recordingStartTime ?? Date.now();
       const tick = () => {
-        if (startRef.current) {
-          setElapsed(Date.now() - startRef.current);
-        }
+        setElapsed(Date.now() - startTime);
         rafRef.current = requestAnimationFrame(tick);
       };
       rafRef.current = requestAnimationFrame(tick);
     } else {
-      startRef.current = null;
       setElapsed(0);
       cancelAnimationFrame(rafRef.current);
     }
     return () => cancelAnimationFrame(rafRef.current);
-  }, [isRecording]);
+  }, [isRecording, recordingStartTime]);
 
   const formatTimecode = (ms: number) => {
     const totalSec = Math.floor(ms / 1000);

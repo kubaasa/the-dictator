@@ -57,7 +57,7 @@ export function App() {
       {/* Right column: header + content */}
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
         <header className="drag-region flex items-center px-5 py-3 border-b border-neutral-800/50">
-          {activeView !== 'home' && <RecIndicator compact isRecording={audioRecorder.isRecording} />}
+          {activeView !== 'home' && <RecIndicator compact isRecording={audioRecorder.isRecording} recordingStartTime={audioRecorder.recordingStartTime} />}
           <div className="ml-auto">
             <MicrophoneSelector {...micSelector} />
           </div>

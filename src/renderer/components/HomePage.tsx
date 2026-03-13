@@ -63,7 +63,7 @@ function computeStats(entries: RecordingEntry[]) {
 }
 
 export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
-  const { isRecording, error: recorderError, lastDurationSeconds, startRecording, stopRecording, clearError } = audioRecorder;
+  const { isRecording, error: recorderError, lastDurationSeconds, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
   const { result, appName, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
   const error = recorderError || transcriptionError;
 
@@ -168,7 +168,7 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
       <div className="flex flex-col items-center gap-5 mt-10">
         {/* REC indicator — above the button */}
         <div className="h-6 flex items-center">
-          <RecIndicator isRecording={isRecording} />
+          <RecIndicator isRecording={isRecording} recordingStartTime={recordingStartTime} />
         </div>
 
         <div className="relative flex items-center justify-center">
