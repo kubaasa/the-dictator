@@ -81,7 +81,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
             }`}
           >
             {item.icon}
-            {!collapsed && <span className="text-sm font-medium whitespace-nowrap">{item.label}</span>}
+            {!collapsed && <span className="text-[11px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">{item.label}</span>}
           </button>
         );
       })}
@@ -104,7 +104,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
         </svg>
-        {!collapsed && <span className="ml-3 text-xs font-medium whitespace-nowrap">Collapse</span>}
+        {!collapsed && <span className="ml-3 text-[11px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">Collapse</span>}
       </button>
 
       {/* App name */}

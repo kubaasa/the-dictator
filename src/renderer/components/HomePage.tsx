@@ -162,24 +162,17 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
       </div>
 
       {/* Recording button */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-5">
+      <div className="flex flex-col items-center gap-5 mt-4">
         <div className="relative flex items-center justify-center">
-          {isRecording && (
-            <>
-              <span className="animate-ping-slow absolute h-28 w-28 rounded-full bg-red-500/30" />
-              <span className="animate-ping-slower absolute h-28 w-28 rounded-full bg-red-500/20" />
-            </>
-          )}
-
           <button
             onClick={isRecording ? stopRecording : startRecording}
             disabled={recordingState === 'transcribing'}
-            className={`relative z-10 flex h-28 w-28 items-center justify-center rounded-full border-2 transition-all duration-300 ${
+            className={`btn-noise flex h-28 w-28 items-center justify-center rounded-full border-2 transition-all duration-300 ${
               isRecording
-                ? 'border-red-500/50 bg-red-600 shadow-[0_0_50px_rgba(239,68,68,0.4),0_0_100px_rgba(239,68,68,0.15)] hover:bg-red-700'
+                ? 'animate-rec-glitch border-red-600 bg-zinc-950'
                 : recordingState === 'transcribing'
-                ? 'cursor-not-allowed border-zinc-700 bg-zinc-800 opacity-50'
-                : 'border-red-500 bg-zinc-900 hover:bg-zinc-800'
+                ? 'cursor-not-allowed border-zinc-800 bg-zinc-950 opacity-40'
+                : 'border-red-600 bg-zinc-950 hover:bg-zinc-900/80'
             }`}
           >
             {isRecording ? (
@@ -200,15 +193,17 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
         </div>
 
         {/* Status */}
-        <div className="flex flex-col items-center gap-1">
-          <p className="text-sm font-medium text-zinc-400">
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-xs font-semibold tracking-[0.25em] uppercase text-zinc-300">
             {recordingState === 'transcribing'
-              ? 'Transkrybowanie...'
+              ? '[ TRANSCRIBING... ]'
               : isRecording
-              ? 'Nagrywanie — kliknij aby zatrzymać'
-              : 'Kliknij aby nagrać'}
+              ? '[ RECORDING ]'
+              : '[ CLICK TO RECORD ]'}
           </p>
-          <p className="text-xs text-zinc-600">{toggleShortcut.replace(/\+/g, ' + ')}</p>
+          <p className="text-xs text-zinc-600 tracking-widest">
+            {isRecording ? 'click to stop' : toggleShortcut.replace(/\+/g, ' + ')}
+          </p>
         </div>
       </div>
 
