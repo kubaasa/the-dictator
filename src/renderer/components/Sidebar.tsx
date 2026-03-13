@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TimecodeDisplay } from './RecEffects';
 
 type View = 'home' | 'history' | 'modes' | 'shortcuts' | 'widget';
 
@@ -68,7 +69,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <aside className={`flex flex-col gap-1 border-r border-zinc-800 py-3 transition-all duration-300 overflow-hidden ${collapsed ? 'w-14' : 'w-1/5'}`}>
+    <aside className={`flex flex-col gap-1 border-r border-neutral-800/50 py-3 transition-all duration-300 overflow-hidden ${collapsed ? 'w-14' : 'w-1/5'}`}>
       {navItems.map((item) => {
         const isActive = item.id === activeView;
         return (
@@ -76,12 +77,14 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
             key={item.id}
             onClick={() => onNavigate(item.id)}
             title={collapsed ? item.label : undefined}
-            className={`flex flex-row items-center gap-3 rounded-lg px-3 py-2 w-full transition-colors ${
-              isActive ? 'text-zinc-100' : 'text-zinc-600 hover:text-zinc-300'
+            className={`flex flex-row items-center gap-3 px-3 py-2 w-full transition-colors ${
+              isActive
+                ? 'border-l-2 border-red-600 bg-red-600/5 text-neutral-100'
+                : 'border-l-2 border-transparent text-neutral-600 hover:text-neutral-300'
             }`}
           >
-            {item.icon}
-            {!collapsed && <span className="text-[11px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">{item.label}</span>}
+            <span className={isActive ? 'text-red-500' : 'text-neutral-600'}>{item.icon}</span>
+            {!collapsed && <span className="font-mono text-[11px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">{item.label}</span>}
           </button>
         );
       })}
@@ -92,7 +95,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       {/* Toggle button */}
       <button
         onClick={() => setCollapsed((c) => !c)}
-        className="flex items-center justify-center rounded-lg px-3 py-2 w-full text-zinc-600 hover:text-zinc-300 transition-colors"
+        className="flex items-center justify-center px-3 py-2 w-full text-neutral-600 hover:text-neutral-300 transition-colors border-l-2 border-transparent"
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         <svg
@@ -104,15 +107,16 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
         </svg>
-        {!collapsed && <span className="ml-3 text-[11px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">Collapse</span>}
+        {!collapsed && <span className="ml-3 font-mono text-[11px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">Collapse</span>}
       </button>
 
-      {/* App name */}
+      {/* App name + timecode */}
       {!collapsed && (
-        <div className="px-3 py-1 flex justify-center">
-          <span className="text-[11px] font-semibold tracking-[0.25em] text-zinc-400 uppercase whitespace-nowrap">
+        <div className="px-3 py-1 flex flex-col items-center gap-1">
+          <span className="font-mono text-sm font-bold tracking-[0.35em] text-red-600 uppercase whitespace-nowrap">
             The Dictator
           </span>
+          <TimecodeDisplay />
         </div>
       )}
     </aside>

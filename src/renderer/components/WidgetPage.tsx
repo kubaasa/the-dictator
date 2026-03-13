@@ -28,13 +28,13 @@ export function WidgetPage() {
 
   return (
     <div className="flex flex-col gap-8 p-6 overflow-y-auto h-full">
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-400">Widget</h2>
+      <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-400">Widget</h2>
 
       {/* Size */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-400">Size</span>
-          <span className="text-xs text-zinc-400">{Math.round(size * 100)}%</span>
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-400">Size</span>
+          <span className="font-mono text-xs text-neutral-400">{Math.round(size * 100)}%</span>
         </div>
         <input
           type="range"
@@ -47,15 +47,15 @@ export function WidgetPage() {
             setSize(val);
             save({ size: val });
           }}
-          className="w-full accent-indigo-500"
+          className="w-full accent-red-600"
         />
       </div>
 
       {/* Opacity */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-400">Opacity</span>
-          <span className="text-xs text-zinc-400">{Math.round(opacity * 100)}%</span>
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-400">Opacity</span>
+          <span className="font-mono text-xs text-neutral-400">{Math.round(opacity * 100)}%</span>
         </div>
         <input
           type="range"
@@ -68,7 +68,7 @@ export function WidgetPage() {
             setOpacity(val);
             save({ opacity: val });
           }}
-          className="w-full accent-indigo-500"
+          className="w-full accent-red-600"
         />
       </div>
     </div>

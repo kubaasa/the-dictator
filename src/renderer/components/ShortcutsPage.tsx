@@ -158,7 +158,7 @@ export function ShortcutsPage() {
   return (
     <main className="flex-1 overflow-y-auto p-6">
       <section>
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 mb-4">Keyboard Shortcuts</h2>
+        <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Keyboard Shortcuts</h2>
 
         <div className="space-y-3">
           {SHORTCUT_CONFIGS.map((config) => {
@@ -168,11 +168,11 @@ export function ShortcutsPage() {
             return (
               <div
                 key={config.key}
-                className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3"
+                className="flex items-center justify-between rounded-lg border border-neutral-800 bg-[#141414] px-4 py-3"
               >
                 <div className="flex flex-col">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-200">{config.label}</span>
-                  <span className="text-[11px] text-zinc-500">{config.description}</span>
+                  <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-200">{config.label}</span>
+                  <span className="text-[11px] text-neutral-500">{config.description}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -182,12 +182,12 @@ export function ShortcutsPage() {
                     onClick={() => startListening(config.key)}
                     className={`min-w-[180px] cursor-pointer rounded-md border px-3 py-1.5 text-center text-sm font-mono transition-colors ${
                       isListening
-                        ? 'border-amber-500 bg-amber-500/10 text-amber-400'
-                        : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-600'
+                        ? 'border-red-600 bg-red-600/10 text-red-400'
+                        : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600'
                     }`}
                   >
                     {isListening
-                      ? (pendingKeys || 'Press keys...')
+                      ? (pendingKeys || 'AWAITING INPUT...')
                       : shortcuts[config.key]
                     }
                   </div>

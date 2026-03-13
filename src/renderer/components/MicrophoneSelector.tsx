@@ -41,7 +41,7 @@ export function MicrophoneSelector({
     <div ref={containerRef} className="relative no-drag">
       <button
         onClick={toggleDropdown}
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
         title={selectedLabel}
       >
         {/* Mic icon */}
@@ -62,9 +62,9 @@ export function MicrophoneSelector({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-max min-w-[280px] max-w-[440px] overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-1 w-max min-w-[280px] max-w-[440px] overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 shadow-lg">
           {devices.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-zinc-400">No microphones found</p>
+            <p className="px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-600">No microphones found</p>
           ) : (
             devices.map((device) => (
               <button
@@ -73,12 +73,12 @@ export function MicrophoneSelector({
                   setSelectedDeviceId(device.deviceId);
                   closeDropdown();
                 }}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-zinc-50 ${
-                  device.deviceId === selectedDeviceId ? 'text-zinc-900 font-medium' : 'text-zinc-600'
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-neutral-800 ${
+                  device.deviceId === selectedDeviceId ? 'text-red-400 font-medium' : 'text-neutral-400'
                 }`}
               >
                 {device.deviceId === selectedDeviceId ? (
-                  <svg className="h-3 w-3 shrink-0 text-zinc-900" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                  <svg className="h-3 w-3 shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                   </svg>
                 ) : (

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
+import { RecIndicator } from './RecEffects';
 import type { RecordingState } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import type { useAudioRecorder } from '../hooks/useAudioRecorder';
@@ -150,19 +151,26 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
         {stats.map((stat, i) => (
           <div
             key={i}
-            className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 flex flex-row items-center gap-3 hover:border-zinc-700 hover:bg-zinc-800/80 transition-all duration-200 cursor-default"
+            className="relative rounded-xl border border-neutral-800 bg-[#141414] p-4 flex flex-row items-center gap-3 hover:border-neutral-700 hover:bg-[#1A1A1A] transition-all duration-200 cursor-default overflow-hidden"
           >
-            <span className="text-zinc-500 shrink-0">{stat.icon}</span>
+            {/* Red top line */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-red-600/20" />
+            <span className="text-red-800 shrink-0">{stat.icon}</span>
             <div className="flex flex-col gap-0.5">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500">{stat.label}</span>
-              <span className="text-lg font-bold text-white">{stat.value}</span>
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500">{stat.label}</span>
+              <span className="font-mono text-lg font-bold text-white">{stat.value}</span>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Recording button */}
-      <div className="flex flex-col items-center gap-5 mt-4">
+      {/* Recording section */}
+      <div className="flex flex-col items-center gap-5 mt-10">
+        {/* REC indicator — above the button */}
+        <div className="h-6 flex items-center">
+          <RecIndicator isRecording={isRecording} />
+        </div>
+
         <div className="relative flex items-center justify-center">
           <button
             onClick={isRecording ? stopRecording : startRecording}
@@ -194,14 +202,14 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
 
         {/* Status */}
         <div className="flex flex-col items-center gap-2">
-          <p className="text-xs font-semibold tracking-[0.25em] uppercase text-zinc-300">
+          <p className="font-mono text-sm font-semibold tracking-[0.25em] uppercase text-neutral-300">
             {recordingState === 'transcribing'
               ? '[ TRANSCRIBING... ]'
               : isRecording
               ? '[ RECORDING ]'
               : '[ CLICK TO RECORD ]'}
           </p>
-          <p className="text-xs text-zinc-600 tracking-widest">
+          <p className="font-mono text-xs text-neutral-600 tracking-widest">
             {isRecording ? 'click to stop' : toggleShortcut.replace(/\+/g, ' + ')}
           </p>
         </div>
@@ -220,18 +228,18 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
                 readOnly
                 value={result}
                 rows={4}
-                className="w-full resize-none rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-200 focus:outline-none"
+                className="w-full resize-none rounded-xl border border-red-900/30 bg-[#141414] px-4 py-3 font-mono text-sm text-neutral-200 focus:outline-none"
               />
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => navigator.clipboard.writeText(result)}
-                  className="rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+                  className="rounded-lg border border-neutral-700 px-4 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-200"
                 >
                   Copy
                 </button>
                 <button
                   onClick={() => { clearResult(); clearError(); }}
-                  className="rounded-lg border border-zinc-700 px-4 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+                  className="rounded-lg border border-neutral-700 px-4 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-200"
                 >
                   Clear
                 </button>

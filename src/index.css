@@ -1,5 +1,27 @@
 @import "tailwindcss";
 
+/* ── Fonts ── */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./renderer/assets/fonts/JetBrainsMono-Variable.woff2') format('woff2');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('./renderer/assets/fonts/Inter-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Inter', system-ui, sans-serif;
+}
+
 html,
 body,
 #app {
@@ -15,6 +37,8 @@ body,
 *::-webkit-scrollbar {
   display: none;
 }
+
+/* ── Keyframes ── */
 
 @keyframes ping-slow {
   0% {
@@ -103,6 +127,34 @@ body,
 
 .animate-rec-glitch {
   animation: rec-glitch 2s ease-in-out infinite;
+}
+
+/* [REC] blink — hard on/off like real camera */
+@keyframes rec-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.animate-rec-blink {
+  animation: rec-blink 1s step-start infinite;
+}
+
+/* Viewfinder corner pulse (recording state) */
+@keyframes corner-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+.animate-corner-pulse {
+  animation: corner-pulse 2s ease-in-out infinite;
+}
+
+/* VHS tracking noise — subtle horizontal jitter */
+@keyframes vhs-tracking {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(0.5px); }
+  50% { transform: translateX(-0.5px); }
+  75% { transform: translateX(0.3px); }
 }
 
 .btn-noise {

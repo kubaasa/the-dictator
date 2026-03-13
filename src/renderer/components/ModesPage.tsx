@@ -246,31 +246,31 @@ export function ModesPage(props: ModelStatus) {
 
         {/* Section 1: Transcription config */}
         <div>
-          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500">Transkrypcja</h2>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-5">
+          <h2 className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500">Transkrypcja</h2>
+          <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-5">
 
             {/* Language */}
             <div className="flex items-center gap-3">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Language</span>
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500 w-16 shrink-0">Language</span>
               <div ref={langDropdownRef} className="relative">
                 <button
                   onClick={() => setLangDropdownOpen((o) => !o)}
-                  className="flex w-40 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 cursor-pointer hover:border-zinc-600 justify-between transition-colors"
+                  className="flex w-40 items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:border-neutral-600 justify-between transition-colors"
                 >
-                  <span>{LANGUAGE_OPTIONS.find((o) => o.value === language)?.label ?? language}</span>
-                  <svg className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${langDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <span className="font-mono">{LANGUAGE_OPTIONS.find((o) => o.value === language)?.label ?? language}</span>
+                  <svg className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${langDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
                   </svg>
                 </button>
 
                 {langDropdownOpen && (
-                  <div className="absolute left-0 top-full z-50 mt-1 w-40 overflow-y-auto max-h-64 rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl">
+                  <div className="absolute left-0 top-full z-50 mt-1 w-40 overflow-y-auto max-h-64 rounded-lg border border-neutral-700 bg-neutral-800 shadow-xl">
                     {LANGUAGE_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
                         onClick={() => { handleLanguageChange(opt.value); setLangDropdownOpen(false); }}
-                        className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-700 ${
-                          opt.value === language ? 'font-medium text-white' : 'text-zinc-400'
+                        className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-700 ${
+                          opt.value === language ? 'font-medium text-white' : 'text-neutral-400'
                         }`}
                       >
                         {opt.label}
@@ -283,21 +283,21 @@ export function ModesPage(props: ModelStatus) {
 
             {/* Model */}
             <div className="flex items-center gap-3">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Model</span>
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500 w-16 shrink-0">Model</span>
               <div ref={modelDropdownRef} className="relative">
                 <button
                   onClick={() => !downloading && setModelDropdownOpen((o) => !o)}
                   disabled={downloading}
-                  className="flex w-40 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer hover:border-zinc-600 justify-between transition-colors"
+                  className="flex w-40 items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-300 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer hover:border-neutral-600 justify-between transition-colors"
                 >
-                  <span>{MODEL_OPTIONS.find((o) => o.value === modelSize)?.label ?? modelSize}</span>
-                  <svg className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <span className="font-mono">{MODEL_OPTIONS.find((o) => o.value === modelSize)?.label ?? modelSize}</span>
+                  <svg className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
                   </svg>
                 </button>
 
                 {modelDropdownOpen && (
-                  <div className="absolute left-0 top-full z-50 mt-1 min-w-full overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl">
+                  <div className="absolute left-0 top-full z-50 mt-1 min-w-full overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800 shadow-xl">
                     {MODEL_OPTIONS.map((opt) => {
                       const isSelected = opt.value === modelSize;
                       const isReady = downloadedModels.includes(opt.value);
@@ -305,17 +305,17 @@ export function ModesPage(props: ModelStatus) {
                         <button
                           key={opt.value}
                           onClick={() => { handleModelChange(opt.value); setModelDropdownOpen(false); }}
-                          className={`flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-700 ${
-                            isSelected ? 'font-medium text-white' : 'text-zinc-400'
+                          className={`flex w-full items-center justify-between gap-4 px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-700 ${
+                            isSelected ? 'font-medium text-white' : 'text-neutral-400'
                           }`}
                         >
                           <span className="whitespace-nowrap">{opt.label}</span>
                           {isReady ? (
-                            <svg className="h-3.5 w-3.5 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <svg className="h-3.5 w-3.5 shrink-0 text-green-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                             </svg>
                           ) : (
-                            <svg className="h-3.5 w-3.5 shrink-0 text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                            <svg className="h-3.5 w-3.5 shrink-0 text-neutral-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
                             </svg>
                           )}
@@ -329,7 +329,7 @@ export function ModesPage(props: ModelStatus) {
               {!downloaded && !downloading && (
                 <button
                   onClick={download}
-                  className="rounded-lg bg-zinc-700 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-200 transition-colors hover:bg-zinc-600"
+                  className="rounded-lg bg-neutral-700 px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-200 transition-colors hover:bg-neutral-600"
                 >
                   Download
                 </button>
@@ -337,21 +337,21 @@ export function ModesPage(props: ModelStatus) {
 
               {downloading && (
                 <div className="flex items-center gap-2">
-                  <div className="h-1.5 w-24 rounded-full bg-zinc-700 overflow-hidden">
+                  <div className="h-1.5 w-24 rounded-full bg-neutral-700 overflow-hidden">
                     {progress === 0 ? (
-                      <div key="pulse" className="h-full w-full rounded-full bg-blue-500/40 animate-pulse" />
+                      <div key="pulse" className="h-full w-full rounded-full bg-red-600/40 animate-pulse" />
                     ) : (
                       <div
                         key="bar"
-                        className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                        className="h-full rounded-full bg-red-600 transition-all duration-300"
                         style={{ width: `${progress}%` }}
                       />
                     )}
                   </div>
-                  <span className="text-xs text-zinc-500">{progress > 0 ? `${progress}%` : '...'}</span>
+                  <span className="font-mono text-xs text-neutral-500">{progress > 0 ? `${progress}%` : '...'}</span>
                   <button
                     onClick={cancel}
-                    className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 hover:text-zinc-300 transition-colors"
+                    className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500 hover:text-neutral-300 transition-colors"
                   >
                     Cancel
                   </button>
@@ -368,7 +368,7 @@ export function ModesPage(props: ModelStatus) {
 
           <button
             onClick={() => window.dictator.openModelsFolder()}
-            className="flex items-center gap-2 self-start rounded-lg border border-zinc-800 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-600 transition-colors hover:border-zinc-700 hover:text-zinc-400 mt-4"
+            className="flex items-center gap-2 self-start rounded-lg border border-neutral-800 px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-600 transition-colors hover:border-neutral-700 hover:text-neutral-400 mt-4"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
@@ -380,9 +380,9 @@ export function ModesPage(props: ModelStatus) {
         {/* API key section (transcription) */}
         {engine === 'api' && (
           <div>
-            <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500">OpenAI API Key</h2>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-4">
-              <p className="text-xs text-zinc-600">
+            <h2 className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500">OpenAI API Key</h2>
+            <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-4">
+              <p className="text-xs text-neutral-600">
                 Used for Whisper API transcription. Your key is stored locally and never sent anywhere except OpenAI.
               </p>
               <div className="flex gap-2">
@@ -391,11 +391,11 @@ export function ModesPage(props: ModelStatus) {
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="sk-..."
-                  className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/50"
                 />
                 <button
                   onClick={handleApiKeySave}
-                  className="rounded-lg bg-zinc-700 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-200 transition-colors hover:bg-zinc-600"
+                  className="rounded-lg bg-neutral-700 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-neutral-200 transition-colors hover:bg-neutral-600"
                 >
                   {apiKeySaved ? 'Saved' : 'Save'}
                 </button>
@@ -406,9 +406,9 @@ export function ModesPage(props: ModelStatus) {
 
         {/* Section 2: Dictation modes */}
         <div className={!isAiEnabled ? 'opacity-50 pointer-events-none' : ''}>
-          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500">Dictation Mode</h2>
+          <h2 className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500">Dictation Mode</h2>
           {!isAiEnabled && (
-            <p className="mb-3 text-xs text-zinc-600">Select an AI provider below to enable dictation modes.</p>
+            <p className="mb-3 text-xs text-neutral-600">Select an AI provider below to enable dictation modes.</p>
           )}
           <div className="grid grid-cols-3 gap-2">
             {DICTATION_MODES.map((mode) => (
@@ -417,15 +417,15 @@ export function ModesPage(props: ModelStatus) {
                 onClick={() => handleModeChange(mode.id)}
                 className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-colors cursor-pointer ${
                   currentMode === mode.id
-                    ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                    : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700 hover:text-zinc-300'
+                    ? 'border-red-600/50 bg-red-600/10 text-red-400'
+                    : 'border-neutral-800 bg-[#141414] text-neutral-400 hover:border-neutral-700 hover:text-neutral-300'
                 }`}
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d={mode.icon} />
                 </svg>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.25em]">{mode.label}</span>
-                <span className="text-[10px] text-zinc-600 leading-tight">{mode.description}</span>
+                <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em]">{mode.label}</span>
+                <span className="text-[10px] text-neutral-600 leading-tight">{mode.description}</span>
               </button>
             ))}
           </div>
@@ -438,7 +438,7 @@ export function ModesPage(props: ModelStatus) {
                 onBlur={handleCustomPromptSave}
                 placeholder="Enter your custom system prompt..."
                 rows={3}
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
+                className="w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/50 resize-none"
               />
             </div>
           )}
@@ -446,31 +446,31 @@ export function ModesPage(props: ModelStatus) {
 
         {/* Section 3: AI Provider config */}
         <div>
-          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500">AI Provider</h2>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-4">
+          <h2 className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500">AI Provider</h2>
+          <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-4">
 
             {/* Provider dropdown */}
             <div className="flex items-center gap-3">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Provider</span>
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500 w-16 shrink-0">Provider</span>
               <div ref={providerDropdownRef} className="relative">
                 <button
                   onClick={() => setProviderDropdownOpen((o) => !o)}
-                  className="flex w-48 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 cursor-pointer hover:border-zinc-600 justify-between transition-colors"
+                  className="flex w-48 items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:border-neutral-600 justify-between transition-colors"
                 >
-                  <span>{AI_PROVIDER_OPTIONS.find((o) => o.value === aiProvider)?.label ?? aiProvider}</span>
-                  <svg className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${providerDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <span className="font-mono">{AI_PROVIDER_OPTIONS.find((o) => o.value === aiProvider)?.label ?? aiProvider}</span>
+                  <svg className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${providerDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
                   </svg>
                 </button>
 
                 {providerDropdownOpen && (
-                  <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl">
+                  <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800 shadow-xl">
                     {AI_PROVIDER_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
                         onClick={() => { handleProviderChange(opt.value); setProviderDropdownOpen(false); }}
-                        className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-700 ${
-                          opt.value === aiProvider ? 'font-medium text-white' : 'text-zinc-400'
+                        className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-700 ${
+                          opt.value === aiProvider ? 'font-medium text-white' : 'text-neutral-400'
                         }`}
                       >
                         {opt.label}
@@ -485,25 +485,25 @@ export function ModesPage(props: ModelStatus) {
             {aiProvider === 'openai' && (
               <>
                 <div className="flex items-center gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Model</span>
+                  <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500 w-16 shrink-0">Model</span>
                   <div ref={aiModelDropdownRef} className="relative">
                     <button
                       onClick={() => setAiModelDropdownOpen((o) => !o)}
-                      className="flex w-48 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 cursor-pointer hover:border-zinc-600 justify-between transition-colors"
+                      className="flex w-48 items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:border-neutral-600 justify-between transition-colors"
                     >
-                      <span>{OPENAI_MODELS.find((o) => o.value === aiOpenaiModel)?.label ?? aiOpenaiModel}</span>
-                      <svg className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${aiModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <span className="font-mono">{OPENAI_MODELS.find((o) => o.value === aiOpenaiModel)?.label ?? aiOpenaiModel}</span>
+                      <svg className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${aiModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
                       </svg>
                     </button>
                     {aiModelDropdownOpen && (
-                      <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl">
+                      <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800 shadow-xl">
                         {OPENAI_MODELS.map((opt) => (
                           <button
                             key={opt.value}
                             onClick={() => { handleAiModelChange(opt.value); setAiModelDropdownOpen(false); }}
-                            className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-700 ${
-                              opt.value === aiOpenaiModel ? 'font-medium text-white' : 'text-zinc-400'
+                            className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-700 ${
+                              opt.value === aiOpenaiModel ? 'font-medium text-white' : 'text-neutral-400'
                             }`}
                           >
                             {opt.label}
@@ -519,11 +519,11 @@ export function ModesPage(props: ModelStatus) {
                     value={aiOpenaiKey}
                     onChange={(e) => setAiOpenaiKey(e.target.value)}
                     placeholder="sk-..."
-                    className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/50"
                   />
                   <button
                     onClick={handleAiKeySave}
-                    className="rounded-lg bg-zinc-700 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-200 transition-colors hover:bg-zinc-600"
+                    className="rounded-lg bg-neutral-700 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-neutral-200 transition-colors hover:bg-neutral-600"
                   >
                     {aiKeySaved ? 'Saved' : 'Save'}
                   </button>
@@ -535,25 +535,25 @@ export function ModesPage(props: ModelStatus) {
             {aiProvider === 'anthropic' && (
               <>
                 <div className="flex items-center gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Model</span>
+                  <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500 w-16 shrink-0">Model</span>
                   <div ref={aiModelDropdownRef} className="relative">
                     <button
                       onClick={() => setAiModelDropdownOpen((o) => !o)}
-                      className="flex w-48 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 cursor-pointer hover:border-zinc-600 justify-between transition-colors"
+                      className="flex w-48 items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-300 cursor-pointer hover:border-neutral-600 justify-between transition-colors"
                     >
-                      <span>{ANTHROPIC_MODELS.find((o) => o.value === aiAnthropicModel)?.label ?? aiAnthropicModel}</span>
-                      <svg className={`h-3.5 w-3.5 text-zinc-500 transition-transform ${aiModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <span className="font-mono">{ANTHROPIC_MODELS.find((o) => o.value === aiAnthropicModel)?.label ?? aiAnthropicModel}</span>
+                      <svg className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${aiModelDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
                       </svg>
                     </button>
                     {aiModelDropdownOpen && (
-                      <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800 shadow-xl">
+                      <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-800 shadow-xl">
                         {ANTHROPIC_MODELS.map((opt) => (
                           <button
                             key={opt.value}
                             onClick={() => { handleAiModelChange(opt.value); setAiModelDropdownOpen(false); }}
-                            className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-700 ${
-                              opt.value === aiAnthropicModel ? 'font-medium text-white' : 'text-zinc-400'
+                            className={`flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-neutral-700 ${
+                              opt.value === aiAnthropicModel ? 'font-medium text-white' : 'text-neutral-400'
                             }`}
                           >
                             {opt.label}
@@ -569,11 +569,11 @@ export function ModesPage(props: ModelStatus) {
                     value={aiAnthropicKey}
                     onChange={(e) => setAiAnthropicKey(e.target.value)}
                     placeholder="sk-ant-..."
-                    className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/50"
                   />
                   <button
                     onClick={handleAiKeySave}
-                    className="rounded-lg bg-zinc-700 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-200 transition-colors hover:bg-zinc-600"
+                    className="rounded-lg bg-neutral-700 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-neutral-200 transition-colors hover:bg-neutral-600"
                   >
                     {aiKeySaved ? 'Saved' : 'Save'}
                   </button>
@@ -585,28 +585,28 @@ export function ModesPage(props: ModelStatus) {
             {aiProvider === 'ollama' && (
               <>
                 <div className="flex items-center gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">URL</span>
+                  <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500 w-16 shrink-0">URL</span>
                   <input
                     type="text"
                     value={aiOllamaUrl}
                     onChange={(e) => setAiOllamaUrl(e.target.value)}
                     placeholder="http://localhost:11434"
-                    className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/50"
                   />
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-500 w-16 shrink-0">Model</span>
+                  <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-500 w-16 shrink-0">Model</span>
                   <input
                     type="text"
                     value={aiOllamaModel}
                     onChange={(e) => setAiOllamaModel(e.target.value)}
                     placeholder="llama3"
-                    className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    className="flex-1 rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/50"
                   />
                 </div>
                 <button
                   onClick={handleAiKeySave}
-                  className="self-end rounded-lg bg-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
+                  className="self-end rounded-lg bg-neutral-700 px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-neutral-200 transition-colors hover:bg-neutral-600"
                 >
                   {aiKeySaved ? 'Saved' : 'Save'}
                 </button>

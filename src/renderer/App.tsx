@@ -8,6 +8,7 @@ import { ModesPage } from './components/ModesPage';
 import { ShortcutsPage } from './components/ShortcutsPage';
 import { WidgetPage } from './components/WidgetPage';
 import { MicrophoneSelector } from './components/MicrophoneSelector';
+import { ScanLines, NoiseOverlay, Vignette } from './components/RecEffects';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
@@ -44,13 +45,18 @@ export function App() {
   }
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-zinc-100 select-none">
+    <div className="flex h-screen text-neutral-200 select-none font-sans" style={{ background: '#0A0A0A' }}>
+      {/* Global [REC] effects */}
+      <ScanLines />
+      <NoiseOverlay />
+      <Vignette />
+
       {/* Sidebar — full height */}
       <Sidebar activeView={activeView} onNavigate={setActiveView} />
 
       {/* Right column: header + content */}
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-        <header className="drag-region flex items-center justify-end px-5 py-3 border-b border-zinc-800">
+        <header className="drag-region flex items-center justify-end px-5 py-3 border-b border-neutral-800/50">
           <MicrophoneSelector {...micSelector} />
         </header>
 
