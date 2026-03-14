@@ -68,6 +68,10 @@ export interface DictatorAPI {
   // Window controls
   minimize: () => void;
   closeWindow: () => void;
+
+  // Widget drag
+  widgetDragStart: (offsetX: number, offsetY: number) => void;
+  widgetDragEnd: () => void;
 }
 
 const api: DictatorAPI = {
@@ -181,6 +185,10 @@ const api: DictatorAPI = {
   // Window controls
   minimize: () => ipcRenderer.send(IPC.WINDOW_MINIMIZE),
   closeWindow: () => ipcRenderer.send(IPC.WINDOW_CLOSE),
+
+  // Widget drag
+  widgetDragStart: (offsetX, offsetY) => ipcRenderer.send(IPC.WIDGET_DRAG_START, offsetX, offsetY),
+  widgetDragEnd: () => ipcRenderer.send(IPC.WIDGET_DRAG_END),
 };
 
 contextBridge.exposeInMainWorld('dictator', api);

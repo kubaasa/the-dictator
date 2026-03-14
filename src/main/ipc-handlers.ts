@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, shell, clipboard, app } from 'electron';
+import { ipcMain, BrowserWindow, shell, clipboard, app, screen } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { IPC } from '../shared/constants';
@@ -258,5 +258,31 @@ export function registerIpcHandlers(
 
   ipcMain.on(IPC.MODEL_DOWNLOAD_CANCEL, () => {
     transcriptionService.cancelDownload();
+  });
+
+  // Widget drag — main process tracks cursor globally so fast mouse movement can't escape the window
+  let dragInterval: ReturnType<typeof setInterval> | null = null;
+  let dragOffset = { x: 0, y: 0 };
+
+  ipcMain.on(IPC.WIDGET_DRAG_START, (_event, offsetX: number, offsetY: number) => {
+    dragOffset = { x: offsetX, y: offsetY };
+
+    if (dragInterval) clearInterval(dragInterval);
+    dragInterval = setInterval(() => {
+      const overlay = getOverlayWindow();
+      if (!overlay) return;
+      const cursor = screen.getCursorScreenPoint();
+      overlay.setPosition(cursor.x - dragOffset.x, cursor.y - dragOffset.y);
+    }, 16);
+  });
+
+  ipcMain.on(IPC.WIDGET_DRAG_END, () => {
+    if (dragInterval) { clearInterval(dragInterval); dragInterval = null; }
+    const overlay = getOverlayWindow();
+    if (overlay) {
+      const { x, y } = overlay.getBounds();
+      store.set('widget.x', x);
+      store.set('widget.y', y);
+    }
   });
 }

@@ -84,7 +84,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
             }`}
           >
             <span className={isActive ? 'text-red-500' : 'text-neutral-600'}>{item.icon}</span>
-            {!collapsed && <span className="font-mono text-[11px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">{item.label}</span>}
+            {!collapsed && <span className="font-mono text-[13px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">{item.label}</span>}
           </button>
         );
       })}

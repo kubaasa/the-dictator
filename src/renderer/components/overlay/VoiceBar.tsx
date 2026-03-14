@@ -93,6 +93,7 @@ export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }
   const isSilent = isRecording && level < SILENCE_THRESHOLD;
 
   const [isProximate, setIsProximate] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleEnter = useCallback(() => {
@@ -106,7 +107,31 @@ export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }
   }, []);
 
   useEffect(() => {
-    return () => { if (leaveTimer.current) clearTimeout(leaveTimer.current); };
+    return () => {
+      if (leaveTimer.current) clearTimeout(leaveTimer.current);
+      window.dictator.widgetDragEnd();
+    };
+  }, []);
+
+  // Manual drag: anywhere on wrapper/pill EXCEPT the record/stop button.
+  // Main process tracks cursor globally (screen.getCursorScreenPoint) so fast movement can't escape.
+  const handleWrapperMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+
+    // Offset = cursor position relative to window top-left corner
+    const offsetX = e.screenX - window.screenX;
+    const offsetY = e.screenY - window.screenY;
+    window.dictator.widgetDragStart(offsetX, offsetY);
+    setIsDragging(true);
+
+    const onUp = () => {
+      window.dictator.widgetDragEnd();
+      setIsDragging(false);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mouseup', onUp);
   }, []);
 
   const isExpanded = isProximate || isRecording || isTranscribing || isError;
@@ -128,6 +153,7 @@ export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }
       <div
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}
+        onMouseDown={handleWrapperMouseDown}
         style={{
           padding: `${PROX_V}px ${PROX_H}px`,
           borderRadius: 9999,
@@ -135,6 +161,7 @@ export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          cursor: isDragging ? 'grabbing' : 'grab',
         } as React.CSSProperties}
       >
         {/* Pill container */}
@@ -150,9 +177,7 @@ export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }
             WebkitBackdropFilter: 'blur(24px)',
             border: '0.5px solid rgba(255,255,255,0.85)',
             boxShadow: 'none',
-            // Disable drag region when hovered — drag regions swallow mouse events in Electron,
-            // causing spurious mouseleave on the proximity wrapper.
-            WebkitAppRegion: isProximate ? 'no-drag' : 'drag',
+            WebkitAppRegion: 'no-drag',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

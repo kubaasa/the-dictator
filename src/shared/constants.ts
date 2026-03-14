@@ -57,6 +57,10 @@ export const IPC = {
   // Window controls
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_CLOSE: 'window:close',
+
+  // Widget drag
+  WIDGET_DRAG_START: 'widget:drag-start',
+  WIDGET_DRAG_END: 'widget:drag-end',
 } as const;
 
 export const DICTATION_MODE_PROMPTS: Record<string, string> = {
