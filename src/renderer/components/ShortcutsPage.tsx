@@ -11,8 +11,8 @@ interface ShortcutConfig {
 
 const RECORDING_SHORTCUTS: ShortcutConfig[] = [
   { key: 'toggleRecording', label: 'Toggle Recording', description: 'Start or stop voice recording (behavior follows Recording Mode above)' },
-  { key: 'pushToTalk', label: 'Push-to-Talk', description: 'Hold to record, release to stop — always works regardless of Recording Mode' },
   { key: 'cancelRecording', label: 'Cancel Recording', description: 'Discard current recording without transcription' },
+  { key: 'pushToTalk', label: 'Push-to-Talk', description: 'Hold to record, release to stop — active only in Push-to-Talk mode' },
 ];
 
 const APP_SHORTCUTS: ShortcutConfig[] = [
@@ -199,14 +199,25 @@ export function ShortcutsPage() {
     setError('');
   }, [shortcuts, saveShortcuts]);
 
+  const isInactive = (key: ShortcutKey): boolean => {
+    if (hotkeyMode === 'toggle') return key === 'pushToTalk';
+    if (hotkeyMode === 'push-to-talk') return key === 'toggleRecording' || key === 'cancelRecording';
+    return false;
+  };
+
   const renderShortcutRow = (config: ShortcutConfig) => {
-    const isListening = listeningFor === config.key;
+    const inactive = isInactive(config.key);
+    const isListening = !inactive && listeningFor === config.key;
     const isDefault = shortcuts[config.key] === DEFAULT_SETTINGS.hotkey.shortcuts[config.key];
 
     return (
       <div
         key={config.key}
-        className="flex items-center justify-between rounded-lg border border-neutral-800 bg-[#141414] px-5 py-4"
+        className={`flex items-center justify-between rounded-lg border px-5 py-4 transition-opacity ${
+          inactive
+            ? 'border-neutral-800/50 bg-[#0f0f0f] opacity-35 pointer-events-none select-none'
+            : 'border-neutral-800 bg-[#141414]'
+        }`}
       >
         <div className="flex flex-col gap-0.5">
           <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">{config.label}</span>
@@ -214,7 +225,7 @@ export function ShortcutsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {!isDefault && !isListening && (
+          {!isDefault && !isListening && !inactive && (
             <button
               onClick={() => resetShortcut(config.key)}
               className="text-xs text-neutral-600 hover:text-neutral-400 transition-colors px-1"
@@ -225,12 +236,14 @@ export function ShortcutsPage() {
           )}
           <div
             ref={isListening ? inputRef : undefined}
-            tabIndex={0}
-            onClick={() => startListening(config.key)}
-            className={`min-w-[200px] cursor-pointer rounded-md border px-4 py-2 flex items-center justify-center text-sm font-mono transition-colors ${
+            tabIndex={inactive ? -1 : 0}
+            onClick={() => !inactive && startListening(config.key)}
+            className={`min-w-[200px] rounded-md border px-4 py-2 flex items-center justify-center text-sm font-mono transition-colors ${
               isListening
-                ? 'border-red-600 bg-red-600/10 text-red-400'
-                : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600'
+                ? 'cursor-pointer border-red-600 bg-red-600/10 text-red-400'
+                : inactive
+                  ? 'cursor-default border-neutral-800 bg-neutral-900 text-neutral-600'
+                  : 'cursor-pointer border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600'
             }`}
           >
             {isListening

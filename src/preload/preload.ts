@@ -40,6 +40,8 @@ export interface DictatorAPI {
 
   // Overlay
   requestToggleRecording: () => void;
+  requestCancelRecording: () => void;
+  requestModeCycle: () => void;
 
   // History
   history: {
@@ -157,6 +159,8 @@ const api: DictatorAPI = {
 
   // Overlay
   requestToggleRecording: () => ipcRenderer.send(IPC.OVERLAY_TOGGLE),
+  requestCancelRecording: () => ipcRenderer.send(IPC.OVERLAY_CANCEL),
+  requestModeCycle: () => ipcRenderer.send(IPC.OVERLAY_MODE_CYCLE),
 
   // History
   history: {

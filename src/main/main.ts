@@ -119,7 +119,7 @@ function createOverlayWindow(): BrowserWindow {
     skipTaskbar: true,
     resizable: false,
     focusable: true,
-    show: true,
+    show: widget.activeWidget !== 'maxi',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -168,7 +168,15 @@ function broadcastState(state: RecordingState): void {
     win.webContents.send(IPC.RECORDING_STATE_CHANGED, state);
   }
 
-  // Overlay is always visible — only state changes, no hide/show
+  // Maxi widget: show only when not idle, hide when idle
+  const activeWidget = (store.get('widget') ?? DEFAULT_SETTINGS.widget).activeWidget;
+  if (activeWidget === 'maxi' && overlayWindow) {
+    if (state === 'idle') {
+      overlayWindow.hide();
+    } else if (!overlayWindow.isVisible()) {
+      overlayWindow.show();
+    }
+  }
 }
 
 // Recording control via IPC from renderer
@@ -179,6 +187,9 @@ function setupRecordingIpc(): void {
 
   ipcMain.on(IPC.RECORDING_STOP, () => {
     broadcastState('idle');
+    // Sync HotkeyService — renderer may have stopped recording due to an error,
+    // so isRecordingActive could be stuck at true and block the next PTT press.
+    hotkeyService.notifyRecordingStopped();
   });
 
   ipcMain.on(IPC.VOICE_ACTIVITY, (_, level: number) => {
@@ -192,6 +203,14 @@ function setupRecordingIpc(): void {
   ipcMain.on(IPC.OVERLAY_TOGGLE, () => {
     pasteService.captureTarget(); // best-effort — window may have already lost focus
     sendToggleToRenderer();
+  });
+
+  ipcMain.on(IPC.OVERLAY_CANCEL, () => {
+    sendCancelToRenderer();
+  });
+
+  ipcMain.on(IPC.OVERLAY_MODE_CYCLE, () => {
+    sendModeSelectToRenderer();
   });
 }
 
@@ -255,7 +274,7 @@ app.on('ready', () => {
   const historyService = new HistoryService(path.join(app.getPath('userData'), 'history.db'));
 
   trayManager.create(mainWindow);
-  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService);
+  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService, () => currentState);
   setupRecordingIpc();
   setupWindowControlIpc();
 

@@ -22,7 +22,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const chunksRef = useRef<Float32Array[]>([]);
-  const vadFrameCounterRef = useRef(0);
+
 
   // Bug #2: race condition flags for push-to-talk
   const isSettingUpRef = useRef(false);
@@ -135,21 +135,18 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       processorRef.current = processor;
       chunksRef.current = [];
 
-      vadFrameCounterRef.current = 0;
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
         chunksRef.current.push(new Float32Array(inputData));
 
-        // Throttle VAD IPC: send every 2nd frame (~512ms at 16kHz/4096 buffer)
-        if (++vadFrameCounterRef.current % 2 === 0) {
-          let sum = 0;
-          for (let i = 0; i < inputData.length; i++) {
-            sum += inputData[i] * inputData[i];
-          }
-          const rms = Math.sqrt(sum / inputData.length);
-          const level = Math.min(1, rms / 0.15);
-          window.dictator.sendVoiceActivity(level);
+        // Send voice level every frame (~256ms at 16kHz/4096 buffer) for detailed waveform
+        let sum = 0;
+        for (let i = 0; i < inputData.length; i++) {
+          sum += inputData[i] * inputData[i];
         }
+        const rms = Math.sqrt(sum / inputData.length);
+        const level = Math.min(1, rms / 0.15);
+        window.dictator.sendVoiceActivity(level);
       };
 
       source.connect(processor);

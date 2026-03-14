@@ -12,12 +12,19 @@ import Store from 'electron-store';
 import { DEFAULT_SETTINGS } from '../shared/types';
 
 // size is 0–1; returns [width, height] in pixels
-export function getOverlaySize(_widget: WidgetType, size: number): [number, number] {
+export function getOverlaySize(widget: WidgetType, size: number): [number, number] {
   const t = Math.max(0, Math.min(1, size));
+  if (widget === 'maxi') {
+    const w = Math.round(280 + t * 170); // 280–450px
+    const h = Math.round(90  + t * 70);  // 90–160px
+    return [w, h];
+  }
   const w = Math.round(160 + t * 340); // 160–500px
   const h = Math.round(50  + t * 80);  // 50–130px
   return [w, h];
 }
+
+const TRANSCRIPTION_TIMEOUT_MS = 30_000;
 
 export function registerIpcHandlers(
   store: Store<AppSettings>,
@@ -28,6 +35,7 @@ export function registerIpcHandlers(
   hotkeyService: HotkeyService,
   getOverlayWindow: () => BrowserWindow | null,
   historyService: HistoryService,
+  getCurrentState: () => RecordingState,
 ): void {
   const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
@@ -94,7 +102,7 @@ export function registerIpcHandlers(
       hotkeyService.setMode(hotkey.mode);
     }
 
-    // Resize overlay when widget settings change
+    // Resize overlay and handle visibility when widget settings change
     if (settings.widget) {
       const overlayWindow = getOverlayWindow();
       if (overlayWindow) {
@@ -104,6 +112,13 @@ export function registerIpcHandlers(
         // Keep top-left corner anchored — setBounds is atomic (no flicker between calls)
         const { x, y } = overlayWindow.getBounds();
         overlayWindow.setBounds({ x, y, width: w, height: h });
+
+        // Handle visibility when switching widget type
+        if (widget.activeWidget === 'maxi') {
+          if (getCurrentState() === 'idle') overlayWindow.hide();
+        } else {
+          if (!overlayWindow.isVisible()) overlayWindow.show();
+        }
       }
     }
 
@@ -137,7 +152,16 @@ export function registerIpcHandlers(
 
     broadcastState('transcribing');
     try {
-      const rawText = await transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate);
+      let timeoutId: ReturnType<typeof setTimeout>;
+      const rawText = await Promise.race([
+        transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate).then((result) => {
+          clearTimeout(timeoutId);
+          return result;
+        }),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Transcription timed out after 30 seconds')), TRANSCRIPTION_TIMEOUT_MS);
+        }),
+      ]);
 
       // Safety net: filter known Whisper hallucinations that appear on near-silence audio
       const HALLUCINATION_RE = /^\s*[\[(]?(muzyka|music|cisza|silence|szum|noise|applause|oklaski|śmiech|laughter)[\])]?\s*$/i;

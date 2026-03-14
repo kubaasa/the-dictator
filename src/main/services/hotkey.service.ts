@@ -1,6 +1,9 @@
 import { uIOhook, UiohookKey } from 'uiohook-napi';
 import type { HotkeyMode } from '../../shared/types';
 
+// Modifier keycodes — releasing a modifier alone must not stop push-to-talk
+const MODIFIER_KEYCODES = new Set([UiohookKey.Ctrl, UiohookKey.Shift, UiohookKey.Alt]);
+
 // Maps readable key names (from renderer shortcut recorder) to uiohook scan codes.
 // Recorder uses e.code-based names (physical keys), so names like "BracketRight"
 // match regardless of Shift state.
@@ -90,19 +93,17 @@ export class HotkeyService {
 
     uIOhook.on('keyup', (e) => {
       if (this.isRecordingActive) {
-        // toggleRecording in push-to-talk mode: release → stop
-        if (this.mode === 'push-to-talk') {
-          const toggleBinding = this.bindings.find((b) => b.action === 'toggleRecording');
-          if (toggleBinding && toggleBinding.keys.includes(e.keycode)) {
+        // BUG FIX: only trigger stop on the primary (non-modifier) key release.
+        // Releasing Ctrl/Shift before the main key must not prematurely stop recording.
+        const isModifier = MODIFIER_KEYCODES.has(e.keycode);
+        if (!isModifier && this.mode === 'push-to-talk') {
+          const stopBindings = this.bindings.filter(
+            (b) => b.action === 'toggleRecording' || b.action === 'pushToTalk',
+          );
+          if (stopBindings.some((b) => b.keys.length > 0 && b.keys.includes(e.keycode))) {
             this.isRecordingActive = false;
             this.onRecordingStop();
           }
-        }
-        // Dedicated pushToTalk shortcut always stops on key release
-        const ptBinding = this.bindings.find((b) => b.action === 'pushToTalk');
-        if (ptBinding && ptBinding.keys.length > 0 && ptBinding.keys.includes(e.keycode)) {
-          this.isRecordingActive = false;
-          this.onRecordingStop();
         }
       }
       this.pressedKeys.delete(e.keycode);
@@ -116,6 +117,12 @@ export class HotkeyService {
   }
 
   updateShortcuts(shortcuts: { toggleRecording: string; cancelRecording: string; pushToTalk: string; modeSelect: string; showWindow: string }): void {
+    // If a recording is active when shortcuts change, stop it to avoid a state where
+    // the old shortcut key can no longer trigger stop (binding was replaced).
+    if (this.isRecordingActive) {
+      this.isRecordingActive = false;
+      this.onRecordingStop();
+    }
     for (const binding of this.bindings) {
       const shortcutStr = shortcuts[binding.action as keyof typeof shortcuts];
       if (shortcutStr) {
@@ -126,6 +133,12 @@ export class HotkeyService {
 
   setMode(mode: HotkeyMode): void {
     this.mode = mode;
+  }
+
+  // Called when the renderer confirms recording has stopped (e.g. after an error).
+  // Keeps HotkeyService in sync so a stuck isRecordingActive=true can't block new PTT presses.
+  notifyRecordingStopped(): void {
+    this.isRecordingActive = false;
   }
 
   private parseShortcut(shortcut: string): number[] {
@@ -156,6 +169,7 @@ export class HotkeyService {
   }
 
   private handlePushToTalkStart(): void {
+    if (this.mode !== 'push-to-talk') return;
     if (!this.isRecordingActive) {
       this.isRecordingActive = true;
       this.onRecordingStart();
@@ -163,20 +177,13 @@ export class HotkeyService {
   }
 
   private handleToggle(): void {
-    if (this.mode === 'toggle') {
-      if (this.isRecordingActive) {
-        this.isRecordingActive = false;
-        this.onRecordingStop();
-      } else {
-        this.isRecordingActive = true;
-        this.onRecordingStart();
-      }
+    if (this.mode !== 'toggle') return;
+    if (this.isRecordingActive) {
+      this.isRecordingActive = false;
+      this.onRecordingStop();
     } else {
-      // push-to-talk: keydown → start
-      if (!this.isRecordingActive) {
-        this.isRecordingActive = true;
-        this.onRecordingStart();
-      }
+      this.isRecordingActive = true;
+      this.onRecordingStart();
     }
   }
 }

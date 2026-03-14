@@ -35,6 +35,8 @@ export const IPC = {
 
   // Overlay button → main → renderer toggle
   OVERLAY_TOGGLE: 'overlay:toggle',
+  OVERLAY_CANCEL: 'overlay:cancel',
+  OVERLAY_MODE_CYCLE: 'overlay:mode-cycle',
 
   // History
   HISTORY_GET_ALL: 'history:get-all',

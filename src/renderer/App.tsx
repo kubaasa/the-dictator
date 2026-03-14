@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { OverlayWindow } from './components/OverlayWindow';
 import { Sidebar } from './components/Sidebar';
 import type { View as ActiveView } from './components/Sidebar';
@@ -25,14 +25,27 @@ export function App() {
   const micSelector = useMicrophoneSelector();
   const audioRecorder = useAudioRecorder(micSelector.selectedDeviceId);
 
-  // Cycle dictation mode on hotkey
+  const isCyclingModeRef = useRef(false);
+
+  // Cycle dictation mode on hotkey.
+  // Guard against rapid repeated presses: a second hotkey fires before the first
+  // setSettings resolves, which would make both calls read the same currentMode
+  // and land on the same next mode, skipping a step.
   const cycleDictationMode = useCallback(async () => {
-    const settings = await window.dictator.getSettings();
-    const currentIdx = MODES_CYCLE.indexOf(settings.dictation.currentMode);
-    const nextIdx = (currentIdx + 1) % MODES_CYCLE.length;
-    await window.dictator.setSettings({
-      dictation: { ...settings.dictation, currentMode: MODES_CYCLE[nextIdx] },
-    });
+    if (isCyclingModeRef.current) return;
+    isCyclingModeRef.current = true;
+    try {
+      const settings = await window.dictator.getSettings();
+      const currentIdx = MODES_CYCLE.indexOf(settings.dictation.currentMode);
+      // Guard against a corrupted/unknown mode value in the store — fall back to 'voice'
+      const validIdx = currentIdx === -1 ? 0 : currentIdx;
+      const nextIdx = (validIdx + 1) % MODES_CYCLE.length;
+      await window.dictator.setSettings({
+        dictation: { ...settings.dictation, currentMode: MODES_CYCLE[nextIdx] },
+      });
+    } finally {
+      isCyclingModeRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
