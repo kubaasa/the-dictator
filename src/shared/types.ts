@@ -44,7 +44,9 @@ export interface AppSettings {
     shortcuts: {
       toggleRecording: string;
       cancelRecording: string;
+      pushToTalk: string;
       modeSelect: string;
+      showWindow: string;
     };
     mode: HotkeyMode;
   };
@@ -90,7 +92,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     shortcuts: {
       toggleRecording: 'Ctrl+Shift+Space',
       cancelRecording: 'Ctrl+Shift+Escape',
+      pushToTalk: 'Ctrl+Shift+X',
       modeSelect: 'Ctrl+Shift+M',
+      showWindow: 'Ctrl+Shift+D',
     },
     mode: 'toggle',
   },

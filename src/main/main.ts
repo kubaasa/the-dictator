@@ -48,6 +48,16 @@ function sendModeSelectToRenderer(): void {
   }
 }
 
+function showOrHideMainWindow(): void {
+  if (!mainWindow) return;
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+}
+
 const hotkeyService = new HotkeyService(
   () => { pasteService.captureTarget(); sendToggleToRenderer(); },
   sendToggleToRenderer,
@@ -250,11 +260,12 @@ app.on('ready', () => {
   setupWindowControlIpc();
 
   const hotkey = store.get('hotkey');
-  const shortcuts = hotkey?.shortcuts ?? DEFAULT_SETTINGS.hotkey.shortcuts;
+  const shortcuts = { ...DEFAULT_SETTINGS.hotkey.shortcuts, ...(hotkey?.shortcuts ?? {}) };
   const mode = hotkey?.mode ?? DEFAULT_SETTINGS.hotkey.mode;
   hotkeyService.start(shortcuts, mode, {
     onCancel: sendCancelToRenderer,
     onModeSelect: sendModeSelectToRenderer,
+    onShowWindow: showOrHideMainWindow,
   });
 
   // Preload local transcription model in background (eliminates 2-3s delay on first use)

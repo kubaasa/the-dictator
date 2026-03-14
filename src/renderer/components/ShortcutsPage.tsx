@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { DEFAULT_SETTINGS, type AppSettings } from '../../shared/types';
+import { DEFAULT_SETTINGS, type AppSettings, type HotkeyMode } from '../../shared/types';
 
-type ShortcutKey = 'toggleRecording' | 'cancelRecording' | 'modeSelect';
+type ShortcutKey = 'toggleRecording' | 'cancelRecording' | 'pushToTalk' | 'modeSelect' | 'showWindow';
 
 interface ShortcutConfig {
   key: ShortcutKey;
@@ -9,10 +9,15 @@ interface ShortcutConfig {
   description: string;
 }
 
-const SHORTCUT_CONFIGS: ShortcutConfig[] = [
-  { key: 'toggleRecording', label: 'Toggle Recording', description: 'Start or stop voice recording' },
+const RECORDING_SHORTCUTS: ShortcutConfig[] = [
+  { key: 'toggleRecording', label: 'Toggle Recording', description: 'Start or stop voice recording (behavior follows Recording Mode above)' },
+  { key: 'pushToTalk', label: 'Push-to-Talk', description: 'Hold to record, release to stop — always works regardless of Recording Mode' },
   { key: 'cancelRecording', label: 'Cancel Recording', description: 'Discard current recording without transcription' },
+];
+
+const APP_SHORTCUTS: ShortcutConfig[] = [
   { key: 'modeSelect', label: 'Cycle Mode', description: 'Switch to next dictation mode' },
+  { key: 'showWindow', label: 'Show / Hide Window', description: 'Bring the app window to focus or hide it' },
 ];
 
 const MODIFIER_CODES = new Set([
@@ -55,9 +60,9 @@ function ShortcutDisplay({ combo }: { combo: string }) {
 
 // Maps e.code (physical key) → readable name that matches KEY_MAP in hotkey.service.ts
 function physicalKeyName(code: string): string | null {
-  if (code.startsWith('Key')) return code.slice(3);        // KeyA → A
-  if (code.startsWith('Digit')) return code.slice(5);      // Digit1 → 1
-  if (/^F\d{1,2}$/.test(code)) return code;               // F1-F12
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (/^F\d{1,2}$/.test(code)) return code;
 
   const codeMap: Record<string, string> = {
     Space: 'Space',
@@ -87,7 +92,7 @@ function formatKeyCombo(e: KeyboardEvent): string | null {
   if (e.ctrlKey) parts.push('Ctrl');
   if (e.shiftKey) parts.push('Shift');
   if (e.altKey) parts.push('Alt');
-  if (parts.length === 0) return null; // require at least one modifier
+  if (parts.length === 0) return null;
 
   const keyName = physicalKeyName(e.code);
   if (!keyName) return null;
@@ -98,6 +103,7 @@ function formatKeyCombo(e: KeyboardEvent): string | null {
 
 export function ShortcutsPage() {
   const [shortcuts, setShortcuts] = useState(DEFAULT_SETTINGS.hotkey.shortcuts);
+  const [hotkeyMode, setHotkeyMode] = useState<HotkeyMode>(DEFAULT_SETTINGS.hotkey.mode);
   const [listeningFor, setListeningFor] = useState<ShortcutKey | null>(null);
   const [pendingKeys, setPendingKeys] = useState('');
   const [error, setError] = useState('');
@@ -105,9 +111,9 @@ export function ShortcutsPage() {
 
   useEffect(() => {
     window.dictator.getSettings().then((s: AppSettings) => {
-      // Migration safety: old store may have hotkey.shortcut instead of hotkey.shortcuts
       const stored = s.hotkey?.shortcuts ?? DEFAULT_SETTINGS.hotkey.shortcuts;
-      setShortcuts(stored);
+      setShortcuts({ ...DEFAULT_SETTINGS.hotkey.shortcuts, ...stored });
+      setHotkeyMode(s.hotkey?.mode ?? DEFAULT_SETTINGS.hotkey.mode);
     });
   }, []);
 
@@ -117,6 +123,14 @@ export function ShortcutsPage() {
       hotkey: { ...settings.hotkey, shortcuts: newShortcuts },
     });
     setShortcuts(newShortcuts);
+  }, []);
+
+  const saveHotkeyMode = useCallback(async (newMode: HotkeyMode) => {
+    const settings = await window.dictator.getSettings();
+    await window.dictator.setSettings({
+      hotkey: { ...settings.hotkey, mode: newMode },
+    });
+    setHotkeyMode(newMode);
   }, []);
 
   const startListening = useCallback((key: ShortcutKey) => {
@@ -143,7 +157,6 @@ export function ShortcutsPage() {
         return;
       }
 
-      // Show current modifier state
       const parts: string[] = [];
       if (e.ctrlKey) parts.push('Ctrl');
       if (e.shiftKey) parts.push('Shift');
@@ -151,7 +164,6 @@ export function ShortcutsPage() {
 
       const combo = formatKeyCombo(e);
       if (combo) {
-        // Check for duplicates
         const otherShortcuts = Object.entries(shortcuts)
           .filter(([k]) => k !== listeningFor)
           .map(([, v]) => v);
@@ -175,7 +187,6 @@ export function ShortcutsPage() {
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [listeningFor, shortcuts, saveShortcuts, cancelListening]);
 
-  // Focus trap for listening mode
   useEffect(() => {
     if (listeningFor && inputRef.current) {
       inputRef.current.focus();
@@ -188,53 +199,100 @@ export function ShortcutsPage() {
     setError('');
   }, [shortcuts, saveShortcuts]);
 
-  return (
-    <main className="flex-1 overflow-y-auto p-6">
-      <section>
-        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-5">Keyboard Shortcuts</h2>
+  const renderShortcutRow = (config: ShortcutConfig) => {
+    const isListening = listeningFor === config.key;
+    const isDefault = shortcuts[config.key] === DEFAULT_SETTINGS.hotkey.shortcuts[config.key];
 
-        <div className="space-y-4">
-          {SHORTCUT_CONFIGS.map((config) => {
-            const isListening = listeningFor === config.key;
-            const isDefault = shortcuts[config.key] === DEFAULT_SETTINGS.hotkey.shortcuts[config.key];
-
-            return (
-              <div
-                key={config.key}
-                className="flex items-center justify-between rounded-lg border border-neutral-800 bg-[#141414] px-5 py-4"
-              >
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">{config.label}</span>
-                  <span className="text-xs text-neutral-500">{config.description}</span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <div
-                    ref={isListening ? inputRef : undefined}
-                    tabIndex={0}
-                    onClick={() => startListening(config.key)}
-                    className={`min-w-[200px] cursor-pointer rounded-md border px-4 py-2 flex items-center justify-center text-sm font-mono transition-colors ${
-                      isListening
-                        ? 'border-red-600 bg-red-600/10 text-red-400'
-                        : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600'
-                    }`}
-                  >
-                    {isListening
-                      ? (pendingKeys || 'AWAITING INPUT...')
-                      : <ShortcutDisplay combo={shortcuts[config.key]} />
-                    }
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+    return (
+      <div
+        key={config.key}
+        className="flex items-center justify-between rounded-lg border border-neutral-800 bg-[#141414] px-5 py-4"
+      >
+        <div className="flex flex-col gap-0.5">
+          <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">{config.label}</span>
+          <span className="text-xs text-neutral-500">{config.description}</span>
         </div>
 
-        {error && (
-          <p className="mt-3 text-sm text-red-400">{error}</p>
-        )}
+        <div className="flex items-center gap-2">
+          {!isDefault && !isListening && (
+            <button
+              onClick={() => resetShortcut(config.key)}
+              className="text-xs text-neutral-600 hover:text-neutral-400 transition-colors px-1"
+              title="Reset to default"
+            >
+              reset
+            </button>
+          )}
+          <div
+            ref={isListening ? inputRef : undefined}
+            tabIndex={0}
+            onClick={() => startListening(config.key)}
+            className={`min-w-[200px] cursor-pointer rounded-md border px-4 py-2 flex items-center justify-center text-sm font-mono transition-colors ${
+              isListening
+                ? 'border-red-600 bg-red-600/10 text-red-400'
+                : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600'
+            }`}
+          >
+            {isListening
+              ? (pendingKeys || 'AWAITING INPUT...')
+              : <ShortcutDisplay combo={shortcuts[config.key]} />
+            }
+          </div>
+        </div>
+      </div>
+    );
+  };
 
+  return (
+    <main className="flex-1 overflow-y-auto p-6 space-y-8">
+
+      {/* Recording Mode */}
+      <section>
+        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Recording Mode</h2>
+        <div className="flex gap-3">
+          {(['toggle', 'push-to-talk'] as HotkeyMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => saveHotkeyMode(m)}
+              className={`flex-1 rounded-lg border px-5 py-4 text-left transition-colors ${
+                hotkeyMode === m
+                  ? 'border-red-700 bg-red-900/20 text-red-400'
+                  : 'border-neutral-800 bg-[#141414] text-neutral-400 hover:border-neutral-700'
+              }`}
+            >
+              <span className="block font-mono text-xs font-semibold uppercase tracking-[0.25em] mb-1">
+                {m === 'toggle' ? 'Toggle Mode' : 'Push-to-Talk'}
+              </span>
+              <span className="text-xs text-neutral-500">
+                {m === 'toggle'
+                  ? 'Press once to start, press again to stop'
+                  : 'Hold the hotkey while speaking, release to stop'}
+              </span>
+            </button>
+          ))}
+        </div>
       </section>
+
+      {/* Recording Shortcuts */}
+      <section>
+        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Recording Shortcuts</h2>
+        <div className="space-y-3">
+          {RECORDING_SHORTCUTS.map(renderShortcutRow)}
+        </div>
+      </section>
+
+      {/* App Shortcuts */}
+      <section>
+        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">App Shortcuts</h2>
+        <div className="space-y-3">
+          {APP_SHORTCUTS.map(renderShortcutRow)}
+        </div>
+      </section>
+
+      {error && (
+        <p className="text-sm text-red-400">{error}</p>
+      )}
+
     </main>
   );
 }

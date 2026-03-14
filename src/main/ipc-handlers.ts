@@ -42,10 +42,20 @@ export function registerIpcHandlers(
           toggleRecording: hotkey.shortcut as string,
           cancelRecording: DEFAULT_SETTINGS.hotkey.shortcuts.cancelRecording,
           modeSelect: DEFAULT_SETTINGS.hotkey.shortcuts.modeSelect,
+          showWindow: DEFAULT_SETTINGS.hotkey.shortcuts.showWindow,
         },
         mode: hotkey.mode ?? DEFAULT_SETTINGS.hotkey.mode,
       };
       store.set('hotkey', migrated);
+    }
+
+    // Migrate missing shortcuts added in later versions
+    const shortcuts = (hotkey?.shortcuts ?? {}) as Record<string, unknown>;
+    if (hotkey?.shortcuts && !shortcuts.showWindow) {
+      store.set('hotkey.shortcuts.showWindow', DEFAULT_SETTINGS.hotkey.shortcuts.showWindow);
+    }
+    if (hotkey?.shortcuts && !shortcuts.pushToTalk) {
+      store.set('hotkey.shortcuts.pushToTalk', DEFAULT_SETTINGS.hotkey.shortcuts.pushToTalk);
     }
 
     // Migrate old dictation.customPrompt → dictation.modePrompts format

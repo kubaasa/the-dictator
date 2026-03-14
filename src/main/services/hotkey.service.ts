@@ -69,16 +69,18 @@ export class HotkeyService {
   }
 
   start(
-    shortcuts: { toggleRecording: string; cancelRecording: string; modeSelect: string },
+    shortcuts: { toggleRecording: string; cancelRecording: string; pushToTalk: string; modeSelect: string; showWindow: string },
     mode: HotkeyMode,
-    callbacks: { onCancel: () => void; onModeSelect: () => void },
+    callbacks: { onCancel: () => void; onModeSelect: () => void; onShowWindow: () => void },
   ): void {
     this.mode = mode;
 
     this.bindings = [
       { action: 'toggleRecording', keys: this.parseShortcut(shortcuts.toggleRecording), callback: () => this.handleToggle() },
       { action: 'cancelRecording', keys: this.parseShortcut(shortcuts.cancelRecording), callback: callbacks.onCancel },
+      { action: 'pushToTalk', keys: this.parseShortcut(shortcuts.pushToTalk), callback: () => this.handlePushToTalkStart() },
       { action: 'modeSelect', keys: this.parseShortcut(shortcuts.modeSelect), callback: callbacks.onModeSelect },
+      { action: 'showWindow', keys: this.parseShortcut(shortcuts.showWindow), callback: callbacks.onShowWindow },
     ];
 
     uIOhook.on('keydown', (e) => {
@@ -87,10 +89,18 @@ export class HotkeyService {
     });
 
     uIOhook.on('keyup', (e) => {
-      // Push-to-talk: release any toggleRecording key → stop
-      if (this.mode === 'push-to-talk' && this.isRecordingActive) {
-        const toggleBinding = this.bindings.find((b) => b.action === 'toggleRecording');
-        if (toggleBinding && toggleBinding.keys.includes(e.keycode)) {
+      if (this.isRecordingActive) {
+        // toggleRecording in push-to-talk mode: release → stop
+        if (this.mode === 'push-to-talk') {
+          const toggleBinding = this.bindings.find((b) => b.action === 'toggleRecording');
+          if (toggleBinding && toggleBinding.keys.includes(e.keycode)) {
+            this.isRecordingActive = false;
+            this.onRecordingStop();
+          }
+        }
+        // Dedicated pushToTalk shortcut always stops on key release
+        const ptBinding = this.bindings.find((b) => b.action === 'pushToTalk');
+        if (ptBinding && ptBinding.keys.length > 0 && ptBinding.keys.includes(e.keycode)) {
           this.isRecordingActive = false;
           this.onRecordingStop();
         }
@@ -105,7 +115,7 @@ export class HotkeyService {
     uIOhook.stop();
   }
 
-  updateShortcuts(shortcuts: { toggleRecording: string; cancelRecording: string; modeSelect: string }): void {
+  updateShortcuts(shortcuts: { toggleRecording: string; cancelRecording: string; pushToTalk: string; modeSelect: string; showWindow: string }): void {
     for (const binding of this.bindings) {
       const shortcutStr = shortcuts[binding.action as keyof typeof shortcuts];
       if (shortcutStr) {
@@ -142,6 +152,13 @@ export class HotkeyService {
         binding.callback();
         return;
       }
+    }
+  }
+
+  private handlePushToTalkStart(): void {
+    if (!this.isRecordingActive) {
+      this.isRecordingActive = true;
+      this.onRecordingStart();
     }
   }
 
