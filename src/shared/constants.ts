@@ -53,6 +53,10 @@ export const IPC = {
   APP_QUIT: 'app:quit',
   APP_SHOW_SETTINGS: 'app:show-settings',
   APP_OPEN_MODELS_FOLDER: 'app:open-models-folder',
+
+  // Window controls
+  WINDOW_MINIMIZE: 'window:minimize',
+  WINDOW_CLOSE: 'window:close',
 } as const;
 
 export const DICTATION_MODE_PROMPTS: Record<string, string> = {

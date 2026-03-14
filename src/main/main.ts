@@ -62,6 +62,7 @@ function createMainWindow(): BrowserWindow {
     width: 1200,
     height: 800,
     resizable: false,
+    frame: false,
     show: false,
     autoHideMenuBar: true,
     title: 'The Dictator',
@@ -184,6 +185,11 @@ function setupRecordingIpc(): void {
   });
 }
 
+function setupWindowControlIpc(): void {
+  ipcMain.on(IPC.WINDOW_MINIMIZE, () => mainWindow?.minimize());
+  ipcMain.on(IPC.WINDOW_CLOSE, () => mainWindow?.hide());
+}
+
 app.on('ready', () => {
   // Serve local audio files via recording:// with proper Range request support.
   // The HTML5 audio element requires Range responses (HTTP 206) for buffering/seeking.
@@ -241,6 +247,7 @@ app.on('ready', () => {
   trayManager.create(mainWindow);
   registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService);
   setupRecordingIpc();
+  setupWindowControlIpc();
 
   const hotkey = store.get('hotkey');
   const shortcuts = hotkey?.shortcuts ?? DEFAULT_SETTINGS.hotkey.shortcuts;

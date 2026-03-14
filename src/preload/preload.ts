@@ -64,6 +64,10 @@ export interface DictatorAPI {
   quit: () => void;
   showSettings: () => void;
   openModelsFolder: () => void;
+
+  // Window controls
+  minimize: () => void;
+  closeWindow: () => void;
 }
 
 const api: DictatorAPI = {
@@ -173,6 +177,10 @@ const api: DictatorAPI = {
   quit: () => ipcRenderer.send(IPC.APP_QUIT),
   showSettings: () => ipcRenderer.send(IPC.APP_SHOW_SETTINGS),
   openModelsFolder: () => ipcRenderer.send(IPC.APP_OPEN_MODELS_FOLDER),
+
+  // Window controls
+  minimize: () => ipcRenderer.send(IPC.WINDOW_MINIMIZE),
+  closeWindow: () => ipcRenderer.send(IPC.WINDOW_CLOSE),
 };
 
 contextBridge.exposeInMainWorld('dictator', api);

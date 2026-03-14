@@ -58,8 +58,24 @@ export function App() {
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
         <header className="drag-region flex items-center px-5 py-3 border-b border-neutral-800/50">
           {activeView !== 'home' && <RecIndicator compact isRecording={audioRecorder.isRecording} recordingStartTime={audioRecorder.recordingStartTime} />}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-3">
             <MicrophoneSelector {...micSelector} />
+            <div className="no-drag flex items-center gap-1">
+              <button
+                onClick={() => window.dictator.minimize()}
+                className="flex h-7 w-7 items-center justify-center rounded font-mono text-sm text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+                title="Minimalizuj"
+              >
+                &#8211;
+              </button>
+              <button
+                onClick={() => window.dictator.closeWindow()}
+                className="flex h-7 w-7 items-center justify-center rounded font-mono text-sm text-neutral-500 transition-colors hover:bg-red-900/60 hover:text-red-300"
+                title="Zamknij"
+              >
+                &#x2715;
+              </button>
+            </div>
           </div>
         </header>
 

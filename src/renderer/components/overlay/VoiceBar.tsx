@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { RecordingState } from '../../../shared/types';
 
 interface VoiceBarProps {
@@ -14,6 +14,10 @@ const SILENCE_THRESHOLD = 0.04;
 const BASE_COLOR = 'rgba(255,255,255,0.88)';
 const TRANSCRIBE_COLOR = '#FB923C';
 const ERROR_COLOR = '#F87171';
+
+// Proximity zone padding around the pill (px)
+const PROX_V = 20;
+const PROX_H = 30;
 
 // Pre-computed per-bar properties — stable across renders
 const BARS = Array.from({ length: BAR_COUNT }, (_, i) => {
@@ -88,10 +92,24 @@ export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }
   const level    = Math.min(1, Math.max(0, voiceLevel));
   const isSilent = isRecording && level < SILENCE_THRESHOLD;
 
-  const [isHovered, setIsHovered] = useState(false);
+  const [isProximate, setIsProximate] = useState(false);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Expand when active or hovered
-  const isExpanded = isHovered || isRecording || isTranscribing || isError;
+  const handleEnter = useCallback(() => {
+    if (leaveTimer.current) { clearTimeout(leaveTimer.current); leaveTimer.current = null; }
+    setIsProximate(true);
+  }, []);
+
+  const handleLeave = useCallback(() => {
+    // Debounce collapse so spurious leave events don't cause flickering
+    leaveTimer.current = setTimeout(() => setIsProximate(false), 150);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (leaveTimer.current) clearTimeout(leaveTimer.current); };
+  }, []);
+
+  const isExpanded = isProximate || isRecording || isTranscribing || isError;
 
   const collapsedH = 10;
   const expandedH  = maxBarH + gap * 4;
@@ -102,155 +120,173 @@ export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }
     <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <style>{KEYFRAMES}</style>
 
-      {/* Pill container */}
+      {/*
+        Proximity wrapper: slightly larger than the pill (PROX_V / PROX_H padding).
+        background: rgba(0,0,0,0.01) — alpha=1/255, visually invisible but forces Windows
+        to route mouse events to this element even in a transparent Electron window.
+      */}
       <div
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
         style={{
-          position: 'relative',
-          width: 'fit-content',
-          height: pillHeight,
+          padding: `${PROX_V}px ${PROX_H}px`,
           borderRadius: 9999,
-          opacity,
-          background: 'rgba(8, 8, 8, 0.88)',
-          backdropFilter: 'blur(24px)',
-          WebkitBackdropFilter: 'blur(24px)',
-          border: '0.5px solid rgba(255,255,255,0.85)',
-          boxShadow: 'none',
-          WebkitAppRegion: 'drag',
+          background: 'rgba(0,0,0,0.01)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap,
-          overflow: 'hidden',
-          padding: `0 ${gap * 3}px`,
-          boxSizing: 'border-box',
-          transition: 'height 420ms cubic-bezier(0.4, 0, 0.2, 1)',
-          animation: isError ? 'vb-error-shake 0.3s ease-in-out 2' : 'none',
         } as React.CSSProperties}
       >
-        {(isIdle || isRecording) && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(8, 8, 8, 0.75)',
-              borderRadius: 9999,
-              pointerEvents: 'none',
-              opacity: isHovered ? 1 : 0,
-              transition: 'opacity 180ms ease',
-              zIndex: 10,
-            } as React.CSSProperties}
-          >
-            <button
-              onMouseDown={(e) => { e.preventDefault(); if (isRecording) setIsHovered(false); onToggleRecording?.(); }}
+        {/* Pill container */}
+        <div
+          style={{
+            position: 'relative',
+            width: 'fit-content',
+            height: pillHeight,
+            borderRadius: 9999,
+            opacity,
+            background: 'rgba(8, 8, 8, 0.88)',
+            backdropFilter: 'blur(24px)',
+            WebkitBackdropFilter: 'blur(24px)',
+            border: '0.5px solid rgba(255,255,255,0.85)',
+            boxShadow: 'none',
+            // Disable drag region when hovered — drag regions swallow mouse events in Electron,
+            // causing spurious mouseleave on the proximity wrapper.
+            WebkitAppRegion: isProximate ? 'no-drag' : 'drag',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap,
+            overflow: 'hidden',
+            padding: `0 ${gap * 3}px`,
+            boxSizing: 'border-box',
+            transition: 'height 420ms cubic-bezier(0.4, 0, 0.2, 1)',
+            animation: isError ? 'vb-error-shake 0.3s ease-in-out 2' : 'none',
+          } as React.CSSProperties}
+        >
+          {(isIdle || isRecording) && (
+            <div
               style={{
-                WebkitAppRegion: 'no-drag',
-                cursor: 'pointer',
-                background: 'transparent',
-                border: 'none',
-                padding: 0,
+                position: 'absolute',
+                inset: 0,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                pointerEvents: isHovered ? 'auto' : 'none',
+                background: 'rgba(8, 8, 8, 0.75)',
+                borderRadius: 9999,
+                pointerEvents: 'none',
+                opacity: isProximate ? 1 : 0,
+                transition: 'opacity 180ms ease',
+                zIndex: 10,
               } as React.CSSProperties}
             >
-              {isRecording ? (
-                // Stop: white rounded square
-                <svg width={Math.round(maxBarH * 0.75)} height={Math.round(maxBarH * 0.75)} viewBox="0 0 24 24">
-                  <rect x="5" y="5" width="14" height="14" rx="2.5" fill="rgba(255,255,255,0.92)" />
-                </svg>
-              ) : (
-                // Record: red circle with outer ring
-                <svg width={Math.round(maxBarH * 0.75)} height={Math.round(maxBarH * 0.75)} viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="10" fill="none" stroke="#EF4444" strokeWidth="1.5" />
-                  <circle cx="12" cy="12" r="6" fill="#EF4444" />
-                </svg>
-              )}
-            </button>
-          </div>
-        )}
+              <button
+                onMouseDown={(e) => { e.preventDefault(); onToggleRecording?.(); }}
+                style={{
+                  WebkitAppRegion: 'no-drag',
+                  cursor: 'pointer',
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  pointerEvents: isProximate ? 'auto' : 'none',
+                } as React.CSSProperties}
+              >
+                {isRecording ? (
+                  // Stop: white rounded square
+                  <svg width={Math.round(maxBarH * 0.75)} height={Math.round(maxBarH * 0.75)} viewBox="0 0 24 24">
+                    <rect x="5" y="5" width="14" height="14" rx="2.5" fill="rgba(255,255,255,0.92)" />
+                  </svg>
+                ) : (
+                  // Record: red circle with outer ring
+                  <svg width={Math.round(maxBarH * 0.75)} height={Math.round(maxBarH * 0.75)} viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="#EF4444" strokeWidth="1.5" />
+                    <circle cx="12" cy="12" r="6" fill="#EF4444" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          )}
 
-        {BARS.map((bar, i) => {
-          const {
-            envelope, multiplier, jitter,
-            idleScale, silenceDelay, transcribeDelay,
-          } = bar;
+          {BARS.map((bar, i) => {
+            const {
+              envelope, multiplier, jitter,
+              idleScale, silenceDelay, transcribeDelay,
+            } = bar;
 
-          const barColor = isError ? ERROR_COLOR : isTranscribing ? TRANSCRIBE_COLOR : BASE_COLOR;
+            const barColor = isError ? ERROR_COLOR : isTranscribing ? TRANSCRIBE_COLOR : BASE_COLOR;
 
-          let transform: string | undefined;
-          let animation = 'none';
-          let transition = 'transform 0.3s ease-out, opacity 200ms ease-out';
-          let barOpacity: number;
-          let filter: string | undefined;
+            let transform: string | undefined;
+            let animation = 'none';
+            let transition = 'transform 0.3s ease-out, opacity 200ms ease-out';
+            let barOpacity: number;
+            let filter: string | undefined;
 
-          if (isIdle) {
-            transform = `scaleY(${idleScale})`;
-            barOpacity = 0.4;
-            filter = undefined;
-
-          } else if (isRecording) {
-            if (isSilent) {
-              // Static low bars — no animation when silent
+            if (isIdle) {
               transform = `scaleY(${idleScale})`;
-              barOpacity = 0.45;
+              barOpacity = 0.4;
               filter = undefined;
-              transition = 'transform 150ms ease-out, opacity 200ms ease-out';
+
+            } else if (isRecording) {
+              if (isSilent) {
+                // Static low bars — no animation when silent
+                transform = `scaleY(${idleScale})`;
+                barOpacity = 0.45;
+                filter = undefined;
+                transition = 'transform 150ms ease-out, opacity 200ms ease-out';
+              } else {
+                const curvedLevel = Math.pow(level, 0.45);
+                const barScale = Math.min(1.0, Math.max(0.05, curvedLevel * envelope * multiplier * jitter));
+                transform = `scaleY(${barScale.toFixed(4)})`;
+                transition = 'transform 50ms linear, opacity 200ms ease-out';
+                barOpacity = 0.6 + curvedLevel * 0.4;
+                filter = undefined;
+              }
+
+            } else if (isTranscribing) {
+              animation = `vb-transcribe 1.2s linear ${transcribeDelay}s infinite`;
+              barOpacity = 0.80;
+              filter = undefined;
+              transition = 'opacity 200ms ease-out';
+
+            } else if (isDone) {
+              animation = `vb-done-collapse 400ms cubic-bezier(0.4, 0, 1, 1) forwards`;
+              barOpacity = 0.7;
+              filter = undefined;
+              transition = 'opacity 200ms ease-out';
+
             } else {
-              const curvedLevel = Math.pow(level, 0.45);
-              const barScale = Math.min(1.0, Math.max(0.05, curvedLevel * envelope * multiplier * jitter));
-              transform = `scaleY(${barScale.toFixed(4)})`;
-              transition = 'transform 50ms linear, opacity 200ms ease-out';
-              barOpacity = 0.6 + curvedLevel * 0.4;
+              transform = 'scaleY(0.3)';
+              barOpacity = 0.9;
               filter = undefined;
             }
 
-          } else if (isTranscribing) {
-            animation = `vb-transcribe 1.2s linear ${transcribeDelay}s infinite`;
-            barOpacity = 0.80;
-            filter = undefined;
-            transition = 'opacity 200ms ease-out';
+            // Fade bars in/out with pill expand/collapse
+            const finalOpacity = isExpanded ? barOpacity : 0;
 
-          } else if (isDone) {
-            animation = `vb-done-collapse 400ms cubic-bezier(0.4, 0, 1, 1) forwards`;
-            barOpacity = 0.7;
-            filter = undefined;
-            transition = 'opacity 200ms ease-out';
-
-          } else {
-            transform = 'scaleY(0.3)';
-            barOpacity = 0.9;
-            filter = undefined;
-          }
-
-          // Fade bars in/out with pill expand/collapse
-          const finalOpacity = isExpanded ? barOpacity : 0;
-
-          return (
-            <div
-              key={i}
-              style={{
-                width: barWidth,
-                height: maxBarH,
-                borderRadius: barWidth / 2,
-                background: barColor,
-                transformOrigin: 'center',
-                flexShrink: 0,
-                transform,
-                animation,
-                transition,
-                opacity: finalOpacity,
-                filter,
-                '--from-scale': idleScale,
-              } as React.CSSProperties}
-            />
-          );
-        })}
+            return (
+              <div
+                key={i}
+                style={{
+                  width: barWidth,
+                  height: maxBarH,
+                  borderRadius: barWidth / 2,
+                  background: barColor,
+                  transformOrigin: 'center',
+                  flexShrink: 0,
+                  transform,
+                  animation,
+                  transition,
+                  opacity: finalOpacity,
+                  filter,
+                  '--from-scale': idleScale,
+                } as React.CSSProperties}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
