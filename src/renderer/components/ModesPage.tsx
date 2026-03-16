@@ -469,7 +469,123 @@ export function ModesPage(props: ModelStatus) {
 
         </section>
 
-        {/* ── Section 2: Transcription ── */}
+        {/* ── Section 2: AI Provider ── */}
+        <section>
+          <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
+            AI Provider
+          </h2>
+          <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-5">
+
+            {/* Provider pills */}
+            <div>
+              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
+                Provider
+              </span>
+              <div className="flex gap-2">
+                {AI_PROVIDER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleProviderChange(opt.value)}
+                    className={`rounded-lg border px-5 py-2 font-mono text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-200 cursor-pointer ${
+                      aiProvider === opt.value
+                        ? 'border-red-600/50 bg-red-600/10 text-red-400'
+                        : 'border-neutral-700 bg-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* AI Model cards */}
+            {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
+              <div>
+                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
+                  Model
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {currentAiModels.map((opt) => {
+                    const isSelected = opt.value === currentAiModel;
+                    return (
+                      <button
+                        key={opt.value}
+                        onClick={() => handleAiModelChange(opt.value)}
+                        className={`flex flex-col items-start rounded-lg border p-3 text-left transition-all duration-200 cursor-pointer ${
+                          isSelected
+                            ? 'border-red-600/50 bg-red-600/5'
+                            : 'border-neutral-800 bg-[#0f0f0f] hover:border-neutral-700'
+                        }`}
+                      >
+                        <span className={`font-mono text-sm font-semibold ${isSelected ? 'text-red-400' : 'text-neutral-300'}`}>
+                          {opt.label}
+                        </span>
+                        <span className="mt-1 text-xs text-neutral-600 leading-tight">
+                          {AI_MODEL_DESCRIPTIONS[opt.value] ?? ''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Ollama config */}
+            {aiProvider === 'ollama' && (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">URL</span>
+                  <input
+                    type="text"
+                    value={aiOllamaUrl}
+                    onChange={(e) => setAiOllamaUrl(e.target.value)}
+                    placeholder="http://localhost:11434"
+                    className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30"
+                  />
+                </div>
+                <div>
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">Model</span>
+                  <input
+                    type="text"
+                    value={aiOllamaModel}
+                    onChange={(e) => setAiOllamaModel(e.target.value)}
+                    placeholder="llama3"
+                    className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* API Key */}
+            {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
+              <div>
+                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">
+                  API Key
+                </span>
+                <ApiKeyInput
+                  value={aiProvider === 'openai' ? aiOpenaiKey : aiAnthropicKey}
+                  onChange={(v) => aiProvider === 'openai' ? setAiOpenaiKey(v) : setAiAnthropicKey(v)}
+                  onSave={handleAiKeySave}
+                  saved={aiKeySaved}
+                  provider={aiProvider as 'openai' | 'anthropic'}
+                />
+              </div>
+            )}
+
+            {/* Ollama save */}
+            {aiProvider === 'ollama' && (
+              <button
+                onClick={handleAiKeySave}
+                className="self-start rounded-lg bg-neutral-700 px-4 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider text-neutral-200 transition-colors hover:bg-neutral-600 cursor-pointer"
+              >
+                {aiKeySaved ? 'Saved' : 'Save'}
+              </button>
+            )}
+
+          </div>
+        </section>
+
+        {/* ── Section 3: Transcription ── */}
         <section>
           <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
             Transcription
@@ -606,122 +722,6 @@ export function ModesPage(props: ModelStatus) {
               />
             </div>
           )}
-        </section>
-
-        {/* ── Section 3: AI Provider ── */}
-        <section>
-          <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
-            AI Provider
-          </h2>
-          <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-5">
-
-            {/* Provider pills */}
-            <div>
-              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
-                Provider
-              </span>
-              <div className="flex gap-2">
-                {AI_PROVIDER_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => handleProviderChange(opt.value)}
-                    className={`rounded-lg border px-5 py-2 font-mono text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-200 cursor-pointer ${
-                      aiProvider === opt.value
-                        ? 'border-red-600/50 bg-red-600/10 text-red-400'
-                        : 'border-neutral-700 bg-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* AI Model cards */}
-            {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
-              <div>
-                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
-                  Model
-                </span>
-                <div className="grid grid-cols-3 gap-2">
-                  {currentAiModels.map((opt) => {
-                    const isSelected = opt.value === currentAiModel;
-                    return (
-                      <button
-                        key={opt.value}
-                        onClick={() => handleAiModelChange(opt.value)}
-                        className={`flex flex-col items-start rounded-lg border p-3 text-left transition-all duration-200 cursor-pointer ${
-                          isSelected
-                            ? 'border-red-600/50 bg-red-600/5'
-                            : 'border-neutral-800 bg-[#0f0f0f] hover:border-neutral-700'
-                        }`}
-                      >
-                        <span className={`font-mono text-sm font-semibold ${isSelected ? 'text-red-400' : 'text-neutral-300'}`}>
-                          {opt.label}
-                        </span>
-                        <span className="mt-1 text-xs text-neutral-600 leading-tight">
-                          {AI_MODEL_DESCRIPTIONS[opt.value] ?? ''}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Ollama config */}
-            {aiProvider === 'ollama' && (
-              <div className="flex flex-col gap-3">
-                <div>
-                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">URL</span>
-                  <input
-                    type="text"
-                    value={aiOllamaUrl}
-                    onChange={(e) => setAiOllamaUrl(e.target.value)}
-                    placeholder="http://localhost:11434"
-                    className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30"
-                  />
-                </div>
-                <div>
-                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">Model</span>
-                  <input
-                    type="text"
-                    value={aiOllamaModel}
-                    onChange={(e) => setAiOllamaModel(e.target.value)}
-                    placeholder="llama3"
-                    className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* API Key */}
-            {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
-              <div>
-                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">
-                  API Key
-                </span>
-                <ApiKeyInput
-                  value={aiProvider === 'openai' ? aiOpenaiKey : aiAnthropicKey}
-                  onChange={(v) => aiProvider === 'openai' ? setAiOpenaiKey(v) : setAiAnthropicKey(v)}
-                  onSave={handleAiKeySave}
-                  saved={aiKeySaved}
-                  provider={aiProvider as 'openai' | 'anthropic'}
-                />
-              </div>
-            )}
-
-            {/* Ollama save */}
-            {aiProvider === 'ollama' && (
-              <button
-                onClick={handleAiKeySave}
-                className="self-start rounded-lg bg-neutral-700 px-4 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider text-neutral-200 transition-colors hover:bg-neutral-600 cursor-pointer"
-              >
-                {aiKeySaved ? 'Saved' : 'Save'}
-              </button>
-            )}
-
-          </div>
         </section>
 
       </div>
