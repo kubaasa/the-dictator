@@ -65,6 +65,8 @@ export class HotkeyService {
   private isRecordingActive = false;
   private onRecordingStart: () => void;
   private onRecordingStop: () => void;
+  private keydownHandler: ((e: { keycode: number }) => void) | null = null;
+  private keyupHandler: ((e: { keycode: number }) => void) | null = null;
 
   constructor(onRecordingStart: () => void, onRecordingStop: () => void) {
     this.onRecordingStart = onRecordingStart;
@@ -86,15 +88,17 @@ export class HotkeyService {
       { action: 'showWindow', keys: this.parseShortcut(shortcuts.showWindow), callback: callbacks.onShowWindow },
     ];
 
-    uIOhook.on('keydown', (e) => {
+    // Remove previous listeners to prevent duplicates if start() is called multiple times
+    if (this.keydownHandler) uIOhook.off('keydown', this.keydownHandler);
+    if (this.keyupHandler) uIOhook.off('keyup', this.keyupHandler);
+
+    this.keydownHandler = (e) => {
       this.pressedKeys.add(e.keycode);
       this.checkBindings();
-    });
+    };
 
-    uIOhook.on('keyup', (e) => {
+    this.keyupHandler = (e) => {
       if (this.isRecordingActive) {
-        // BUG FIX: only trigger stop on the primary (non-modifier) key release.
-        // Releasing Ctrl/Shift before the main key must not prematurely stop recording.
         const isModifier = MODIFIER_KEYCODES.has(e.keycode);
         if (!isModifier && this.mode === 'push-to-talk') {
           const stopBindings = this.bindings.filter(
@@ -107,8 +111,10 @@ export class HotkeyService {
         }
       }
       this.pressedKeys.delete(e.keycode);
-    });
+    };
 
+    uIOhook.on('keydown', this.keydownHandler);
+    uIOhook.on('keyup', this.keyupHandler);
     uIOhook.start();
   }
 

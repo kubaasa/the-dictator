@@ -61,6 +61,7 @@ let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let currentState: RecordingState = 'idle';
 let overlayHideTimeout: ReturnType<typeof setTimeout> | null = null;
+let historyService: HistoryService | null = null;
 
 const hotkeyService = new HotkeyService(
   () => { pasteService.captureTarget(); broadcastState('initializing'); sendToggleToRenderer(); },
@@ -244,6 +245,13 @@ function setupRecordingIpc(): void {
 function setupWindowControlIpc(): void {
   ipcMain.on(IPC.WINDOW_MINIMIZE, () => mainWindow?.minimize());
   ipcMain.on(IPC.WINDOW_CLOSE, () => mainWindow?.hide());
+  ipcMain.on(IPC.APP_QUIT, () => app.quit());
+  ipcMain.on(IPC.APP_SHOW_SETTINGS, () => {
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 }
 
 app.on('ready', () => {
@@ -298,7 +306,7 @@ app.on('ready', () => {
 
   const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
-  const historyService = new HistoryService(path.join(app.getPath('userData'), 'history.db'));
+  historyService = new HistoryService(path.join(app.getPath('userData'), 'history.db'));
 
   trayManager.create(mainWindow);
   registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService, () => currentState);
@@ -349,4 +357,5 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   hotkeyService.stop();
   trayManager.destroy();
+  historyService?.close();
 });

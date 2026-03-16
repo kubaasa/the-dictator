@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export interface MicDevice {
   deviceId: string;
@@ -38,18 +38,24 @@ export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
     });
   }, []);
 
+  const mountedRef = useRef(true);
   useEffect(() => {
+    mountedRef.current = true;
+
     // Request permission on mount so labels are populated immediately
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((stream) => {
         stream.getTracks().forEach((t) => t.stop());
-        return refreshDevices();
+        if (mountedRef.current) return refreshDevices();
       })
-      .catch(() => refreshDevices());
+      .catch(() => { if (mountedRef.current) refreshDevices(); });
 
     navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
-    return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices);
+    return () => {
+      mountedRef.current = false;
+      navigator.mediaDevices.removeEventListener('devicechange', refreshDevices);
+    };
   }, [refreshDevices]);
 
   const selectedLabel =

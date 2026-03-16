@@ -71,10 +71,6 @@ const INIT_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) => {
 });
 
 const KEYFRAMES = `
-@keyframes rec-blink {
-  0%, 49.9% { opacity: 1; }
-  50%, 100%  { opacity: 0; }
-}
 @keyframes maxi-error-shake {
   0%        { transform: translateX(0); }
   20%       { transform: translateX(4px); }
@@ -152,7 +148,10 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
       return;
     }
     vizActiveRef.current = true;
-    startVisualization();
+    startVisualization().catch(() => {
+      vizActiveRef.current = false;
+      stopVisualization();
+    });
     return () => {
       vizActiveRef.current = false;
       stopVisualization();
@@ -330,9 +329,9 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
             padding: '10px 20px 8px',
             borderRadius: 16,
             background: '#000000',
-            border: '1.5px solid #000000',
+            border: '1.5px solid rgba(255,255,255,0.08)',
             minWidth: 380,
-            animation: isError ? 'maxi-error-shake 0.3s ease-in-out 2' : 'none',
+            animation: isError ? 'maxi-error-shake 0.6s ease-in-out 1' : 'none',
           } as React.CSSProperties}
         >
           {/* Row 1: Status indicator */}
@@ -343,7 +342,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
                   <span style={{
                     width: 7, height: 7, borderRadius: '50%',
                     background: RED, display: 'inline-block', flexShrink: 0,
-                    animation: 'rec-blink 1s ease-in-out infinite',
+                    animation: 'rec-blink 1s step-start infinite',
                   }} />
                 )}
                 <span style={{

@@ -2,7 +2,6 @@ export const IPC = {
   // Recording
   RECORDING_START: 'recording:start',
   RECORDING_STOP: 'recording:stop',
-  RECORDING_DATA: 'recording:data',
   RECORDING_STATE_CHANGED: 'recording:state-changed',
 
   // Settings

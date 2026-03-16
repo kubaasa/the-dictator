@@ -28,28 +28,29 @@ export function useModelStatus() {
     setProgress(0);
     setError('');
 
-    const removeProgress = window.dictator.onModelProgress((pct) => setProgress(pct));
+    const listeners: (() => void)[] = [];
 
     const cleanup = () => {
-      removeProgress();
-      removeDone();
-      removeError();
+      for (const unsub of listeners) unsub();
+      listeners.length = 0;
       cleanupRef.current = null;
     };
 
-    const removeDone = window.dictator.onModelDone(() => {
+    listeners.push(window.dictator.onModelProgress((pct) => setProgress(pct)));
+
+    listeners.push(window.dictator.onModelDone(() => {
       cleanup();
       setDownloaded(true);
       setDownloading(false);
       setProgress(100);
       window.dictator.getDownloadedModels().then(setDownloadedModels);
-    });
+    }));
 
-    const removeError = window.dictator.onModelError((msg) => {
+    listeners.push(window.dictator.onModelError((msg) => {
       cleanup();
       setError(msg);
       setDownloading(false);
-    });
+    }));
 
     cleanupRef.current = cleanup;
     window.dictator.downloadModel();

@@ -183,6 +183,15 @@ body,
   box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
 }
 
+.temperature-slider:focus {
+  outline: 2px solid rgba(220, 38, 38, 0.4);
+  outline-offset: 2px;
+}
+
+.temperature-slider:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.25);
+}
+
 .btn-noise {
   position: relative;
 }

@@ -204,7 +204,7 @@ export class TranscriptionService {
     if (this.transcriptionCount % TranscriptionService.PIPELINE_RESET_INTERVAL === 0) {
       this.pipe = null;
       this.loadedModelId = null;
-      this.loadingPromise = null;
+      // loadFromCache() guards against concurrent loads via loadingPromise — don't null it here
       this.loadFromCache().catch((e) => console.warn('[Dictator] Background model reload failed:', e));
     }
 
@@ -212,11 +212,8 @@ export class TranscriptionService {
   }
 
   async transcribeApi(wavPath: string): Promise<string> {
-    const apiKey = (this.store.get('transcription.openaiApiKey') as string) ?? '';
-    if (!apiKey) throw new Error('OpenAI API key is not set. Go to Modes and enter your key.');
-
+    const client = this.getOpenAIClient();
     const language = (this.store.get('transcription.language') as string) ?? 'auto';
-    const client = new OpenAI({ apiKey });
 
     const response = await client.audio.transcriptions.create({
       model: 'whisper-1',

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import { OverlayWindow } from './components/OverlayWindow';
 import { Sidebar } from './components/Sidebar';
 import type { View as ActiveView } from './components/Sidebar';
@@ -14,6 +14,36 @@ import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
 import type { DictationMode } from '../shared/types';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[ErrorBoundary]', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 32, color: '#f87171', fontFamily: 'monospace', background: '#0A0A0A', height: '100vh' }}>
+          <h2 style={{ marginBottom: 12 }}>Something went wrong</h2>
+          <pre style={{ fontSize: 12, color: '#a3a3a3', whiteSpace: 'pre-wrap' }}>{this.state.error.message}</pre>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{ marginTop: 16, padding: '8px 16px', border: '1px solid #525252', borderRadius: 8, color: '#d4d4d4', background: '#1a1a1a', cursor: 'pointer' }}
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const MODES_CYCLE: DictationMode[] = ['voice', 'email', 'chat', 'note', 'custom'];
 
@@ -54,11 +84,12 @@ export function App() {
   }, [cycleDictationMode]);
 
   if (isOverlay) {
-    return <OverlayWindow state={recordingState} />;
+    return <ErrorBoundary><OverlayWindow state={recordingState} /></ErrorBoundary>;
   }
 
   return (
-    <div className="flex h-screen text-neutral-200 select-none font-sans" style={{ background: '#0A0A0A' }}>
+    <ErrorBoundary>
+    <div className="flex h-screen text-neutral-200 select-none font-sans bg-[#0A0A0A]">
       {/* Global [REC] effects */}
       <ScanLines />
       <NoiseOverlay />
@@ -101,5 +132,6 @@ export function App() {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

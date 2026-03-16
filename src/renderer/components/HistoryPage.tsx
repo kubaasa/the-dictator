@@ -171,11 +171,13 @@ export function HistoryPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchQueryRef = useRef('');
 
   const loadAll = useCallback(async () => {
     try {
+      setIsLoading(true);
       // Migrate localStorage data to SQLite once
       const raw = localStorage.getItem('dictator_recordings');
       const migrated = localStorage.getItem('dictator_history_migrated');
@@ -197,6 +199,8 @@ export function HistoryPage() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[HistoryPage] Failed to load recordings:', msg);
       setLoadError(msg);
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
@@ -276,7 +280,15 @@ export function HistoryPage() {
           </div>
         )}
 
-        {recordings.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-600">
+            <svg className="h-6 w-6 animate-spin text-neutral-600" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z" />
+            </svg>
+            <p className="font-mono text-sm">LOADING...</p>
+          </div>
+        ) : recordings.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-600">
             {loadError ? (
               <>
@@ -298,7 +310,7 @@ export function HistoryPage() {
         ) : (
           groups.map(({ label, entries }) => (
             <div key={label}>
-              <div className="px-4 py-2 sticky top-0 z-10" style={{ background: '#0A0A0A' }}>
+              <div className="px-4 py-2 sticky top-0 z-20 bg-[#0A0A0A]">
                 <span className="font-mono text-[11px] font-semibold tracking-[0.25em] text-red-900">{label}</span>
                 <div className="mt-1 border-b border-neutral-800" />
               </div>
