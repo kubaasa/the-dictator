@@ -16,6 +16,20 @@ export function getOverlaySize(widget: WidgetType): [number, number] {
   return [198, 54];
 }
 
+/**
+ * Clamp widget position so it stays fully within the nearest display's work area.
+ * Handles monitor disconnect — getDisplayNearestPoint always returns a valid display.
+ */
+export function clampToVisibleArea(x: number, y: number, w: number, h: number): { x: number; y: number } {
+  const display = screen.getDisplayNearestPoint({ x, y });
+  const { x: wx, y: wy, width: ww, height: wh } = display.workArea;
+
+  return {
+    x: Math.max(wx, Math.min(x, wx + ww - w)),
+    y: Math.max(wy, Math.min(y, wy + wh - h)),
+  };
+}
+
 const TRANSCRIPTION_TIMEOUT_MS = 30_000;
 
 export function registerIpcHandlers(
@@ -102,8 +116,9 @@ export function registerIpcHandlers(
         const [w, h] = getOverlaySize(widget.activeWidget);
 
         const { x, y } = overlayWindow.getBounds();
+        const clamped = clampToVisibleArea(x, y, w, h);
         const wasHidden = !overlayWindow.isVisible();
-        overlayWindow.setBounds({ x, y, width: w, height: h });
+        overlayWindow.setBounds({ x: clamped.x, y: clamped.y, width: w, height: h });
 
         if (widget.activeWidget === 'maxi') {
           if (getCurrentState() === 'idle') overlayWindow.hide();
@@ -288,9 +303,11 @@ export function registerIpcHandlers(
     if (cancelGlobalMouseUp) { cancelGlobalMouseUp(); cancelGlobalMouseUp = null; }
     const overlay = getOverlayWindow();
     if (overlay) {
-      const { x, y } = overlay.getBounds();
-      store.set('widget.x', x);
-      store.set('widget.y', y);
+      const { x, y, width, height } = overlay.getBounds();
+      const clamped = clampToVisibleArea(x, y, width, height);
+      overlay.setPosition(clamped.x, clamped.y);
+      store.set('widget.x', clamped.x);
+      store.set('widget.y', clamped.y);
     }
   }
 

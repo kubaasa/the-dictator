@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, net, screen } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
@@ -7,12 +7,11 @@ import { TrayManager } from './tray';
 import { HotkeyService } from './services/hotkey.service';
 import { TranscriptionService } from './services/transcription.service';
 import { HistoryService } from './services/history.service';
-import { registerIpcHandlers } from './ipc-handlers';
+import { registerIpcHandlers, getOverlaySize, clampToVisibleArea } from './ipc-handlers';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
 import { DEFAULT_SETTINGS, type AppSettings, type RecordingState } from '../shared/types';
 import { IPC } from '../shared/constants';
-import { getOverlaySize } from './ipc-handlers';
 
 if (started) {
   app.quit();
@@ -135,12 +134,13 @@ function createOverlayWindow(): BrowserWindow {
     },
   });
 
-  // Restore last saved position or default to top-right corner
-  const { screen } = require('electron');
+  // Restore last saved position or default to top-right corner,
+  // always clamped to a visible display (handles disconnected monitors)
   const savedX = store.get('widget.x') as number | undefined;
   const savedY = store.get('widget.y') as number | undefined;
   if (savedX !== undefined && savedY !== undefined) {
-    win.setPosition(savedX, savedY);
+    const clamped = clampToVisibleArea(savedX, savedY, initW, initH);
+    win.setPosition(clamped.x, clamped.y);
   } else {
     const { width: screenW } = screen.getPrimaryDisplay().workAreaSize;
     win.setPosition(screenW - initW - 20, 20);
@@ -313,6 +313,20 @@ app.on('ready', () => {
     onModeSelect: sendModeSelectToRenderer,
     onShowWindow: showOrHideMainWindow,
   });
+
+  // When a monitor is disconnected or resolution changes, re-clamp the overlay widget
+  const reclampOverlay = () => {
+    if (!overlayWindow || overlayWindow.isDestroyed()) return;
+    const { x, y, width, height } = overlayWindow.getBounds();
+    const clamped = clampToVisibleArea(x, y, width, height);
+    if (clamped.x !== x || clamped.y !== y) {
+      overlayWindow.setPosition(clamped.x, clamped.y);
+      store.set('widget.x', clamped.x);
+      store.set('widget.y', clamped.y);
+    }
+  };
+  screen.on('display-removed', reclampOverlay);
+  screen.on('display-metrics-changed', reclampOverlay);
 
   // Preload local transcription model in background (eliminates 2-3s delay on first use)
   transcriptionService.preloadModel().catch((err) => {
