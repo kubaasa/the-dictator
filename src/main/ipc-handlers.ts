@@ -12,7 +12,7 @@ import Store from 'electron-store';
 import { DEFAULT_SETTINGS } from '../shared/types';
 
 export function getOverlaySize(widget: WidgetType): [number, number] {
-  if (widget === 'maxi') return [420, 140];
+  if (widget === 'maxi') return [420, 165];
   return [198, 54];
 }
 

@@ -20,7 +20,7 @@ export type TranscriptionEngine = 'local' | 'api';
 export type WidgetType = 'voicebar' | 'maxi';
 export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'none';
 export type DictationMode = 'voice' | 'email' | 'chat' | 'note' | 'custom';
-export type RecordingState = 'idle' | 'recording' | 'transcribing' | 'processing' | 'done' | 'error';
+export type RecordingState = 'idle' | 'initializing' | 'recording' | 'transcribing' | 'processing' | 'done' | 'error';
 export type HotkeyMode = 'toggle' | 'push-to-talk';
 
 export interface AppSettings {

@@ -1,34 +1,36 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import { RecIndicator } from './RecEffects';
-import type { RecordingState } from '../../shared/types';
+import type { RecordingState, RecordingEntry } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import type { useAudioRecorder } from '../hooks/useAudioRecorder';
 
-
-interface RecordingEntry {
-  id: string;
-  date: string;
-  text: string;
-  wordCount: number;
-  durationSeconds: number;
-  appName?: string;
-}
 
 interface HomePageProps {
   recordingState: RecordingState;
   audioRecorder: ReturnType<typeof useAudioRecorder>;
 }
 
+interface StatsResult {
+  totalWords: string;
+  totalTimeDisplay: string;
+  totalRecordings: string;
+  avgWpm: string;
+}
+
 function countWords(text: string): number {
+  if (!text) return 0;
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function computeStats(entries: RecordingEntry[]) {
-  // Total words across all recordings
-  const totalWords = entries.reduce((sum, e) => sum + (e.wordCount ?? 0), 0);
+// Use pre-computed wordCount from DB; fall back to counting if missing (legacy entries)
+function entryWordCount(e: RecordingEntry): number {
+  return e.wordCount ?? countWords(e.text);
+}
 
-  // Total recorded time across all recordings
+function computeStats(entries: RecordingEntry[]): StatsResult {
+  const totalWords = entries.reduce((sum, e) => sum + entryWordCount(e), 0);
+
   const totalSeconds = entries.reduce((sum, e) => sum + (e.durationSeconds ?? 0), 0);
   let totalTimeDisplay: string;
   if (totalSeconds <= 0) {
@@ -43,13 +45,12 @@ function computeStats(entries: RecordingEntry[]) {
     totalTimeDisplay = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
   }
 
-  // Average pace (WPM) across all entries with valid duration and word count
-  const withDuration = entries.filter((e) => (e.durationSeconds ?? 0) > 0 && (e.wordCount ?? 0) > 0);
+  const withDuration = entries.filter((e) => (e.durationSeconds ?? 0) > 0 && entryWordCount(e) > 0);
   let avgWpm: string;
   if (withDuration.length === 0) {
     avgWpm = '—';
   } else {
-    const total = withDuration.reduce((sum, e) => sum + (e.wordCount ?? 0) / ((e.durationSeconds ?? 1) / 60), 0);
+    const total = withDuration.reduce((sum, e) => sum + entryWordCount(e) / ((e.durationSeconds ?? 1) / 60), 0);
     const rounded = Math.round(total / withDuration.length);
     avgWpm = isFinite(rounded) ? `${rounded} wpm` : '—';
   }
@@ -62,9 +63,11 @@ function computeStats(entries: RecordingEntry[]) {
   };
 }
 
+const EMPTY_STATS: StatsResult = { totalWords: '—', totalTimeDisplay: '—', totalRecordings: '—', avgWpm: '—' };
+
 export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
-  const { isRecording, error: recorderError, lastDurationSeconds, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
-  const { result, appName, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
+  const { isRecording, error: recorderError, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
+  const { result, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
   const error = recorderError || transcriptionError;
 
   const [toggleShortcut, setToggleShortcut] = useState(DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
@@ -79,33 +82,31 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
     return unsub;
   }, []);
 
-  const [recordings, setRecordings] = useState<RecordingEntry[]>(() => {
-    try { return JSON.parse(localStorage.getItem('dictator_recordings') || '[]'); } catch { return []; }
-  });
-  const prevResultRef = useRef('');
+  // Stats loaded from SQLite (single source of truth — main process always saves there)
+  const [stats, setStats] = useState<StatsResult>(EMPTY_STATS);
 
-  useEffect(() => {
-    if (result && result.trim() && result !== prevResultRef.current) {
-      prevResultRef.current = result;
-      const entry: RecordingEntry = {
-        id: Date.now().toString(),
-        date: new Date().toISOString(),
-        text: result.trim(),
-        wordCount: countWords(result),
-        durationSeconds: lastDurationSeconds,
-        appName,
-      };
-      setRecordings(prev => {
-        const updated = [entry, ...prev].slice(0, 50);
-        localStorage.setItem('dictator_recordings', JSON.stringify(updated));
-        return updated;
-      });
+  const refreshStats = useCallback(async () => {
+    try {
+      const entries = await window.dictator.history.getAll();
+      setStats(computeStats(entries));
+    } catch (err) {
+      console.error('[HomePage] Failed to load stats:', err);
     }
-  }, [result]);
+  }, []);
 
-  const { totalWords, totalTimeDisplay, totalRecordings, avgWpm } = computeStats(recordings);
+  // Load stats on mount
+  useEffect(() => { refreshStats(); }, [refreshStats]);
 
-  const stats = [
+  // Refresh stats when a new transcription result arrives
+  useEffect(() => {
+    if (result && result.trim()) {
+      refreshStats();
+    }
+  }, [result, refreshStats]);
+
+  const { totalWords, totalTimeDisplay, totalRecordings, avgWpm } = stats;
+
+  const statCards = [
     {
       value: totalWords,
       label: 'Total words',
@@ -148,7 +149,7 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
     <main className="flex flex-1 flex-col gap-6 pb-6 overflow-y-auto animate-fade-in">
       {/* Stats grid */}
       <div className="mx-6 mt-6 grid grid-cols-4 gap-3">
-        {stats.map((stat, i) => (
+        {statCards.map((stat, i) => (
           <div
             key={i}
             className="relative rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-row items-center gap-4 hover:border-neutral-700 hover:bg-[#1A1A1A] transition-all duration-200 cursor-default overflow-hidden"

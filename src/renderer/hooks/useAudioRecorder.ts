@@ -87,6 +87,12 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         },
       });
 
+      // Guard: cancelled during getUserMedia (e.g. PTT released before mic was ready)
+      if (!isSettingUpRef.current) {
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
+
       // Generate unique id for this recording before transcription starts
       recordingIdRef.current = Date.now().toString();
       pendingAudioBufferRef.current = null;

@@ -58,14 +58,21 @@ function showOrHideMainWindow(): void {
   }
 }
 
-const hotkeyService = new HotkeyService(
-  () => { pasteService.captureTarget(); sendToggleToRenderer(); },
-  sendToggleToRenderer,
-);
-
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let currentState: RecordingState = 'idle';
+
+const hotkeyService = new HotkeyService(
+  () => { pasteService.captureTarget(); broadcastState('initializing'); sendToggleToRenderer(); },
+  () => {
+    if (currentState === 'initializing') {
+      broadcastState('idle');
+      sendCancelToRenderer();
+    } else {
+      sendToggleToRenderer();
+    }
+  },
+);
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -168,10 +175,10 @@ function broadcastState(state: RecordingState): void {
     win.webContents.send(IPC.RECORDING_STATE_CHANGED, state);
   }
 
-  // Maxi widget: show only when not idle, hide when idle
+  // Maxi widget: show only during initializing/recording, hide for everything else
   const activeWidget = (store.get('widget') ?? DEFAULT_SETTINGS.widget).activeWidget;
   if (activeWidget === 'maxi' && overlayWindow) {
-    if (state === 'idle') {
+    if (state === 'idle' || state === 'transcribing' || state === 'processing' || state === 'done' || state === 'error') {
       overlayWindow.hide();
     } else if (!overlayWindow.isVisible()) {
       overlayWindow.show();

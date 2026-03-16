@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { RecordingState, HotkeyMode, AppSettings } from '../../../shared/types';
 
 interface MaxiWidgetProps {
@@ -11,7 +11,7 @@ interface MaxiWidgetProps {
 const BAR_COUNT  = 40;
 const BAR_WIDTH  = 3;
 const BAR_GAP    = 3;
-const MAX_BAR_H  = 96;
+const MAX_BAR_H  = 88;
 const MIN_BAR_H  = 2.5; // baseline height in pixels — always visible in silence
 
 // ─── LERP smoothing factors ────────────────────────────────────────────────
@@ -58,10 +58,22 @@ const IDLE_SCALES = HANNING_WEIGHTS.map(w =>
   ((MIN_BAR_H + w * 6) / MAX_BAR_H).toFixed(4)
 );
 
+// Init animation: peak height per bar — center bars pulse noticeably, edges barely move
+const INIT_PEAK_SCALES = HANNING_WEIGHTS.map(w =>
+  ((MIN_BAR_H + w * (MAX_BAR_H * 0.32)) / MAX_BAR_H).toFixed(4)
+);
+
+// Init animation: center bars lead (delay=0), edge bars follow (delay up to 0.4s)
+const INIT_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) => {
+  const distFromCenter = Math.abs(i - (BAR_COUNT - 1) / 2);
+  const maxDist = (BAR_COUNT - 1) / 2;
+  return ((distFromCenter / maxDist) * 0.4).toFixed(3);
+});
+
 const KEYFRAMES = `
 @keyframes rec-blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.2; }
+  0%, 49.9% { opacity: 1; }
+  50%, 100%  { opacity: 0; }
 }
 @keyframes maxi-error-shake {
   0%        { transform: translateX(0); }
@@ -74,9 +86,9 @@ const KEYFRAMES = `
   0%, 100% { transform: scaleY(0.3); }
   50%      { transform: scaleY(0.85); }
 }
-@keyframes maxi-done-collapse {
-  from { transform: scaleY(var(--from-scale, 0.15)); }
-  to   { transform: scaleY(0.05); }
+@keyframes maxi-init {
+  0%, 100% { transform: scaleY(var(--init-idle, 0.05)); }
+  50%       { transform: scaleY(var(--init-peak, 0.35)); }
 }
 `;
 
@@ -98,6 +110,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
   // Keep voiceLevelRef in sync with the prop (no re-render needed)
   useEffect(() => { voiceLevelRef.current = voiceLevel; }, [voiceLevel]);
 
+  const isInitializing = state === 'initializing';
   const isRecording    = state === 'recording';
   const isTranscribing = state === 'transcribing' || state === 'processing';
   const isDone         = state === 'done';
@@ -112,19 +125,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
     startVisualization();
     return stopVisualization;
   }, [isRecording]);
-
-  // ─── Issue 3: capture actual bar heights for done-collapse animation ─────
-  // useLayoutEffect fires before paint, so --from-scale is set before the CSS
-  // animation reads it — bars collapse from wherever they actually were, not 0.15
-  useLayoutEffect(() => {
-    if (!isDone) return;
-    for (let i = 0; i < BAR_COUNT; i++) {
-      const el = barElemsRef.current[i];
-      if (el) {
-        el.style.setProperty('--from-scale', (smoothedRef.current[i] / MAX_BAR_H).toFixed(4));
-      }
-    }
-  }, [isDone]);
 
   async function startVisualization() {
     // Try to get a real audio stream for per-bar amplitude data.
@@ -263,7 +263,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
         onMouseDown={handleMouseDown}
         style={{
           padding: 8,
-          borderRadius: 8,
+          borderRadius: 16,
           background: 'rgba(0,0,0,0.01)',
           cursor: isDragging ? 'grabbing' : 'grab',
         }}
@@ -274,7 +274,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
             display: 'flex',
             flexDirection: 'column',
             padding: '10px 20px 8px',
-            borderRadius: 8,
+            borderRadius: 16,
             background: '#000000',
             border: '1.5px solid #000000',
             minWidth: 380,
@@ -320,8 +320,12 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
               let animation = 'none';
               let transition = 'transform 0.3s ease-out';
               let barOpacity: number;
-
-              if (isRecording) {
+              if (isInitializing) {
+                transform  = `scaleY(${IDLE_SCALES[i]})`;
+                animation  = `maxi-init 1.4s ease-in-out ${INIT_DELAYS[i]}s infinite`;
+                transition = 'none';
+                barOpacity = 0.65;
+              } else if (isRecording) {
                 // RAF takes over immediately — set neutral starting point
                 transform  = `scaleY(${(MIN_BAR_H / MAX_BAR_H).toFixed(4)})`;
                 transition = 'none';
@@ -332,9 +336,8 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
                 transition = 'none';
                 barOpacity = 0.80;
               } else if (isDone) {
-                transform  = 'scaleY(1)';
-                animation  = 'maxi-done-collapse 400ms cubic-bezier(0.4, 0, 1, 1) forwards';
-                barOpacity = 0.7;
+                transform  = `scaleY(${IDLE_SCALES[i]})`;
+                barOpacity = 0.35;
               } else if (isError) {
                 transform  = 'scaleY(0.3)';
                 barOpacity = 0.9;
@@ -359,6 +362,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
                     animation,
                     transition,
                     opacity: barOpacity,
+                    ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALES[i] }),
                   } as React.CSSProperties}
                 />
               );
