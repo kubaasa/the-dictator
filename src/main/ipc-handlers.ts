@@ -11,17 +11,9 @@ import { HistoryService } from './services/history.service';
 import Store from 'electron-store';
 import { DEFAULT_SETTINGS } from '../shared/types';
 
-// size is 0–1; returns [width, height] in pixels
-export function getOverlaySize(widget: WidgetType, size: number): [number, number] {
-  const t = Math.max(0, Math.min(1, size));
-  if (widget === 'maxi') {
-    const w = Math.round(280 + t * 170); // 280–450px
-    const h = Math.round(90  + t * 70);  // 90–160px
-    return [w, h];
-  }
-  const w = Math.round(160 + t * 340); // 160–500px
-  const h = Math.round(50  + t * 80);  // 50–130px
-  return [w, h];
+export function getOverlaySize(widget: WidgetType): [number, number] {
+  if (widget === 'maxi') return [420, 140];
+  return [198, 54];
 }
 
 const TRANSCRIPTION_TIMEOUT_MS = 30_000;
@@ -107,17 +99,19 @@ export function registerIpcHandlers(
       const overlayWindow = getOverlayWindow();
       if (overlayWindow) {
         const widget = store.get('widget');
-        const [w, h] = getOverlaySize(widget.activeWidget, widget.size);
+        const [w, h] = getOverlaySize(widget.activeWidget);
 
-        // Keep top-left corner anchored — setBounds is atomic (no flicker between calls)
         const { x, y } = overlayWindow.getBounds();
+        const wasHidden = !overlayWindow.isVisible();
         overlayWindow.setBounds({ x, y, width: w, height: h });
 
-        // Handle visibility when switching widget type
         if (widget.activeWidget === 'maxi') {
           if (getCurrentState() === 'idle') overlayWindow.hide();
-        } else {
-          if (!overlayWindow.isVisible()) overlayWindow.show();
+        } else if (wasHidden) {
+          // Show invisible first so the renderer can re-render, then fade in
+          overlayWindow.setOpacity(0);
+          overlayWindow.show();
+          setTimeout(() => { if (!overlayWindow.isDestroyed()) overlayWindow.setOpacity(1); }, 120);
         }
       }
     }
@@ -287,26 +281,34 @@ export function registerIpcHandlers(
   // Widget drag — main process tracks cursor globally so fast mouse movement can't escape the window
   let dragInterval: ReturnType<typeof setInterval> | null = null;
   let dragOffset = { x: 0, y: 0 };
+  let cancelGlobalMouseUp: (() => void) | null = null;
 
-  ipcMain.on(IPC.WIDGET_DRAG_START, (_event, offsetX: number, offsetY: number) => {
-    dragOffset = { x: offsetX, y: offsetY };
-
-    if (dragInterval) clearInterval(dragInterval);
-    dragInterval = setInterval(() => {
-      const overlay = getOverlayWindow();
-      if (!overlay) return;
-      const cursor = screen.getCursorScreenPoint();
-      overlay.setPosition(cursor.x - dragOffset.x, cursor.y - dragOffset.y);
-    }, 16);
-  });
-
-  ipcMain.on(IPC.WIDGET_DRAG_END, () => {
+  function stopDrag() {
     if (dragInterval) { clearInterval(dragInterval); dragInterval = null; }
+    if (cancelGlobalMouseUp) { cancelGlobalMouseUp(); cancelGlobalMouseUp = null; }
     const overlay = getOverlayWindow();
     if (overlay) {
       const { x, y } = overlay.getBounds();
       store.set('widget.x', x);
       store.set('widget.y', y);
     }
+  }
+
+  ipcMain.on(IPC.WIDGET_DRAG_START, (_event, offsetX: number, offsetY: number) => {
+    stopDrag(); // clear any previous drag that didn't end cleanly
+
+    dragOffset = { x: offsetX, y: offsetY };
+    dragInterval = setInterval(() => {
+      const overlay = getOverlayWindow();
+      if (!overlay) return;
+      const cursor = screen.getCursorScreenPoint();
+      overlay.setPosition(cursor.x - dragOffset.x, cursor.y - dragOffset.y);
+    }, 16);
+
+    // Fallback: if mouseup fires outside the overlay window (renderer never sees it),
+    // uiohook catches it globally and stops the drag.
+    cancelGlobalMouseUp = hotkeyService.onGlobalMouseUp(stopDrag);
   });
+
+  ipcMain.on(IPC.WIDGET_DRAG_END, stopDrag);
 }

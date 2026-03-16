@@ -108,7 +108,7 @@ function createMainWindow(): BrowserWindow {
 
 function createOverlayWindow(): BrowserWindow {
   const widget = store.get('widget') ?? DEFAULT_SETTINGS.widget;
-  const [initW, initH] = getOverlaySize(widget.activeWidget, widget.size);
+  const [initW, initH] = getOverlaySize(widget.activeWidget);
 
   const win = new BrowserWindow({
     width: initW,

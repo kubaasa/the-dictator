@@ -4,8 +4,6 @@ import type { RecordingState } from '../../../shared/types';
 interface VoiceBarProps {
   voiceLevel: number;
   state: RecordingState;
-  opacity: number;
-  size: number; // 0–1 continuous scale
   onToggleRecording?: () => void;
 }
 
@@ -76,12 +74,11 @@ const KEYFRAMES = `
 }
 `;
 
-export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }: VoiceBarProps) {
-  const t = Math.max(0, Math.min(1, size));
-
-  const barWidth = Math.round(2 + t * 3);   // 2–5px
-  const maxBarH  = Math.round(18 + t * 46); // 18–64px
-  const gap      = Math.round(3 + t * 4);   // 3–7px
+export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps) {
+  // Fixed dimensions (60% of previous default)
+  const barWidth = 2;
+  const maxBarH  = 25;
+  const gap      = 3;
 
   const isRecording    = state === 'recording';
   const isTranscribing = state === 'transcribing' || state === 'processing';
@@ -171,7 +168,6 @@ export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }
             width: 'fit-content',
             height: pillHeight,
             borderRadius: 9999,
-            opacity,
             background: 'rgba(8, 8, 8, 0.88)',
             backdropFilter: 'blur(24px)',
             WebkitBackdropFilter: 'blur(24px)',
@@ -238,7 +234,7 @@ export function VoiceBar({ voiceLevel, state, opacity, size, onToggleRecording }
           {BARS.map((bar, i) => {
             const {
               envelope, multiplier, jitter,
-              idleScale, silenceDelay, transcribeDelay,
+              idleScale, transcribeDelay,
             } = bar;
 
             const barColor = isError ? ERROR_COLOR : isTranscribing ? TRANSCRIBE_COLOR : BASE_COLOR;

@@ -141,6 +141,18 @@ export class HotkeyService {
     this.isRecordingActive = false;
   }
 
+  // Registers a one-shot global mouse-button-release listener via uiohook.
+  // Returns an unsubscribe function. Used by the widget drag handler to detect
+  // mouse-up events that occur outside the (small, transparent) overlay window.
+  onGlobalMouseUp(callback: () => void): () => void {
+    const handler = () => {
+      uIOhook.off('mouseup', handler);
+      callback();
+    };
+    uIOhook.on('mouseup', handler);
+    return () => uIOhook.off('mouseup', handler);
+  }
+
   private parseShortcut(shortcut: string): number[] {
     const codes: number[] = [];
     for (const key of shortcut.split('+')) {

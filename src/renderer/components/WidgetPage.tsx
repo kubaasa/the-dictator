@@ -8,38 +8,29 @@ const WIDGETS: { id: WidgetType; label: string; description: string }[] = [
 
 export function WidgetPage() {
   const [activeWidget, setActiveWidget] = useState<WidgetType>('voicebar');
-  const [size, setSize] = useState(0.5);
-  const [opacity, setOpacity] = useState(1.0);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
       if (s.widget) {
         setActiveWidget(s.widget.activeWidget);
-        setSize(s.widget.size);
-        setOpacity(s.widget.opacity);
       }
       setLoaded(true);
     });
   }, []);
 
   const save = useCallback(
-    (patch: Partial<{ activeWidget: WidgetType; size: number; opacity: number }>) => {
-      const next = { activeWidget, size, opacity, ...patch };
-      setActiveWidget(next.activeWidget);
-      setSize(next.size);
-      setOpacity(next.opacity);
-      window.dictator.setSettings({ widget: next });
+    (widget: WidgetType) => {
+      setActiveWidget(widget);
+      window.dictator.setSettings({ widget: { activeWidget: widget } });
     },
-    [activeWidget, size, opacity],
+    [],
   );
 
   if (!loaded) return null;
 
   return (
     <div className="flex flex-col gap-8 p-6 overflow-y-auto h-full">
-      <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-400">Widget</h2>
-
       {/* Widget Appearance */}
       <div className="flex flex-col gap-3">
         <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-400">
@@ -51,7 +42,7 @@ export function WidgetPage() {
             return (
               <button
                 key={w.id}
-                onClick={() => save({ activeWidget: w.id })}
+                onClick={() => save(w.id)}
                 className={`flex flex-col items-center gap-2 rounded-lg border p-4 transition-colors flex-1 ${
                   isActive
                     ? 'border-red-600/50 bg-red-600/10 text-red-400'
@@ -74,45 +65,6 @@ export function WidgetPage() {
         </div>
       </div>
 
-      {/* Size */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-400">Size</span>
-          <span className="font-mono text-xs text-neutral-400">{Math.round(size * 100)}%</span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={size}
-          onChange={(e) => {
-            const val = Number(e.target.value);
-            save({ size: val });
-          }}
-          className="w-full accent-red-600"
-        />
-      </div>
-
-      {/* Opacity */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-400">Opacity</span>
-          <span className="font-mono text-xs text-neutral-400">{Math.round(opacity * 100)}%</span>
-        </div>
-        <input
-          type="range"
-          min={0.3}
-          max={1.0}
-          step={0.05}
-          value={opacity}
-          onChange={(e) => {
-            const val = Number(e.target.value);
-            save({ opacity: val });
-          }}
-          className="w-full accent-red-600"
-        />
-      </div>
     </div>
   );
 }

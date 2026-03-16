@@ -59,8 +59,6 @@ export interface AppSettings {
   vocabulary: string[];
   widget: {
     activeWidget: WidgetType;
-    size: number; // 0–1 continuous scale
-    opacity: number;
     x?: number;
     y?: number;
   };
@@ -173,8 +171,6 @@ Rules:
   vocabulary: [],
   widget: {
     activeWidget: 'voicebar',
-    size: 0.5,
-    opacity: 1.0,
   },
   general: {
     autoStart: false,

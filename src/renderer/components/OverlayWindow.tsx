@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import type { RecordingState, WidgetType, DictationMode } from '../../shared/types';
+import type { RecordingState, WidgetType, HotkeyMode, AppSettings } from '../../shared/types';
+import { DEFAULT_SETTINGS } from '../../shared/types';
 import { useVoiceActivity } from '../hooks/useVoiceActivity';
 import { VoiceBar } from './overlay/VoiceBar';
 import { MaxiWidget } from './overlay/MaxiWidget';
@@ -10,31 +11,26 @@ interface OverlayWindowProps {
 
 export function OverlayWindow({ state }: OverlayWindowProps) {
   const voiceLevel = useVoiceActivity();
-  const [size, setSize] = useState(0.5);
-  const [opacity, setOpacity] = useState(1.0);
   const [activeWidget, setActiveWidget] = useState<WidgetType>('voicebar');
-  const [currentMode, setCurrentMode] = useState<DictationMode>('voice');
+  const [shortcuts, setShortcuts] = useState<AppSettings['hotkey']['shortcuts']>(
+    () => DEFAULT_SETTINGS.hotkey.shortcuts,
+  );
+  const [hotkeyMode, setHotkeyMode] = useState<HotkeyMode>('toggle');
 
   useEffect(() => {
     window.dictator.getSettings().then((settings) => {
-      if (settings.widget) {
-        setSize(settings.widget.size);
-        setOpacity(settings.widget.opacity);
-        setActiveWidget(settings.widget.activeWidget);
-      }
-      if (settings.dictation) {
-        setCurrentMode(settings.dictation.currentMode);
+      if (settings.widget) setActiveWidget(settings.widget.activeWidget);
+      if (settings.hotkey) {
+        setShortcuts(settings.hotkey.shortcuts);
+        setHotkeyMode(settings.hotkey.mode);
       }
     });
 
     const unsub = window.dictator.onSettingsChange((settings) => {
-      if (settings.widget) {
-        setSize(settings.widget.size);
-        setOpacity(settings.widget.opacity);
-        setActiveWidget(settings.widget.activeWidget);
-      }
-      if (settings.dictation) {
-        setCurrentMode(settings.dictation.currentMode);
+      if (settings.widget) setActiveWidget(settings.widget.activeWidget);
+      if (settings.hotkey) {
+        setShortcuts(settings.hotkey.shortcuts);
+        setHotkeyMode(settings.hotkey.mode);
       }
     });
     return unsub;
@@ -45,12 +41,8 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
       <MaxiWidget
         voiceLevel={voiceLevel}
         state={state}
-        opacity={opacity}
-        size={size}
-        currentMode={currentMode}
-        onToggleRecording={() => window.dictator.requestToggleRecording()}
-        onCancelRecording={() => window.dictator.requestCancelRecording()}
-        onCycleMode={() => window.dictator.requestModeCycle()}
+        shortcuts={shortcuts}
+        hotkeyMode={hotkeyMode}
       />
     );
   }
@@ -59,8 +51,6 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
     <VoiceBar
       voiceLevel={voiceLevel}
       state={state}
-      opacity={opacity}
-      size={size}
       onToggleRecording={() => window.dictator.requestToggleRecording()}
     />
   );
