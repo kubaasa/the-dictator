@@ -68,6 +68,10 @@ const INIT_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) => {
 });
 
 const KEYFRAMES = `
+@keyframes rec-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
 @keyframes maxi-error-shake {
   0%        { transform: translateX(0); }
   20%       { transform: translateX(4px); }
@@ -332,18 +336,18 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
           } as React.CSSProperties}
         >
           {/* Row 1: Status indicator */}
-          <div style={{ height: 17, display: 'flex', alignItems: 'center' }}>
+          <div style={{ height: 22, display: 'flex', alignItems: 'center' }}>
             {indicator && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {indicator.dot && (
                   <span style={{
-                    width: 7, height: 7, borderRadius: '50%',
+                    width: 11, height: 11, borderRadius: '50%',
                     background: RED, display: 'inline-block', flexShrink: 0,
                     animation: 'rec-blink 1s step-start infinite',
                   }} />
                 )}
                 <span style={{
-                  fontFamily: 'monospace', fontSize: 11, fontWeight: 700,
+                  fontFamily: 'monospace', fontSize: 14, fontWeight: 700,
                   letterSpacing: '0.08em', color: indicator.color,
                 }}>
                   {indicator.text}

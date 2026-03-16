@@ -1,5 +1,59 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
+// AudioWorklet processor — runs in a dedicated audio thread (immune to main-thread jank).
+// Accumulates 4096-sample chunks (~256ms at 16kHz) before posting to the main thread,
+// matching the old ScriptProcessorNode cadence but without dropped frames.
+const WORKLET_PROCESSOR_CODE = `
+class RecorderProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this._buffer = new Float32Array(4096);
+    this._offset = 0;
+    this._stopped = false;
+    this.port.onmessage = (e) => {
+      if (e.data === 'stop') this._stopped = true;
+    };
+  }
+
+  process(inputs) {
+    if (this._stopped) return false;
+    const input = inputs[0];
+    if (!input || !input[0]) return true;
+
+    const samples = input[0];
+    let srcOffset = 0;
+
+    while (srcOffset < samples.length) {
+      const remaining = 4096 - this._offset;
+      const toCopy = Math.min(remaining, samples.length - srcOffset);
+      this._buffer.set(samples.subarray(srcOffset, srcOffset + toCopy), this._offset);
+      this._offset += toCopy;
+      srcOffset += toCopy;
+
+      if (this._offset >= 4096) {
+        const copy = new Float32Array(this._buffer);
+        this.port.postMessage({ type: 'audio', samples: copy }, [copy.buffer]);
+
+        let sum = 0;
+        for (let i = 0; i < 4096; i++) {
+          sum += this._buffer[i] * this._buffer[i];
+        }
+        this.port.postMessage({
+          type: 'level',
+          level: Math.min(1, Math.sqrt(sum / 4096) / 0.15),
+        });
+
+        this._offset = 0;
+      }
+    }
+
+    return true;
+  }
+}
+
+registerProcessor('recorder-processor', RecorderProcessor);
+`;
+
 interface UseAudioRecorderReturn {
   isRecording: boolean;
   error: string;
@@ -20,7 +74,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const chunksRef = useRef<Float32Array[]>([]);
 
 
@@ -81,13 +135,23 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       isSettingUpRef.current = true;
       pendingStopRef.current = false;
 
-      // Get mic BEFORE notifying main process
+      // Ensure previous AudioContext is fully closed before creating a new one —
+      // unclosed contexts accumulate and degrade audio quality after several recordings
+      if (audioContextRef.current) {
+        try { await audioContextRef.current.close(); } catch { /* already closed */ }
+        audioContextRef.current = null;
+      }
+
+      // Disable WebRTC processing — dictation needs raw, clean audio signal.
+      // echoCancellation/noiseSuppression are designed for VoIP calls and cause
+      // voice harmonics loss + artifacts in speech-to-text scenarios.
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
           channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
         },
       });
 
@@ -141,30 +205,32 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       const source = audioContext.createMediaStreamSource(stream);
       sourceRef.current = source;
 
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
+      // Register AudioWorklet processor (runs in dedicated audio thread — immune to
+      // main-thread GC pauses, React re-renders, and IPC overhead that caused frame
+      // drops with the old ScriptProcessorNode)
+      const blob = new Blob([WORKLET_PROCESSOR_CODE], { type: 'application/javascript' });
+      const workletUrl = URL.createObjectURL(blob);
+      await audioContext.audioWorklet.addModule(workletUrl);
+      URL.revokeObjectURL(workletUrl);
+
+      const workletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
+      workletNodeRef.current = workletNode;
       chunksRef.current = [];
 
-      processor.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        chunksRef.current.push(new Float32Array(inputData));
-
-        // Send voice level every frame (~256ms at 16kHz/4096 buffer) for detailed waveform
-        let sum = 0;
-        for (let i = 0; i < inputData.length; i++) {
-          sum += inputData[i] * inputData[i];
+      workletNode.port.onmessage = (e: MessageEvent) => {
+        if (e.data.type === 'audio') {
+          chunksRef.current.push(e.data.samples);
+        } else if (e.data.type === 'level') {
+          window.dictator.sendVoiceActivity(e.data.level);
         }
-        const rms = Math.sqrt(sum / inputData.length);
-        const level = Math.min(1, rms / 0.15);
-        window.dictator.sendVoiceActivity(level);
       };
 
-      // Route through a silent gain node — processor needs a destination connection
-      // to fire onaudioprocess, but we don't want mic audio in the speakers
+      // Route through a silent gain node — worklet needs a destination connection
+      // to keep the audio graph alive
       const silentGain = audioContext.createGain();
       silentGain.gain.value = 0;
-      source.connect(processor);
-      processor.connect(silentGain);
+      source.connect(workletNode);
+      workletNode.connect(silentGain);
       silentGain.connect(audioContext.destination);
 
       isSettingUpRef.current = false;
@@ -184,7 +250,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       // Safety: in case startRecording IPC was already sent
       window.dictator.stopRecording();
     }
-  }, []);
+  }, [deviceId]);
 
   const stopRecording = useCallback(async () => {
     // Bug #2: if still setting up, defer the stop
@@ -214,11 +280,14 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       mediaStreamRef.current = null;
     }
 
-    // Snapshot chunks and immediately swap in a new empty array.
-    // WebAudio may still have onaudioprocess events queued in the JS task queue even after
-    // disconnect() — they'd push silence into the same array we're about to transcribe.
-    // By replacing the ref first, any late events push to the discarded array.
+    // Signal the worklet processor to stop
+    if (workletNodeRef.current) {
+      workletNodeRef.current.port.postMessage('stop');
+    }
+
+    // Snapshot refs and null immediately to prevent race with rapid re-start
     const audioContext = audioContextRef.current;
+    audioContextRef.current = null;
     const chunks = chunksRef.current;
     chunksRef.current = [];
 
@@ -226,12 +295,13 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       sourceRef.current.disconnect();
       sourceRef.current = null;
     }
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
+    if (workletNodeRef.current) {
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
     }
 
-    if (audioContext && chunks.length > 0) {
+    // Send buffer for transcription BEFORE closing context — minimize latency
+    if (chunks.length > 0 && audioContext) {
       const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
       const merged = new Float32Array(totalLength);
       let offset = 0;
@@ -241,12 +311,13 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       }
 
       const sampleRate = audioContext.sampleRate;
-      // Don't await — release mic hardware in background, don't block transcription
-      audioContext.close();
-      audioContextRef.current = null;
-
       // Fire-and-forget: result arrives via onTranscriptionResult event
       window.dictator.transcribeBuffer(merged.buffer, sampleRate, recordingIdRef.current);
+    }
+
+    // Always close AudioContext — even for empty recordings (prevents accumulation)
+    if (audioContext) {
+      try { await audioContext.close(); } catch { /* already closed */ }
     }
 
   }, []);
@@ -277,9 +348,10 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       sourceRef.current.disconnect();
       sourceRef.current = null;
     }
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
+    if (workletNodeRef.current) {
+      workletNodeRef.current.port.postMessage('stop');
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
     }
     if (audioContextRef.current) {
       audioContextRef.current.close();

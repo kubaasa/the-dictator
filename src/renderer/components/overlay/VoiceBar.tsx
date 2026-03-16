@@ -247,7 +247,7 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
 
             if (isIdle) {
               transform = `scaleY(${idleScale})`;
-              barOpacity = 0.4;
+              barOpacity = 0.88;
               filter = undefined;
 
             } else if (isRecording) {

@@ -35,7 +35,7 @@ export class TranscriptionService {
   private openaiClient: OpenAI | null = null;
   private openaiClientKey: string | null = null;
   private transcriptionCount = 0;
-  private static readonly PIPELINE_RESET_INTERVAL = 15;
+  private static readonly PIPELINE_RESET_INTERVAL = 8;
 
   constructor(private store: Store<AppSettings>) {
     env.cacheDir = MODELS_CACHE_DIR;
@@ -45,12 +45,19 @@ export class TranscriptionService {
   async preloadModel(): Promise<void> {
     const engine = (this.store.get('transcription.engine') as string) ?? 'local';
     if (engine !== 'local') return;
-    if (!this.isModelDownloaded()) return;
-    if (this.pipe && this.loadedModelId === this.getModelId()) return;
+
+    let modelId: string;
+    try {
+      ({ modelId } = this.resolveModelId());
+    } catch {
+      return; // no model downloaded — skip preload
+    }
+
+    if (this.pipe && this.loadedModelId === modelId) return;
 
     console.log('[Dictator] Preloading local model in background…');
     const t0 = Date.now();
-    await this.loadFromCache();
+    await this.loadFromCache(modelId);
     console.log('[Dictator] Model preloaded in %dms', Date.now() - t0);
   }
 
@@ -71,6 +78,37 @@ export class TranscriptionService {
 
   getDownloadedModels(): string[] {
     return Object.keys(MODEL_MAP).filter((size) => this.isModelDownloaded(size));
+  }
+
+  // Ordered from largest/best to smallest — used for fallback selection
+  private static readonly MODEL_SIZE_PRIORITY = [
+    'large-v3', 'large', 'medium', 'small', 'base', 'base.en', 'tiny', 'tiny.en',
+  ];
+
+  /** Find the largest downloaded model key, or null if none downloaded. */
+  private findBestDownloadedModel(): string | null {
+    for (const size of TranscriptionService.MODEL_SIZE_PRIORITY) {
+      if (this.isModelDownloaded(size)) return size;
+    }
+    return null;
+  }
+
+  /** Resolve model to use: selected if downloaded, otherwise best available fallback. */
+  private resolveModelId(): { modelId: string; fallback: boolean } {
+    const selectedId = this.getModelId();
+    const selectedSize = (this.store.get('transcription.localModelSize') as string) ?? 'base';
+
+    if (this.isModelDownloaded(selectedSize)) {
+      return { modelId: selectedId, fallback: false };
+    }
+
+    const bestSize = this.findBestDownloadedModel();
+    if (!bestSize) {
+      throw new Error('No model downloaded. Visit Modes to download one.');
+    }
+
+    console.warn(`[Dictator] Model "${selectedSize}" not downloaded — falling back to "${bestSize}"`);
+    return { modelId: MODEL_MAP[bestSize], fallback: true };
   }
 
   async downloadModel(onProgress: (pct: number) => void): Promise<void> {
@@ -172,14 +210,11 @@ export class TranscriptionService {
   }
 
   private async transcribeLocalFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
-    const modelId = this.getModelId();
+    const { modelId } = this.resolveModelId();
     const language = (this.store.get('transcription.language') as string) ?? 'auto';
 
     if (!this.pipe || this.loadedModelId !== modelId) {
-      if (!this.isModelDownloaded()) {
-        throw new Error('Model not downloaded. Visit Modes to download it.');
-      }
-      await this.loadFromCache();
+      await this.loadFromCache(modelId);
     }
 
     const float32 = ipcBufferToFloat32(audioBuffer);
@@ -199,6 +234,7 @@ export class TranscriptionService {
     }
 
     if (language !== 'auto') options.language = language;
+    if (language === 'pl') options.initial_prompt = 'Dyktowanie tekstu po polsku.';
 
     const result = await this.pipe(audio, options);
     const text = ((result as { text: string }).text ?? '').trim();
@@ -230,14 +266,14 @@ export class TranscriptionService {
     return response.text.trim();
   }
 
-  private async loadFromCache(): Promise<void> {
+  private async loadFromCache(overrideModelId?: string): Promise<void> {
     // Prevent concurrent model loads (race condition when user changes model mid-transcription)
     if (this.loadingPromise) {
       await this.loadingPromise;
       return;
     }
 
-    const modelId = this.getModelId();
+    const modelId = overrideModelId ?? this.getModelId();
     this.loadingPromise = (async () => {
       this.pipe = await pipeline('automatic-speech-recognition', modelId);
       this.loadedModelId = modelId;
@@ -251,22 +287,18 @@ export class TranscriptionService {
   }
 
   async transcribeLocal(wavPath: string): Promise<string> {
-    const modelId = this.getModelId();
+    const { modelId } = this.resolveModelId();
     const language = (this.store.get('transcription.language') as string) ?? 'auto';
 
     if (!this.pipe || this.loadedModelId !== modelId) {
-      if (!this.isModelDownloaded()) {
-        throw new Error('Model not downloaded. Visit Modes to download it.');
-      }
-      await this.loadFromCache();
+      await this.loadFromCache(modelId);
     }
 
     const audio = readWavAsFloat32(wavPath, 16000);
 
     const options: Record<string, unknown> = { task: 'transcribe' };
-    if (language !== 'auto') {
-      options.language = language;
-    }
+    if (language !== 'auto') options.language = language;
+    if (language === 'pl') options.initial_prompt = 'Dyktowanie tekstu po polsku.';
 
     const result = await this.pipe(audio, options);
     return ((result as { text: string }).text ?? '').trim();

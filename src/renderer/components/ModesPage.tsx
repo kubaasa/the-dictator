@@ -663,10 +663,10 @@ export function ModesPage(props: ModelStatus) {
                       {/* Download progress inside card */}
                       {isDownloading && (
                         <div className="mt-2 w-full">
-                          <div className="h-1 w-full rounded-full bg-neutral-700 overflow-hidden">
-                            {progress === 0 ? (
-                              <div className="h-full w-full rounded-full bg-red-600/40 animate-pulse" />
-                            ) : (
+                          <div className={`h-1 w-full rounded-full overflow-hidden ${
+                            progress === 0 ? 'bg-red-900/40 animate-pulse' : 'bg-neutral-700'
+                          }`}>
+                            {progress > 0 && (
                               <div
                                 className="h-full rounded-full bg-red-600 transition-all duration-300"
                                 style={{ width: `${progress}%` }}
