@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ModelStatus } from '../hooks/useModelStatus';
 import type { DictationMode, AIProviderType } from '../../shared/types';
-import { DICTATION_MODE_PROMPTS, WHISPER_MODEL_DESCRIPTIONS, AI_MODEL_DESCRIPTIONS } from '../../shared/constants';
+import { DICTATION_MODE_PROMPTS, WHISPER_MODEL_DESCRIPTIONS, AI_MODEL_DESCRIPTIONS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
 
 const MODEL_OPTIONS = [
   { value: 'tiny', label: 'Tiny' },
@@ -29,17 +29,6 @@ const AI_PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
   { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'ollama', label: 'Ollama (local)' },
-];
-
-const OPENAI_MODELS = [
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-  { value: 'gpt-4o', label: 'GPT-4o' },
-  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-];
-
-const ANTHROPIC_MODELS = [
-  { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet' },
-  { value: 'claude-haiku-4-20250414', label: 'Claude Haiku' },
 ];
 
 
@@ -130,8 +119,9 @@ export function ModesPage(props: ModelStatus) {
   const [aiProvider, setAiProvider] = useState<AIProviderType>('none');
   const [aiOpenaiKey, setAiOpenaiKey] = useState('');
   const [aiOpenaiModel, setAiOpenaiModel] = useState('gpt-4o-mini');
+  const [openaiModels, setOpenaiModels] = useState(OPENAI_MODELS);
   const [aiAnthropicKey, setAiAnthropicKey] = useState('');
-  const [aiAnthropicModel, setAiAnthropicModel] = useState('claude-sonnet-4-20250514');
+  const [aiAnthropicModel, setAiAnthropicModel] = useState('claude-sonnet-4-6');
   const [aiOllamaUrl, setAiOllamaUrl] = useState('http://localhost:11434');
   const [aiOllamaModel, setAiOllamaModel] = useState('llama3');
   const [aiKeySaved, setAiKeySaved] = useState(false);
@@ -143,6 +133,11 @@ export function ModesPage(props: ModelStatus) {
   const [testResult, setTestResult] = useState('');
   const [testLoading, setTestLoading] = useState(false);
   const [testError, setTestError] = useState('');
+
+  const fetchOpenAIModels = useCallback(async () => {
+    const res = await window.dictator.ai.getOpenAIModels();
+    if (res.success && res.models.length > 0) setOpenaiModels(res.models);
+  }, []);
 
   // Load settings
   useEffect(() => {
@@ -161,6 +156,7 @@ export function ModesPage(props: ModelStatus) {
       setAiOllamaUrl(s.ai.ollamaUrl);
       setAiOllamaModel(s.ai.ollamaModel);
       setTemperature(s.ai.temperature ?? 0.3);
+      if (s.ai.provider === 'openai' && s.ai.openaiApiKey) fetchOpenAIModels();
     });
 
     const unsub = window.dictator.onSettingsChange((s) => {
@@ -295,6 +291,7 @@ export function ModesPage(props: ModelStatus) {
     await window.dictator.setSettings({
       ai: { ...current.ai, ...updates },
     });
+    if (aiProvider === 'openai') fetchOpenAIModels();
     setAiKeySaved(true);
     setTimeout(() => setAiKeySaved(false), 2000);
   };
@@ -308,11 +305,17 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const isAiEnabled = aiProvider !== 'none';
+  const isAiConfigured =
+    aiProvider === 'openai' ? !!aiOpenaiKey :
+    aiProvider === 'anthropic' ? !!aiAnthropicKey :
+    aiProvider === 'ollama' ? !!aiOllamaUrl :
+    false;
+
   const currentPrompt = modePrompts[currentMode] ?? '';
   const defaultPrompt = DICTATION_MODE_PROMPTS[currentMode] ?? '';
   const isPromptModified = currentPrompt !== defaultPrompt;
 
-  const currentAiModels = aiProvider === 'openai' ? OPENAI_MODELS : aiProvider === 'anthropic' ? ANTHROPIC_MODELS : [];
+  const currentAiModels = aiProvider === 'openai' ? openaiModels : aiProvider === 'anthropic' ? ANTHROPIC_MODELS : [];
   const currentAiModel = aiProvider === 'openai' ? aiOpenaiModel : aiProvider === 'anthropic' ? aiAnthropicModel : '';
 
   return (
@@ -345,7 +348,7 @@ export function ModesPage(props: ModelStatus) {
             ))}
           </div>
 
-          {!isAiEnabled && (
+          {(!isAiEnabled || !isAiConfigured) && (
             <div className="mt-4 flex items-center gap-3 rounded-lg border border-green-800/40 bg-green-950/20 px-4 py-3">
               <div className="flex items-center gap-2 shrink-0">
                 <span className="relative flex h-2 w-2">
@@ -355,7 +358,9 @@ export function ModesPage(props: ModelStatus) {
                 <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-green-500">[IDLE]</span>
               </div>
               <span className="text-xs text-green-400/70">
-                AI processing disabled — select a provider below to activate dictation modes.
+                {!isAiEnabled
+                  ? 'AI processing disabled — select a provider below to activate dictation modes.'
+                  : 'Provider selected — enter your API key below and click Save to activate dictation modes.'}
               </span>
             </div>
           )}

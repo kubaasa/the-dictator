@@ -209,6 +209,12 @@ function broadcastState(state: RecordingState): void {
 
 // Recording control via IPC from renderer
 function setupRecordingIpc(): void {
+  ipcMain.on(IPC.RECORDING_INIT, () => {
+    if (currentState === 'initializing' || currentState === 'recording') return;
+    pasteService.captureTarget();
+    broadcastState('initializing');
+  });
+
   ipcMain.on(IPC.RECORDING_START, () => {
     broadcastState('recording');
   });

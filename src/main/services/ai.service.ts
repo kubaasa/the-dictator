@@ -79,7 +79,7 @@ export class AIService {
 
   private async processAnthropic(text: string, systemPrompt: string): Promise<string> {
     const client = this.getAnthropicClient();
-    const model = (this.store.get('ai.anthropicModel') as string) ?? 'claude-sonnet-4-20250514';
+    const model = (this.store.get('ai.anthropicModel') as string) ?? 'claude-sonnet-4-6';
     const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
 
     const response = await client.messages.create({
@@ -116,6 +116,25 @@ export class AIService {
     if (!res.ok) throw new Error(`Ollama error: ${res.status} ${res.statusText}`);
     const data = await res.json();
     return data.message?.content?.trim() ?? text;
+  }
+
+  async getOpenAIModels(): Promise<{ value: string; label: string }[]> {
+    try {
+      const client = this.getOpenAIClient();
+      const response = await client.models.list();
+
+      // Keep only chat-capable GPT/O-series models, skip fine-tuned, embedding, audio, etc.
+      const ALLOWED_PREFIXES = ['gpt-4', 'gpt-3.5', 'o1', 'o3', 'o4'];
+      const SKIP_KEYWORDS = ['instruct', 'embed', 'audio', 'realtime', 'tts', 'dall-e', 'whisper', 'babbage', 'davinci'];
+
+      return response.data
+        .filter(m => ALLOWED_PREFIXES.some(p => m.id.startsWith(p)))
+        .filter(m => !SKIP_KEYWORDS.some(k => m.id.includes(k)))
+        .sort((a, b) => b.id.localeCompare(a.id))
+        .map(m => ({ value: m.id, label: m.id }));
+    } catch {
+      return [];
+    }
   }
 
   async testPrompt(text: string, systemPrompt: string): Promise<string> {

@@ -58,16 +58,13 @@ const IDLE_SCALES = HANNING_WEIGHTS.map(w =>
   ((MIN_BAR_H + w * 6) / MAX_BAR_H).toFixed(4)
 );
 
-// Init animation: peak height per bar — center bars pulse noticeably, edges barely move
-const INIT_PEAK_SCALES = HANNING_WEIGHTS.map(w =>
-  ((MIN_BAR_H + w * (MAX_BAR_H * 0.32)) / MAX_BAR_H).toFixed(4)
-);
+// Init animation: uniform peak height for wave effect
+const INIT_PEAK_SCALE = ((MIN_BAR_H + MAX_BAR_H * 0.2) / MAX_BAR_H).toFixed(4);
 
-// Init animation: center bars lead (delay=0), edge bars follow (delay up to 0.4s)
+// Init animation: 3 simultaneous waves flowing right-to-left
+// Negative delays = all bars start immediately but at different phases spanning 3 full cycles
 const INIT_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) => {
-  const distFromCenter = Math.abs(i - (BAR_COUNT - 1) / 2);
-  const maxDist = (BAR_COUNT - 1) / 2;
-  return ((distFromCenter / maxDist) * 0.4).toFixed(3);
+  return (-((BAR_COUNT - 1 - i) / (BAR_COUNT - 1)) * 3).toFixed(3);
 });
 
 const KEYFRAMES = `
@@ -375,7 +372,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
               let barOpacity: number;
               if (isInitializing) {
                 transform  = `scaleY(${IDLE_SCALES[i]})`;
-                animation  = `maxi-init 1.4s ease-in-out ${INIT_DELAYS[i]}s infinite`;
+                animation  = `maxi-init 1s ease-in-out ${INIT_DELAYS[i]}s infinite`;
                 transition = 'none';
                 barOpacity = 0.65;
               } else if (isRecording) {
@@ -415,7 +412,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
                     animation,
                     transition,
                     opacity: barOpacity,
-                    ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALES[i] }),
+                    ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALE }),
                   } as React.CSSProperties}
                 />
               );

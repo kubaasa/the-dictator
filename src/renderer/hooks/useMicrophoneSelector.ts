@@ -42,14 +42,19 @@ export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
   useEffect(() => {
     mountedRef.current = true;
 
-    // Request permission on mount so labels are populated immediately
-    navigator.mediaDevices
-      .getUserMedia({ audio: true })
-      .then((stream) => {
-        stream.getTracks().forEach((t) => t.stop());
-        if (mountedRef.current) return refreshDevices();
-      })
-      .catch(() => { if (mountedRef.current) refreshDevices(); });
+    // In Electron, mic permission is already granted — enumerateDevices returns labels
+    // without opening a stream, so no audible mic on/off at startup
+    refreshDevices().then(async () => {
+      if (!mountedRef.current) return;
+      // If labels are still empty (no prior permission), request lazily
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const hasLabels = allDevices.some((d) => d.kind === 'audioinput' && d.label);
+      if (!hasLabels && mountedRef.current) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+        stream?.getTracks().forEach((t) => t.stop());
+        if (mountedRef.current) refreshDevices();
+      }
+    });
 
     navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
     return () => {

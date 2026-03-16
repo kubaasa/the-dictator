@@ -186,12 +186,18 @@ export class TranscriptionService {
     // Skip resampling if audio is already at 16kHz (renderer records at 16kHz)
     const audio = sampleRate === 16000 ? float32 : resampleFloat32(float32, sampleRate, 16000);
 
-    const options: Record<string, unknown> = {
-      task: 'transcribe',
-      // Handle recordings longer than Whisper's 30s context window
-      chunk_length_s: 30,
-      stride_length_s: 5,
-    };
+    const durationSeconds = float32.length / 16000;
+    const options: Record<string, unknown> = { task: 'transcribe' };
+
+    // Long-form pipeline (chunk_length_s + stride_length_s) is needed only for audio > 30s.
+    // For short recordings it causes hallucinations: the long-form pipeline conditions on
+    // previous tokens via return_timestamps, which makes the model repeat spoken numbers
+    // or invent continuations for the silence-padded portion of the 30s context window.
+    if (durationSeconds > 30) {
+      options.chunk_length_s = 30;
+      options.stride_length_s = 5;
+    }
+
     if (language !== 'auto') options.language = language;
 
     const result = await this.pipe(audio, options);

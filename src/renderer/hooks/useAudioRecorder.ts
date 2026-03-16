@@ -68,16 +68,20 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current || isSettingUpRef.current) return;
     try {
+      // Show overlay immediately with loading animation (before slow getUserMedia)
+      window.dictator.initRecording();
+
       const { ready, error: readyError } = await window.dictator.checkTranscriptionReady();
       if (!ready) {
         setError(readyError ?? 'Transcription not ready');
+        window.dictator.stopRecording();
         return;
       }
       setError('');
       isSettingUpRef.current = true;
       pendingStopRef.current = false;
 
-      // Bug #1: get mic BEFORE notifying main process
+      // Get mic BEFORE notifying main process
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
@@ -155,8 +159,13 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         window.dictator.sendVoiceActivity(level);
       };
 
+      // Route through a silent gain node — processor needs a destination connection
+      // to fire onaudioprocess, but we don't want mic audio in the speakers
+      const silentGain = audioContext.createGain();
+      silentGain.gain.value = 0;
       source.connect(processor);
-      processor.connect(audioContext.destination);
+      processor.connect(silentGain);
+      silentGain.connect(audioContext.destination);
 
       isSettingUpRef.current = false;
 
@@ -205,6 +214,14 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       mediaStreamRef.current = null;
     }
 
+    // Snapshot chunks and immediately swap in a new empty array.
+    // WebAudio may still have onaudioprocess events queued in the JS task queue even after
+    // disconnect() — they'd push silence into the same array we're about to transcribe.
+    // By replacing the ref first, any late events push to the discarded array.
+    const audioContext = audioContextRef.current;
+    const chunks = chunksRef.current;
+    chunksRef.current = [];
+
     if (sourceRef.current) {
       sourceRef.current.disconnect();
       sourceRef.current = null;
@@ -213,9 +230,6 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       processorRef.current.disconnect();
       processorRef.current = null;
     }
-
-    const audioContext = audioContextRef.current;
-    const chunks = chunksRef.current;
 
     if (audioContext && chunks.length > 0) {
       const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
@@ -235,7 +249,6 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       window.dictator.transcribeBuffer(merged.buffer, sampleRate, recordingIdRef.current);
     }
 
-    chunksRef.current = [];
   }, []);
 
   const cancelRecording = useCallback(() => {
