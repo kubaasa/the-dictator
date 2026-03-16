@@ -90,12 +90,25 @@ const KEYFRAMES = `
   0%, 100% { transform: scaleY(var(--init-idle, 0.05)); }
   50%       { transform: scaleY(var(--init-peak, 0.35)); }
 }
+@keyframes maxi-enter {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1.0); }
+}
+@keyframes maxi-exit {
+  from { opacity: 1; transform: scale(1.0); }
+  to   { opacity: 0; transform: scale(0.9); }
+}
 `;
+
+type AnimPhase = 'idle' | 'entering' | 'active' | 'exiting';
 
 export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWidgetProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
+  const prevIsActiveRef = useRef(false);
 
   // ─── Audio visualization refs (no React state — updated in RAF loop) ────
+  const vizActiveRef   = useRef(false); // guards async getUserMedia against cleanup races
   const audioCtxRef    = useRef<AudioContext | null>(null);
   const analyserRef    = useRef<AnalyserNode | null>(null);
   const streamRef      = useRef<MediaStream | null>(null);
@@ -116,14 +129,34 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
   const isDone         = state === 'done';
   const isError        = state === 'error';
 
+  // ─── Enter / exit animation state machine ────────────────────────────────
+  const isActive = isInitializing || isRecording;
+  useEffect(() => {
+    const wasActive = prevIsActiveRef.current;
+    prevIsActiveRef.current = isActive;
+
+    if (isActive && !wasActive) {
+      setAnimPhase('entering');
+      const t = setTimeout(() => setAnimPhase('active'), 320);
+      return () => clearTimeout(t);
+    } else if (!isActive && wasActive) {
+      setAnimPhase('exiting');
+    }
+  }, [isActive]);
+
   // ─── Start / stop visualization based on recording state ────────────────
   useEffect(() => {
     if (!isRecording) {
+      vizActiveRef.current = false;
       stopVisualization();
       return;
     }
+    vizActiveRef.current = true;
     startVisualization();
-    return stopVisualization;
+    return () => {
+      vizActiveRef.current = false;
+      stopVisualization();
+    };
   }, [isRecording]);
 
   async function startVisualization() {
@@ -136,26 +169,41 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+
+      // Guard: cleanup ran while we were awaiting — release stream immediately
+      if (!vizActiveRef.current) {
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
       streamRef.current = stream;
 
       const ctx = new AudioContext();
-      await ctx.resume(); // required in some browsers after no user gesture
+      await ctx.resume();
+
+      // Guard: check again after second await
+      if (!vizActiveRef.current) {
+        stream.getTracks().forEach(t => t.stop());
+        ctx.close();
+        return;
+      }
       audioCtxRef.current = ctx;
 
       const analyser = ctx.createAnalyser();
-      // fftSize controls time-domain buffer size; larger = more detail per bar
       analyser.fftSize = 1024;
       analyserRef.current = analyser;
       localAnalyser = analyser;
 
       const source = ctx.createMediaStreamSource(stream);
-      source.connect(analyser); // visualization-only — not recorded
+      source.connect(analyser);
 
       dataArray    = new Uint8Array(analyser.fftSize);
       samplesPerBar = Math.floor(analyser.fftSize / BAR_COUNT);
     } catch (err) {
       console.warn('[MaxiWidget] getUserMedia failed, falling back to voiceLevel prop:', err);
     }
+
+    // Final guard before starting RAF loop
+    if (!vizActiveRef.current) return;
 
     const tick = () => {
       if (localAnalyser && dataArray) {
@@ -266,6 +314,12 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
           borderRadius: 16,
           background: 'rgba(0,0,0,0.01)',
           cursor: isDragging ? 'grabbing' : 'grab',
+          transformOrigin: 'center',
+          opacity: animPhase === 'idle' ? 0 : undefined,
+          animation:
+            animPhase === 'entering' ? 'maxi-enter 300ms ease-out both' :
+            animPhase === 'exiting'  ? 'maxi-exit 250ms ease-in both'   :
+            'none',
         }}
       >
         {/* Pill card */}

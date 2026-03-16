@@ -61,6 +61,7 @@ function showOrHideMainWindow(): void {
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let currentState: RecordingState = 'idle';
+let overlayHideTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const hotkeyService = new HotkeyService(
   () => { pasteService.captureTarget(); broadcastState('initializing'); sendToggleToRenderer(); },
@@ -178,10 +179,29 @@ function broadcastState(state: RecordingState): void {
   // Maxi widget: show only during initializing/recording, hide for everything else
   const activeWidget = (store.get('widget') ?? DEFAULT_SETTINGS.widget).activeWidget;
   if (activeWidget === 'maxi' && overlayWindow) {
-    if (state === 'idle' || state === 'transcribing' || state === 'processing' || state === 'done' || state === 'error') {
-      overlayWindow.hide();
-    } else if (!overlayWindow.isVisible()) {
-      overlayWindow.show();
+    if (state === 'idle') {
+      if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
+      if (overlayWindow.isVisible()) {
+        // Delay hide to allow exit animation (250ms) + IPC delivery margin
+        overlayHideTimeout = setTimeout(() => {
+          if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
+          overlayHideTimeout = null;
+        }, 400);
+      } else {
+        overlayWindow.hide();
+      }
+    } else if (state === 'transcribing' || state === 'processing' || state === 'done' || state === 'error') {
+      if (overlayHideTimeout) clearTimeout(overlayHideTimeout);
+      overlayHideTimeout = setTimeout(() => {
+        if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
+        overlayHideTimeout = null;
+      }, 400);
+    } else {
+      // Active states (initializing, recording): cancel any pending hide
+      if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
+      if (!overlayWindow.isVisible()) {
+        overlayWindow.show();
+      }
     }
   }
 }
