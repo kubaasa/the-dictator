@@ -1,9 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/constants';
-import type { AppSettings, RecordingState, TranscriptionResult, RecordingEntry } from '../shared/types';
+import type { AppSettings, RecordingState, TranscriptionResult, RecordingEntry, HistoryStats } from '../shared/types';
 
 export interface DictatorAPI {
   // Recording
+  initRecording: () => void;
   startRecording: () => void;
   stopRecording: () => void;
   getRecordingState: () => Promise<RecordingState>;
@@ -45,16 +46,18 @@ export interface DictatorAPI {
 
   // History
   history: {
-    getAll: () => Promise<RecordingEntry[]>;
-    delete: (id: string) => Promise<void>;
-    search: (query: string) => Promise<RecordingEntry[]>;
-    clearAll: () => Promise<void>;
-    migrate: (entries: RecordingEntry[]) => Promise<void>;
+    getAll: () => Promise<{ success: boolean; data: RecordingEntry[]; error?: string }>;
+    getStats: () => Promise<{ success: boolean; data: HistoryStats | null; error?: string }>;
+    delete: (id: string) => Promise<{ success: boolean; found?: boolean; audioDeleted?: boolean; audioError?: string; error?: string }>;
+    search: (query: string) => Promise<{ success: boolean; data: RecordingEntry[]; error?: string }>;
+    clearAll: () => Promise<{ success: boolean; deleted?: number; audioErrors?: number; error?: string }>;
+    migrate: (entries: RecordingEntry[]) => Promise<{ success: boolean; added?: number; skipped?: number; error?: string }>;
   };
 
   // AI
   ai: {
     testPrompt: (text: string, systemPrompt: string) => Promise<{ success: boolean; result?: string; error?: string }>;
+    getOpenAIModels: () => Promise<{ success: boolean; models: { value: string; label: string }[]; error?: string }>;
   };
 
   // Audio
@@ -78,6 +81,7 @@ export interface DictatorAPI {
 
 const api: DictatorAPI = {
   // Recording
+  initRecording: () => ipcRenderer.send(IPC.RECORDING_INIT),
   startRecording: () => ipcRenderer.send(IPC.RECORDING_START),
   stopRecording: () => ipcRenderer.send(IPC.RECORDING_STOP),
   getRecordingState: () => ipcRenderer.invoke(IPC.RECORDING_STATE_CHANGED),
@@ -165,6 +169,7 @@ const api: DictatorAPI = {
   // History
   history: {
     getAll: () => ipcRenderer.invoke(IPC.HISTORY_GET_ALL),
+    getStats: () => ipcRenderer.invoke(IPC.HISTORY_GET_STATS),
     delete: (id) => ipcRenderer.invoke(IPC.HISTORY_DELETE, id),
     search: (query) => ipcRenderer.invoke(IPC.HISTORY_SEARCH, query),
     clearAll: () => ipcRenderer.invoke(IPC.HISTORY_CLEAR_ALL),
@@ -174,6 +179,7 @@ const api: DictatorAPI = {
   // AI
   ai: {
     testPrompt: (text, systemPrompt) => ipcRenderer.invoke(IPC.AI_TEST_PROMPT, text, systemPrompt),
+    getOpenAIModels: () => ipcRenderer.invoke(IPC.AI_GET_OPENAI_MODELS),
   },
 
   // Audio

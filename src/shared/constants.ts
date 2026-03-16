@@ -1,5 +1,6 @@
 export const IPC = {
   // Recording
+  RECORDING_INIT: 'recording:init',
   RECORDING_START: 'recording:start',
   RECORDING_STOP: 'recording:stop',
   RECORDING_STATE_CHANGED: 'recording:state-changed',
@@ -39,6 +40,7 @@ export const IPC = {
 
   // History
   HISTORY_GET_ALL: 'history:get-all',
+  HISTORY_GET_STATS: 'history:get-stats',
   HISTORY_DELETE: 'history:delete',
   HISTORY_SEARCH: 'history:search',
   HISTORY_CLEAR_ALL: 'history:clear-all',
@@ -49,6 +51,7 @@ export const IPC = {
 
   // AI
   AI_TEST_PROMPT: 'ai:test-prompt',
+  AI_GET_OPENAI_MODELS: 'ai:get-openai-models',
 
   // App
   APP_QUIT: 'app:quit',
@@ -144,10 +147,24 @@ export const WHISPER_MODEL_DESCRIPTIONS: Record<string, string> = {
   'large-v3': 'Best accuracy, slowest',
 };
 
+// Single source of truth for AI model lists — update here when providers release new models
+export const OPENAI_MODELS: { value: string; label: string }[] = [
+  { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+  { value: 'gpt-4o', label: 'GPT-4o' },
+  { value: 'gpt-4.1', label: 'GPT-4.1' },
+];
+
+export const ANTHROPIC_MODELS: { value: string; label: string }[] = [
+  { value: 'claude-opus-4-6', label: 'Claude Opus' },
+  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet' },
+  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku' },
+];
+
 export const AI_MODEL_DESCRIPTIONS: Record<string, string> = {
   'gpt-4o-mini': 'Fast & affordable',
-  'gpt-4o': 'Best OpenAI model',
-  'gpt-4-turbo': 'High quality, vision capable',
-  'claude-sonnet-4-20250514': 'Best quality & reasoning',
-  'claude-haiku-4-20250414': 'Fast & lightweight',
+  'gpt-4o': 'Powerful multimodal model',
+  'gpt-4.1': 'Latest GPT-4 generation',
+  'claude-opus-4-6': 'Most capable Anthropic model',
+  'claude-sonnet-4-6': 'Best quality & reasoning',
+  'claude-haiku-4-5-20251001': 'Fast & lightweight',
 };

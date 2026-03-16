@@ -208,12 +208,15 @@ export function registerIpcHandlers(
       const entryId = recordingId ?? Date.now().toString();
       const durationSeconds = samples.length / sampleRate;
       const mode = (store.get('dictation.currentMode') as string) ?? 'voice';
-      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+      const countWordsInline = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
+      const wordCount = countWordsInline(text);
+      const rawWordCount = countWordsInline(rawText);
       const entry: RecordingEntry = {
         id: entryId,
         date: new Date().toISOString(),
         text,
         wordCount,
+        rawWordCount,
         durationSeconds,
         appName,
         mode,
@@ -242,12 +245,98 @@ export function registerIpcHandlers(
   });
 
   // History handlers
-  ipcMain.handle(IPC.HISTORY_GET_ALL, () => historyService.getAll());
-  ipcMain.handle(IPC.HISTORY_DELETE, (_event, id: string) => historyService.delete(id));
-  ipcMain.handle(IPC.HISTORY_SEARCH, (_event, query: string) => historyService.search(query));
-  ipcMain.handle(IPC.HISTORY_CLEAR_ALL, () => historyService.clearAll());
-  ipcMain.handle(IPC.HISTORY_MIGRATE, (_event, entries: RecordingEntry[]) => {
-    for (const entry of entries) historyService.add(entry);
+  ipcMain.handle(IPC.HISTORY_GET_STATS, () => {
+    try {
+      const data = historyService.getStats();
+      return { success: true, data };
+    } catch (err) {
+      console.error('[IPC] HISTORY_GET_STATS failed:', err);
+      return { success: false, data: null, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.HISTORY_GET_ALL, () => {
+    try {
+      const data = historyService.getAll();
+      return { success: true, data };
+    } catch (err) {
+      console.error('[IPC] HISTORY_GET_ALL failed:', err);
+      return { success: false, data: [], error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.HISTORY_DELETE, (_event, id: string) => {
+    try {
+      if (!id || typeof id !== 'string') {
+        return { success: false, error: 'Invalid recording ID' };
+      }
+      const result = historyService.delete(id);
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('[IPC] HISTORY_DELETE failed:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.HISTORY_SEARCH, (_event, query: string) => {
+    try {
+      if (typeof query !== 'string') {
+        return { success: true, data: historyService.getAll() };
+      }
+      const data = historyService.search(query);
+      return { success: true, data };
+    } catch (err) {
+      console.error('[IPC] HISTORY_SEARCH failed:', err);
+      return { success: false, data: [], error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.HISTORY_CLEAR_ALL, () => {
+    try {
+      const result = historyService.clearAll();
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('[IPC] HISTORY_CLEAR_ALL failed:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.HISTORY_MIGRATE, (_event, entries: unknown) => {
+    try {
+      if (!Array.isArray(entries)) {
+        return { success: false, error: 'Expected an array of entries' };
+      }
+      let added = 0;
+      let skipped = 0;
+      for (const entry of entries) {
+        try {
+          const e = entry as Record<string, unknown>;
+          // Backfill rawWordCount for legacy entries that predate this field
+          if (typeof e.rawWordCount !== 'number') {
+            e.rawWordCount = typeof e.wordCount === 'number' ? e.wordCount : 0;
+          }
+          historyService.add(e as RecordingEntry);
+          added++;
+        } catch (entryErr) {
+          console.warn('[IPC] HISTORY_MIGRATE skipped invalid entry:', entryErr);
+          skipped++;
+        }
+      }
+      return { success: true, added, skipped };
+    } catch (err) {
+      console.error('[IPC] HISTORY_MIGRATE failed:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // AI: fetch available OpenAI models using the stored API key
+  ipcMain.handle(IPC.AI_GET_OPENAI_MODELS, async () => {
+    try {
+      const models = await aiService.getOpenAIModels();
+      return { success: true, models };
+    } catch (err) {
+      return { success: false, models: [], error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   // AI test prompt

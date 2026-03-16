@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import { RecIndicator } from './RecEffects';
-import type { RecordingState, RecordingEntry } from '../../shared/types';
+import type { RecordingState } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import type { useAudioRecorder } from '../hooks/useAudioRecorder';
 
@@ -11,59 +11,23 @@ interface HomePageProps {
   audioRecorder: ReturnType<typeof useAudioRecorder>;
 }
 
-interface StatsResult {
+interface StatsDisplay {
   totalWords: string;
   totalTimeDisplay: string;
   totalRecordings: string;
   avgWpm: string;
 }
 
-function countWords(text: string): number {
-  if (!text) return 0;
-  return text.trim().split(/\s+/).filter(Boolean).length;
+function formatTime(totalSeconds: number): string {
+  if (totalSeconds <= 0) return '—';
+  if (totalSeconds < 60) return `${Math.round(totalSeconds)}s`;
+  if (totalSeconds < 3600) return `${Math.round(totalSeconds / 60)} min`;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.round((totalSeconds % 3600) / 60);
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
-// Use pre-computed wordCount from DB; fall back to counting if missing (legacy entries)
-function entryWordCount(e: RecordingEntry): number {
-  return e.wordCount ?? countWords(e.text);
-}
-
-function computeStats(entries: RecordingEntry[]): StatsResult {
-  const totalWords = entries.reduce((sum, e) => sum + entryWordCount(e), 0);
-
-  const totalSeconds = entries.reduce((sum, e) => sum + (e.durationSeconds ?? 0), 0);
-  let totalTimeDisplay: string;
-  if (totalSeconds <= 0) {
-    totalTimeDisplay = '—';
-  } else if (totalSeconds < 60) {
-    totalTimeDisplay = `${Math.round(totalSeconds)}s`;
-  } else if (totalSeconds < 3600) {
-    totalTimeDisplay = `${Math.round(totalSeconds / 60)} min`;
-  } else {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.round((totalSeconds % 3600) / 60);
-    totalTimeDisplay = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-
-  const withDuration = entries.filter((e) => (e.durationSeconds ?? 0) > 0 && entryWordCount(e) > 0);
-  let avgWpm: string;
-  if (withDuration.length === 0) {
-    avgWpm = '—';
-  } else {
-    const total = withDuration.reduce((sum, e) => sum + entryWordCount(e) / ((e.durationSeconds ?? 1) / 60), 0);
-    const rounded = Math.round(total / withDuration.length);
-    avgWpm = isFinite(rounded) ? `${rounded} wpm` : '—';
-  }
-
-  return {
-    totalWords: totalWords > 0 ? totalWords.toLocaleString() : '—',
-    totalTimeDisplay,
-    totalRecordings: entries.length > 0 ? entries.length.toString() : '—',
-    avgWpm,
-  };
-}
-
-const EMPTY_STATS: StatsResult = { totalWords: '—', totalTimeDisplay: '—', totalRecordings: '—', avgWpm: '—' };
+const EMPTY_STATS: StatsDisplay = { totalWords: '—', totalTimeDisplay: '—', totalRecordings: '—', avgWpm: '—' };
 
 export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
   const { isRecording, error: recorderError, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
@@ -82,13 +46,21 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
     return unsub;
   }, []);
 
-  // Stats loaded from SQLite (single source of truth — main process always saves there)
-  const [stats, setStats] = useState<StatsResult>(EMPTY_STATS);
+  // Stats loaded from SQLite via dedicated aggregate query (no row limit)
+  const [stats, setStats] = useState<StatsDisplay>(EMPTY_STATS);
 
   const refreshStats = useCallback(async () => {
     try {
-      const entries = await window.dictator.history.getAll();
-      setStats(computeStats(entries));
+      const result = await window.dictator.history.getStats();
+      if (result.success && result.data) {
+        const { totalWords, totalSeconds, totalRecordings, avgWpm } = result.data;
+        setStats({
+          totalWords: totalWords > 0 ? totalWords.toLocaleString() : '—',
+          totalTimeDisplay: formatTime(totalSeconds),
+          totalRecordings: totalRecordings > 0 ? totalRecordings.toString() : '—',
+          avgWpm: avgWpm > 0 ? `${avgWpm} wpm` : '—',
+        });
+      }
     } catch (err) {
       console.error('[HomePage] Failed to load stats:', err);
     }

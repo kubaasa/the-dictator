@@ -10,10 +10,20 @@ export interface RecordingEntry {
   date: string;
   text: string;
   wordCount: number;
+  /** Word count from raw transcription (before AI processing). Used for accurate stats. */
+  rawWordCount: number;
   durationSeconds: number;
   appName?: string;
   audioPath?: string;
   mode?: string;
+}
+
+export interface HistoryStats {
+  totalWords: number;
+  totalSeconds: number;
+  totalRecordings: number;
+  /** Weighted AVG WPM: totalRawWords / totalMinutes */
+  avgWpm: number;
 }
 
 export type TranscriptionEngine = 'local' | 'api';
@@ -81,7 +91,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     openaiApiKey: '',
     openaiModel: 'gpt-4o-mini',
     anthropicApiKey: '',
-    anthropicModel: 'claude-sonnet-4-20250514',
+    anthropicModel: 'claude-sonnet-4-6',
     ollamaUrl: 'http://localhost:11434',
     ollamaModel: 'llama3',
     temperature: 0.3,
