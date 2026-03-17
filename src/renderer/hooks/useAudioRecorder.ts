@@ -128,7 +128,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       const { ready, error: readyError } = await window.dictator.checkTranscriptionReady();
       if (!ready) {
         setError(readyError ?? 'Transcription not ready');
-        window.dictator.stopRecording();
+        // Don't call stopRecording() — CHECK_READY handler already broadcasts
+        // 'error' state and schedules 'idle' after 1.5s
         return;
       }
       setError('');
@@ -267,7 +268,6 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       recordingStartTimeRef.current = null;
     }
     setRecordingStartTime(null);
-    window.dictator.stopRecording();
 
     // Stop MediaRecorder before stopping stream tracks so it captures all audio
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -300,8 +300,14 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       workletNodeRef.current = null;
     }
 
+    // Notify main process. Skip idle broadcast when audio exists — the
+    // transcription handler manages state (transcribing → done → idle),
+    // preventing a brief idle flash that causes widget flickering.
+    const hasAudio = chunks.length > 0 && !!audioContext;
+    window.dictator.stopRecording(!hasAudio);
+
     // Send buffer for transcription BEFORE closing context — minimize latency
-    if (chunks.length > 0 && audioContext) {
+    if (hasAudio) {
       const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
       const merged = new Float32Array(totalLength);
       let offset = 0;
@@ -364,7 +370,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   // Listen for global hotkey toggle from main process
   useEffect(() => {
     const unsub = window.dictator.onHotkeyToggle(() => {
-      if (isRecordingRef.current) {
+      if (isRecordingRef.current || isSettingUpRef.current) {
         stopRecording();
       } else {
         startRecording();

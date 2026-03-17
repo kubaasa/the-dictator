@@ -66,12 +66,7 @@ let historyService: HistoryService | null = null;
 const hotkeyService = new HotkeyService(
   () => { pasteService.captureTarget(); broadcastState('initializing'); sendToggleToRenderer(); },
   () => {
-    if (currentState === 'initializing') {
-      broadcastState('idle');
-      sendCancelToRenderer();
-    } else {
-      sendToggleToRenderer();
-    }
+    sendToggleToRenderer();
   },
 );
 
@@ -177,28 +172,20 @@ function broadcastState(state: RecordingState): void {
     win.webContents.send(IPC.RECORDING_STATE_CHANGED, state);
   }
 
-  // Maxi widget: show only during initializing/recording, hide for everything else
+  // Maxi widget: visible for all active states, hidden only on idle
   const activeWidget = (store.get('widget') ?? DEFAULT_SETTINGS.widget).activeWidget;
   if (activeWidget === 'maxi' && overlayWindow) {
     if (state === 'idle') {
       if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
       if (overlayWindow.isVisible()) {
-        // Delay hide to allow exit animation (250ms) + IPC delivery margin
         overlayHideTimeout = setTimeout(() => {
           if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
           overlayHideTimeout = null;
         }, 400);
-      } else {
-        overlayWindow.hide();
       }
-    } else if (state === 'transcribing' || state === 'processing' || state === 'done' || state === 'error') {
-      if (overlayHideTimeout) clearTimeout(overlayHideTimeout);
-      overlayHideTimeout = setTimeout(() => {
-        if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
-        overlayHideTimeout = null;
-      }, 400);
     } else {
-      // Active states (initializing, recording): cancel any pending hide
+      // Active states (initializing, recording, transcribing, processing, done, error):
+      // cancel any pending hide and ensure the widget is visible
       if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
       if (!overlayWindow.isVisible()) {
         overlayWindow.show();
@@ -219,10 +206,11 @@ function setupRecordingIpc(): void {
     broadcastState('recording');
   });
 
-  ipcMain.on(IPC.RECORDING_STOP, () => {
-    broadcastState('idle');
-    // Sync HotkeyService — renderer may have stopped recording due to an error,
-    // so isRecordingActive could be stuck at true and block the next PTT press.
+  ipcMain.on(IPC.RECORDING_STOP, (_event, goIdle = true) => {
+    // Only transition to idle when there's no pending transcription.
+    // When audio exists, the transcription handler manages state transitions
+    // (transcribing → processing → done → idle), avoiding a brief idle flicker.
+    if (goIdle) broadcastState('idle');
     hotkeyService.notifyRecordingStopped();
   });
 
@@ -235,7 +223,7 @@ function setupRecordingIpc(): void {
   });
 
   ipcMain.on(IPC.OVERLAY_TOGGLE, () => {
-    pasteService.captureTarget(); // best-effort — window may have already lost focus
+    // captureTarget is handled by RECORDING_INIT (start) or onRecordingStart (PTT)
     sendToggleToRenderer();
   });
 

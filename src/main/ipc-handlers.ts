@@ -137,13 +137,23 @@ export function registerIpcHandlers(
   // Transcription readiness check (before recording starts)
   ipcMain.handle(IPC.TRANSCRIPTION_CHECK_READY, () => {
     const engine = (store.get('transcription.engine') as string) ?? 'local';
+    let readyError: string | undefined;
     if (engine === 'api') {
       const apiKey = (store.get('transcription.openaiApiKey') as string) ?? '';
-      if (!apiKey) return { ready: false, error: 'OpenAI API key is not set. Go to Modes and enter your key.' };
+      if (!apiKey) readyError = 'OpenAI API key is not set. Go to Modes and enter your key.';
     } else {
       if (!transcriptionService.isModelDownloaded()) {
-        return { ready: false, error: 'Model not downloaded. Go to Modes to download it.' };
+        readyError = 'Model not downloaded. Go to Modes and do it.';
       }
+    }
+    if (readyError) {
+      broadcastState('error');
+      hotkeyService.notifyRecordingStopped();
+      // Send error message to overlay so MaxiWidget can display it
+      const overlay = getOverlayWindow();
+      if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, readyError);
+      setTimeout(() => broadcastState('idle'), 2500);
+      return { ready: false, error: readyError };
     }
     return { ready: true };
   });
@@ -231,7 +241,7 @@ export function registerIpcHandlers(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       broadcastState('error');
-      setTimeout(() => broadcastState('idle'), 3000);
+      setTimeout(() => broadcastState('idle'), 1500);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, msg);
     }
   });

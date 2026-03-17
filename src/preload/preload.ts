@@ -6,7 +6,7 @@ export interface DictatorAPI {
   // Recording
   initRecording: () => void;
   startRecording: () => void;
-  stopRecording: () => void;
+  stopRecording: (goIdle?: boolean) => void;
   getRecordingState: () => Promise<RecordingState>;
   onRecordingStateChanged: (callback: (state: RecordingState) => void) => () => void;
 
@@ -83,7 +83,7 @@ const api: DictatorAPI = {
   // Recording
   initRecording: () => ipcRenderer.send(IPC.RECORDING_INIT),
   startRecording: () => ipcRenderer.send(IPC.RECORDING_START),
-  stopRecording: () => ipcRenderer.send(IPC.RECORDING_STOP),
+  stopRecording: (goIdle?: boolean) => ipcRenderer.send(IPC.RECORDING_STOP, goIdle !== false),
   getRecordingState: () => ipcRenderer.invoke(IPC.RECORDING_STATE_CHANGED),
   onRecordingStateChanged: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, state: RecordingState) => callback(state);

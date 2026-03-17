@@ -63,6 +63,7 @@ export class HotkeyService {
   private pressedKeys = new Set<number>();
   private mode: HotkeyMode = 'toggle';
   private isRecordingActive = false;
+  private suppressPttRestart = false;
   private onRecordingStart: () => void;
   private onRecordingStop: () => void;
   private keydownHandler: ((e: { keycode: number }) => void) | null = null;
@@ -98,6 +99,16 @@ export class HotkeyService {
     };
 
     this.keyupHandler = (e) => {
+      // Clear PTT suppress flag when a PTT key is released — allows next press to start fresh
+      if (this.suppressPttRestart) {
+        const pttBindings = this.bindings.filter(
+          (b) => b.action === 'pushToTalk' || b.action === 'toggleRecording',
+        );
+        if (pttBindings.some((b) => b.keys.includes(e.keycode))) {
+          this.suppressPttRestart = false;
+        }
+      }
+
       if (this.isRecordingActive) {
         const isModifier = MODIFIER_KEYCODES.has(e.keycode);
         if (!isModifier && this.mode === 'push-to-talk') {
@@ -145,6 +156,16 @@ export class HotkeyService {
   // Keeps HotkeyService in sync so a stuck isRecordingActive=true can't block new PTT presses.
   notifyRecordingStopped(): void {
     this.isRecordingActive = false;
+
+    // In PTT mode, if the key is still physically held, suppress auto-repeat from
+    // re-triggering a new recording. The flag is cleared on key release.
+    if (this.mode === 'push-to-talk') {
+      const pttKeys = this.bindings
+        .filter(b => b.action === 'pushToTalk' || b.action === 'toggleRecording')
+        .filter(b => b.keys.length > 0);
+      const isKeyHeld = pttKeys.some(b => b.keys.every(k => this.pressedKeys.has(k)));
+      if (isKeyHeld) this.suppressPttRestart = true;
+    }
   }
 
   // Registers a one-shot global mouse-button-release listener via uiohook.
@@ -188,6 +209,7 @@ export class HotkeyService {
 
   private handlePushToTalkStart(): void {
     if (this.mode !== 'push-to-talk') return;
+    if (this.suppressPttRestart) return;
     if (!this.isRecordingActive) {
       this.isRecordingActive = true;
       this.onRecordingStart();
