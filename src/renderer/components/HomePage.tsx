@@ -37,11 +37,19 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
   const [toggleShortcut, setToggleShortcut] = useState(DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
 
   useEffect(() => {
+    // Clear stale recorder errors from previous attempts (e.g., "Model not downloaded")
+    // when user returns to Home after fixing the issue in Modes
+    clearError();
+
     window.dictator.getSettings().then((s) => {
       setToggleShortcut(s.hotkey.shortcuts?.toggleRecording ?? DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
     });
     const unsub = window.dictator.onSettingsChange((s) => {
       setToggleShortcut(s.hotkey.shortcuts?.toggleRecording ?? DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
+      // Settings changed (e.g., model downloaded) — clear stale error so it doesn't
+      // persist after the user fixed the issue. If the problem remains, the next
+      // recording attempt will re-show the error.
+      clearError();
     });
     return unsub;
   }, []);
