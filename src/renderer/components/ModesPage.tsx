@@ -28,7 +28,6 @@ const AI_PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
   { value: 'none', label: 'None (no AI)' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
-  { value: 'ollama', label: 'Ollama (local)' },
 ];
 
 
@@ -127,13 +126,6 @@ export function ModesPage(props: ModelStatus) {
   const [aiKeySaved, setAiKeySaved] = useState(false);
   const [temperature, setTemperature] = useState(0.3);
 
-  // Test prompt state
-  const [testExpanded, setTestExpanded] = useState(false);
-  const [testInput, setTestInput] = useState('');
-  const [testResult, setTestResult] = useState('');
-  const [testLoading, setTestLoading] = useState(false);
-  const [testError, setTestError] = useState('');
-
   const fetchOpenAIModels = useCallback(async () => {
     const res = await window.dictator.ai.getOpenAIModels();
     if (res.success && res.models.length > 0) setOpenaiModels(res.models);
@@ -207,9 +199,6 @@ export function ModesPage(props: ModelStatus) {
 
   const handleModeChange = async (mode: DictationMode) => {
     setCurrentMode(mode);
-    setTestExpanded(false);
-    setTestResult('');
-    setTestError('');
     const current = await window.dictator.getSettings();
     await window.dictator.setSettings({
       dictation: { ...current.dictation, currentMode: mode },
@@ -235,25 +224,6 @@ export function ModesPage(props: ModelStatus) {
     await window.dictator.setSettings({
       dictation: { ...current.dictation, modePrompts: updated },
     });
-  };
-
-  const handleTestPrompt = async () => {
-    if (!testInput.trim()) return;
-    setTestLoading(true);
-    setTestError('');
-    setTestResult('');
-    try {
-      const res = await window.dictator.ai.testPrompt(testInput, modePrompts[currentMode]);
-      if (res.success) {
-        setTestResult(res.result ?? '');
-      } else {
-        setTestError(res.error ?? 'Unknown error');
-      }
-    } catch (err) {
-      setTestError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setTestLoading(false);
-    }
   };
 
   const handleProviderChange = async (provider: AIProviderType) => {
@@ -401,73 +371,6 @@ export function ModesPage(props: ModelStatus) {
                 >
                   Reset to Default
                 </button>
-                <button
-                  onClick={() => setTestExpanded((o) => !o)}
-                  disabled={!isAiEnabled}
-                  className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
-                    isAiEnabled
-                      ? 'border-neutral-700 text-neutral-400 hover:border-neutral-600 hover:text-neutral-300 cursor-pointer'
-                      : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
-                  }`}
-                  title={!isAiEnabled ? 'Select an AI provider first' : ''}
-                >
-                  {testExpanded ? 'Hide Test' : 'Test Prompt'}
-                </button>
-              </div>
-
-              {/* Test prompt panel */}
-              <div
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                  testExpanded && isAiEnabled ? 'max-h-[400px] opacity-100 mt-4' : 'max-h-0 opacity-0'
-                }`}
-              >
-                <div className="rounded-lg border border-neutral-700/30 bg-neutral-900/50 p-4">
-                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
-                    Sample Input
-                  </span>
-                  <textarea
-                    value={testInput}
-                    onChange={(e) => setTestInput(e.target.value)}
-                    placeholder="Type or paste sample dictated text..."
-                    rows={2}
-                    className="w-full rounded-lg border border-neutral-700/50 bg-neutral-800 px-3 py-2 text-sm text-neutral-300 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 resize-none"
-                  />
-                  <button
-                    onClick={handleTestPrompt}
-                    disabled={testLoading || !testInput.trim()}
-                    className={`mt-2 rounded-lg px-4 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
-                      testLoading || !testInput.trim()
-                        ? 'bg-neutral-800 text-neutral-600 cursor-not-allowed'
-                        : 'bg-red-600/20 text-red-400 hover:bg-red-600/30 cursor-pointer border border-red-600/30'
-                    }`}
-                  >
-                    {testLoading ? (
-                      <span className="flex items-center gap-2">
-                        <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Processing...
-                      </span>
-                    ) : 'Run Test'}
-                  </button>
-
-                  {testError && (
-                    <p className="mt-2 rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-2 text-xs text-red-400">
-                      {testError}
-                    </p>
-                  )}
-                  {testResult && (
-                    <div className="mt-2">
-                      <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">
-                        Result
-                      </span>
-                      <div className="rounded-lg border border-green-800/30 bg-green-950/10 px-3 py-2 text-sm text-green-300/80 leading-relaxed">
-                        {testResult}
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
           </div>
