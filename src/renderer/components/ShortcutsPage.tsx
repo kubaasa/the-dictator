@@ -247,7 +247,7 @@ export function ShortcutsPage() {
             }`}
           >
             {isListening
-              ? (pendingKeys || 'AWAITING INPUT...')
+              ? (pendingKeys ? <ShortcutDisplay combo={pendingKeys} /> : 'AWAITING INPUT...')
               : <ShortcutDisplay combo={shortcuts[config.key]} />
             }
           </div>
