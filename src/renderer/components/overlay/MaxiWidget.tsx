@@ -6,6 +6,7 @@ interface MaxiWidgetProps {
   state: RecordingState;
   shortcuts: AppSettings['hotkey']['shortcuts'];
   hotkeyMode: HotkeyMode;
+  errorMessage?: string;
 }
 
 const BAR_COUNT  = 40;
@@ -23,7 +24,7 @@ const LERP_RELEASE = 0.12;
 
 const RED       = '#EF4444';
 const ORANGE    = '#FB923C';
-const ERROR_RED = '#F87171';
+const ERROR_RED = '#DC2626';
 const BASE_COLOR = 'rgba(255,255,255,0.88)';
 
 const KEY_ALIASES: Record<string, string> = {
@@ -95,11 +96,20 @@ const KEYFRAMES = `
   from { opacity: 1; transform: scale(1.0); }
   to   { opacity: 0; transform: scale(0.9); }
 }
+@keyframes error-flicker {
+  0%, 12%, 40%, 57%, 74%, 90%, 100% { opacity: 1; }
+  3%  { opacity: 0.4; }
+  6%  { opacity: 0.9; }
+  9%  { opacity: 0.3; }
+  55% { opacity: 0.7; }
+  72% { opacity: 0.4; }
+  92% { opacity: 0.6; }
+}
 `;
 
 type AnimPhase = 'idle' | 'entering' | 'active' | 'exiting';
 
-export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWidgetProps) {
+export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMessage }: MaxiWidgetProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
   const prevIsActiveRef = useRef(false);
@@ -127,12 +137,20 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
   const isError        = state === 'error';
 
   // ─── Enter / exit animation state machine ────────────────────────────────
-  const isActive = isInitializing || isRecording;
+  const isActive = isInitializing || isRecording || isTranscribing || isDone || isError;
+
+  // Track whether the widget was showing error content — sticky until next activation.
+  // Prevents normal content from flashing during the exit animation after an error.
+  const wasErrorRef = useRef(false);
+  if (isError) wasErrorRef.current = true;
+
+  const showError = isError || (wasErrorRef.current && (animPhase === 'exiting' || !isActive));
   useEffect(() => {
     const wasActive = prevIsActiveRef.current;
     prevIsActiveRef.current = isActive;
 
     if (isActive && !wasActive) {
+      wasErrorRef.current = false;
       setAnimPhase('entering');
       const t = setTimeout(() => setAnimPhase('active'), 320);
       return () => clearTimeout(t);
@@ -332,108 +350,162 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode }: MaxiWid
             background: '#000000',
             border: '1.5px solid rgba(255,255,255,0.08)',
             minWidth: 380,
-            animation: isError ? 'maxi-error-shake 0.6s ease-in-out 1' : 'none',
+            animation: 'none',
           } as React.CSSProperties}
         >
-          {/* Row 1: Status indicator */}
-          <div style={{ height: 22, display: 'flex', alignItems: 'center' }}>
-            {indicator && (
+          {showError ? (
+            /* Error view — REC / found-footage aesthetic */
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '12px 8px',
+              gap: 6,
+              animation: 'error-flicker 2s linear infinite',
+            }}>
+              {/* Row 1: blinking [ERROR] indicator */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {indicator.dot && (
-                  <span style={{
-                    width: 11, height: 11, borderRadius: '50%',
-                    background: RED, display: 'inline-block', flexShrink: 0,
-                    animation: 'rec-blink 1s step-start infinite',
-                  }} />
-                )}
                 <span style={{
-                  fontFamily: 'monospace', fontSize: 14, fontWeight: 700,
-                  letterSpacing: '0.08em', color: indicator.color,
+                  width: 9, height: 9, borderRadius: '50%',
+                  background: ERROR_RED, display: 'inline-block', flexShrink: 0,
+                  animation: 'rec-blink 1s step-start infinite',
+                }} />
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 13, fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  color: ERROR_RED,
                 }}>
-                  {indicator.text}
+                  [ERROR]
                 </span>
               </div>
-            )}
-          </div>
+              {/* Row 2+3: error message split into lines at first period */}
+              {(() => {
+                const msg = errorMessage || 'Error';
+                const dotIdx = msg.indexOf('.');
+                const line1 = dotIdx >= 0 ? msg.slice(0, dotIdx + 1) : msg;
+                const line2 = dotIdx >= 0 ? msg.slice(dotIdx + 1).trim() : '';
+                const lineStyle: React.CSSProperties = {
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: '0.15em',
+                  textTransform: 'uppercase',
+                  color: ERROR_RED,
+                  textAlign: 'center',
+                };
+                return (
+                  <>
+                    <span style={lineStyle}>[ {line1} ]</span>
+                    {line2 && <span style={{ ...lineStyle, fontSize: 10, fontWeight: 400 }}>{line2}</span>}
+                  </>
+                );
+              })()}
+            </div>
+          ) : (
+            <>
+              {/* Row 1: Status indicator */}
+              <div style={{ height: 22, display: 'flex', alignItems: 'center' }}>
+                {indicator && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {indicator.dot && (
+                      <span style={{
+                        width: 11, height: 11, borderRadius: '50%',
+                        background: RED, display: 'inline-block', flexShrink: 0,
+                        animation: 'rec-blink 1s step-start infinite',
+                      }} />
+                    )}
+                    <span style={{
+                      fontFamily: 'monospace', fontSize: 14, fontWeight: 700,
+                      letterSpacing: '0.08em', color: indicator.color,
+                    }}>
+                      {indicator.text}
+                    </span>
+                  </div>
+                )}
+              </div>
 
-          {/* Row 2: Waveform bars
-              Bars expand symmetrically up & down from center (transformOrigin: center).
-              During recording, RAF loop overrides transform/animation directly on the DOM.
-              All other states use CSS transitions/animations declared here. */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: MAX_BAR_H,
-            gap: BAR_GAP,
-          }}>
-            {Array.from({ length: BAR_COUNT }, (_, i) => {
-              const barColor = isError ? ERROR_RED : isTranscribing ? ORANGE : BASE_COLOR;
+              {/* Row 2: Waveform bars
+                  Bars expand symmetrically up & down from center (transformOrigin: center).
+                  During recording, RAF loop overrides transform/animation directly on the DOM.
+                  All other states use CSS transitions/animations declared here. */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: MAX_BAR_H,
+                gap: BAR_GAP,
+              }}>
+                {Array.from({ length: BAR_COUNT }, (_, i) => {
+                  const barColor = isError ? ERROR_RED : isTranscribing ? ORANGE : BASE_COLOR;
 
-              let transform: string;
-              let animation = 'none';
-              let transition = 'transform 0.3s ease-out';
-              let barOpacity: number;
-              if (isInitializing) {
-                transform  = `scaleY(${IDLE_SCALES[i]})`;
-                animation  = `maxi-init 1s ease-in-out ${INIT_DELAYS[i]}s infinite`;
-                transition = 'none';
-                barOpacity = 0.65;
-              } else if (isRecording) {
-                // RAF takes over immediately — set neutral starting point
-                transform  = `scaleY(${(MIN_BAR_H / MAX_BAR_H).toFixed(4)})`;
-                transition = 'none';
-                barOpacity = 0.92;
-              } else if (isTranscribing) {
-                transform  = 'scaleY(1)';
-                animation  = `maxi-transcribe 1.2s linear ${TRANSCRIBE_DELAYS[i]}s infinite`;
-                transition = 'none';
-                barOpacity = 0.80;
-              } else if (isDone) {
-                transform  = `scaleY(${IDLE_SCALES[i]})`;
-                barOpacity = 0.35;
-              } else if (isError) {
-                transform  = 'scaleY(0.3)';
-                barOpacity = 0.9;
-              } else {
-                // idle — show faint spindle silhouette
-                transform  = `scaleY(${IDLE_SCALES[i]})`;
-                barOpacity = 0.35;
-              }
+                  let transform: string;
+                  let animation = 'none';
+                  let transition = 'transform 0.3s ease-out';
+                  let barOpacity: number;
+                  if (isInitializing) {
+                    transform  = `scaleY(${IDLE_SCALES[i]})`;
+                    animation  = `maxi-init 1s ease-in-out ${INIT_DELAYS[i]}s infinite`;
+                    transition = 'none';
+                    barOpacity = 0.65;
+                  } else if (isRecording) {
+                    // RAF takes over immediately — set neutral starting point
+                    transform  = `scaleY(${(MIN_BAR_H / MAX_BAR_H).toFixed(4)})`;
+                    transition = 'none';
+                    barOpacity = 0.92;
+                  } else if (isTranscribing) {
+                    transform  = 'scaleY(1)';
+                    animation  = `maxi-transcribe 1.2s linear ${TRANSCRIBE_DELAYS[i]}s infinite`;
+                    transition = 'none';
+                    barOpacity = 0.80;
+                  } else if (isDone) {
+                    transform  = `scaleY(${IDLE_SCALES[i]})`;
+                    barOpacity = 0.35;
+                  } else if (isError) {
+                    transform  = 'scaleY(0.3)';
+                    barOpacity = 0.9;
+                  } else {
+                    // idle — show faint spindle silhouette
+                    transform  = `scaleY(${IDLE_SCALES[i]})`;
+                    barOpacity = 0.35;
+                  }
 
-              return (
-                <div
-                  key={i}
-                  ref={el => { barElemsRef.current[i] = el; }}
-                  style={{
-                    width: BAR_WIDTH,
-                    height: MAX_BAR_H,
-                    borderRadius: 1,
-                    background: barColor,
-                    transformOrigin: 'center', // symmetric up + down expansion
-                    flexShrink: 0,
-                    transform,
-                    animation,
-                    transition,
-                    opacity: barOpacity,
-                    ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALE }),
-                  } as React.CSSProperties}
-                />
-              );
-            })}
-          </div>
+                  return (
+                    <div
+                      key={i}
+                      ref={el => { barElemsRef.current[i] = el; }}
+                      style={{
+                        width: BAR_WIDTH,
+                        height: MAX_BAR_H,
+                        borderRadius: 1,
+                        background: barColor,
+                        transformOrigin: 'center', // symmetric up + down expansion
+                        flexShrink: 0,
+                        transform,
+                        animation,
+                        transition,
+                        opacity: barOpacity,
+                        ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALE }),
+                      } as React.CSSProperties}
+                    />
+                  );
+                })}
+              </div>
 
-          {/* Row 3: Keyboard shortcuts */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 0, paddingTop: 7, whiteSpace: 'nowrap',
-          }}>
-            <ShortcutEntry label="Mode"      raw={shortcuts.modeSelect} />
-            <Divider />
-            <ShortcutEntry label={recLabel}  raw={recShortcut} />
-            <Divider />
-            <ShortcutEntry label="Cancel"    raw={shortcuts.cancelRecording} />
-          </div>
+              {/* Row 3: Keyboard shortcuts */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 0, paddingTop: 7, whiteSpace: 'nowrap',
+              }}>
+                <ShortcutEntry label="Mode"      raw={shortcuts.modeSelect} />
+                <Divider />
+                <ShortcutEntry label={recLabel}  raw={recShortcut} />
+                <Divider />
+                <ShortcutEntry label="Cancel"    raw={shortcuts.cancelRecording} />
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

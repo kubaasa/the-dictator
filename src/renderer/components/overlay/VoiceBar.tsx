@@ -231,82 +231,106 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
             </div>
           )}
 
-          {BARS.map((bar, i) => {
-            const {
-              envelope, multiplier, jitter,
-              idleScale, transcribeDelay,
-            } = bar;
+          {isError ? (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              // Match the width of 6 bars + 5 gaps so the pill keeps its normal shape
+              minWidth: BAR_COUNT * barWidth + (BAR_COUNT - 1) * gap,
+            }}>
+              <svg
+                width={18}
+                height={18}
+                viewBox="0 0 24 24"
+                style={{
+                  opacity: isExpanded ? 1 : 0,
+                  transition: 'opacity 200ms ease-out',
+                  flexShrink: 0,
+                }}
+              >
+                <line x1="6" y1="6" x2="18" y2="18" stroke={ERROR_COLOR} strokeWidth={2.5} strokeLinecap="round" />
+                <line x1="18" y1="6" x2="6" y2="18" stroke={ERROR_COLOR} strokeWidth={2.5} strokeLinecap="round" />
+              </svg>
+            </div>
+          ) : (
+            BARS.map((bar, i) => {
+              const {
+                envelope, multiplier, jitter,
+                idleScale, transcribeDelay,
+              } = bar;
 
-            const barColor = isError ? ERROR_COLOR : isTranscribing ? TRANSCRIBE_COLOR : BASE_COLOR;
+              const barColor = isTranscribing ? TRANSCRIBE_COLOR : BASE_COLOR;
 
-            let transform: string | undefined;
-            let animation = 'none';
-            let transition = 'transform 0.3s ease-out, opacity 200ms ease-out';
-            let barOpacity: number;
-            let filter: string | undefined;
+              let transform: string | undefined;
+              let animation = 'none';
+              let transition = 'transform 0.3s ease-out, opacity 200ms ease-out';
+              let barOpacity: number;
+              let filter: string | undefined;
 
-            if (isIdle) {
-              transform = `scaleY(${idleScale})`;
-              barOpacity = 0.88;
-              filter = undefined;
-
-            } else if (isRecording) {
-              if (isSilent) {
-                // Static low bars — no animation when silent
+              if (isIdle) {
                 transform = `scaleY(${idleScale})`;
-                barOpacity = 0.45;
+                barOpacity = 0.88;
                 filter = undefined;
-                transition = 'transform 150ms ease-out, opacity 200ms ease-out';
+
+              } else if (isRecording) {
+                if (isSilent) {
+                  // Static low bars — no animation when silent
+                  transform = `scaleY(${idleScale})`;
+                  barOpacity = 0.45;
+                  filter = undefined;
+                  transition = 'transform 150ms ease-out, opacity 200ms ease-out';
+                } else {
+                  const curvedLevel = Math.pow(level, 0.45);
+                  const barScale = Math.min(1.0, Math.max(0.05, curvedLevel * envelope * multiplier * jitter));
+                  transform = `scaleY(${barScale.toFixed(4)})`;
+                  transition = 'transform 50ms linear, opacity 200ms ease-out';
+                  barOpacity = 0.6 + curvedLevel * 0.4;
+                  filter = undefined;
+                }
+
+              } else if (isTranscribing) {
+                animation = `vb-transcribe 1.2s linear ${transcribeDelay}s infinite`;
+                barOpacity = 0.80;
+                filter = undefined;
+                transition = 'opacity 200ms ease-out';
+
+              } else if (isDone) {
+                animation = `vb-done-collapse 400ms cubic-bezier(0.4, 0, 1, 1) forwards`;
+                barOpacity = 0.7;
+                filter = undefined;
+                transition = 'opacity 200ms ease-out';
+
               } else {
-                const curvedLevel = Math.pow(level, 0.45);
-                const barScale = Math.min(1.0, Math.max(0.05, curvedLevel * envelope * multiplier * jitter));
-                transform = `scaleY(${barScale.toFixed(4)})`;
-                transition = 'transform 50ms linear, opacity 200ms ease-out';
-                barOpacity = 0.6 + curvedLevel * 0.4;
+                transform = 'scaleY(0.3)';
+                barOpacity = 0.9;
                 filter = undefined;
               }
 
-            } else if (isTranscribing) {
-              animation = `vb-transcribe 1.2s linear ${transcribeDelay}s infinite`;
-              barOpacity = 0.80;
-              filter = undefined;
-              transition = 'opacity 200ms ease-out';
+              // Fade bars in/out with pill expand/collapse
+              const finalOpacity = isExpanded ? barOpacity : 0;
 
-            } else if (isDone) {
-              animation = `vb-done-collapse 400ms cubic-bezier(0.4, 0, 1, 1) forwards`;
-              barOpacity = 0.7;
-              filter = undefined;
-              transition = 'opacity 200ms ease-out';
-
-            } else {
-              transform = 'scaleY(0.3)';
-              barOpacity = 0.9;
-              filter = undefined;
-            }
-
-            // Fade bars in/out with pill expand/collapse
-            const finalOpacity = isExpanded ? barOpacity : 0;
-
-            return (
-              <div
-                key={i}
-                style={{
-                  width: barWidth,
-                  height: maxBarH,
-                  borderRadius: barWidth / 2,
-                  background: barColor,
-                  transformOrigin: 'center',
-                  flexShrink: 0,
-                  transform,
-                  animation,
-                  transition,
-                  opacity: finalOpacity,
-                  filter,
-                  '--from-scale': idleScale,
-                } as React.CSSProperties}
-              />
-            );
-          })}
+              return (
+                <div
+                  key={i}
+                  style={{
+                    width: barWidth,
+                    height: maxBarH,
+                    borderRadius: barWidth / 2,
+                    background: barColor,
+                    transformOrigin: 'center',
+                    flexShrink: 0,
+                    transform,
+                    animation,
+                    transition,
+                    opacity: finalOpacity,
+                    filter,
+                    '--from-scale': idleScale,
+                  } as React.CSSProperties}
+                />
+              );
+            })
+          )}
         </div>
       </div>
     </div>
