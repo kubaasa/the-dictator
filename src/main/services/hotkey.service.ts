@@ -109,16 +109,16 @@ export class HotkeyService {
         }
       }
 
-      if (this.isRecordingActive) {
-        const isModifier = MODIFIER_KEYCODES.has(e.keycode);
-        if (!isModifier && this.mode === 'push-to-talk') {
-          const stopBindings = this.bindings.filter(
-            (b) => b.action === 'toggleRecording' || b.action === 'pushToTalk',
-          );
-          if (stopBindings.some((b) => b.keys.length > 0 && b.keys.includes(e.keycode))) {
-            this.isRecordingActive = false;
-            this.onRecordingStop();
-          }
+      // PTT stop: any key from the binding released (including modifiers) → stop recording.
+      // Without this, releasing e.g. Ctrl from Ctrl+X leaves X held alone, and the OS
+      // starts typing "x" into the focused window (uiohook can't suppress key events).
+      if (this.isRecordingActive && this.mode === 'push-to-talk') {
+        const stopBindings = this.bindings.filter(
+          (b) => b.action === 'toggleRecording' || b.action === 'pushToTalk',
+        );
+        if (stopBindings.some((b) => b.keys.length > 0 && b.keys.includes(e.keycode))) {
+          this.isRecordingActive = false;
+          this.onRecordingStop();
         }
       }
       this.pressedKeys.delete(e.keycode);
