@@ -12,8 +12,8 @@ import Store from 'electron-store';
 import { DEFAULT_SETTINGS } from '../shared/types';
 
 export function getOverlaySize(widget: WidgetType): [number, number] {
-  if (widget === 'maxi') return [420, 165];
-  return [198, 54];
+  if (widget === 'maxi') return [520, 170];
+  return [210, 62];
 }
 
 /**
@@ -233,6 +233,8 @@ export function registerIpcHandlers(
         await pasteService.simulatePaste();
         // Re-write after paste so transcribed text stays in clipboard for manual use
         clipboard.writeText(text);
+      } else if (autoPaste) {
+        console.log('[Dictator] No paste target captured — text is in clipboard, use Ctrl+V to paste manually');
       }
 
       // Save to history

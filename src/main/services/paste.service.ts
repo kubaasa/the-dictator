@@ -34,6 +34,10 @@ export class PasteService {
   captureTarget(): void {
     if (process.platform !== 'win32') return;
 
+    // Always reset — each recording starts with a clean slate (prevents stale targets)
+    this.targetHwnd = null;
+    this.targetAppName = null;
+
     execFileAsync('powershell', GET_HWND_ARGS, { timeout: 3000 })
       .then(({ stdout }) => {
         const parts = stdout.trim().split('|');
@@ -44,11 +48,11 @@ export class PasteService {
         if (!hwnd || !/^\d+$/.test(hwnd) || hwnd === '0') return;
 
         if (this.isOwnWindow(hwnd)) {
-          console.log('[Dictator] Foreground is own Electron window — skipping paste target');
+          console.log('[Dictator] Foreground is own Electron window — skipping paste target (transcription will still run)');
           return;
         }
         if (EXCLUDED_SHELL_CLASSES.has(windowClass)) {
-          console.log('[Dictator] Shell/desktop window ("%s") — skipping paste target', windowClass);
+          console.log('[Dictator] Shell/desktop window ("%s") — skipping paste target (transcription will still run)', windowClass);
           return;
         }
 

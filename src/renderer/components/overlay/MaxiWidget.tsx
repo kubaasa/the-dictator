@@ -361,7 +361,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
             borderRadius: 16,
             background: '#000000',
             border: '1.5px solid rgba(255,255,255,0.08)',
-            minWidth: 380,
+            minWidth: hotkeyMode === 'toggle' ? 500 : 380,
             animation: 'none',
           } as React.CSSProperties}
         >
@@ -540,8 +540,8 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
 function ShortcutEntry({ label, raw }: { label: string; raw: string }) {
   const keys = raw.split('+').map(formatKey);
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#ffffff', lineHeight: '18px' }}>{label}</span>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#ffffff', lineHeight: '22px' }}>{label}</span>
       {keys.map((k, i) => <KeyBadge key={i} k={k} />)}
     </span>
   );
@@ -550,12 +550,12 @@ function ShortcutEntry({ label, raw }: { label: string; raw: string }) {
 function KeyBadge({ k }: { k: string }) {
   return (
     <span style={{
-      padding: '1px 4px',
-      borderRadius: 3,
-      background: 'rgba(255,255,255,0.08)',
-      border: '1px solid rgba(255,255,255,0.18)',
-      color: 'rgba(255,255,255,0.55)',
-      fontSize: 9,
+      padding: '2px 6px',
+      borderRadius: 4,
+      background: 'rgba(255,255,255,0.10)',
+      border: '1px solid rgba(255,255,255,0.22)',
+      color: 'rgba(255,255,255,0.75)',
+      fontSize: 11,
       fontFamily: 'monospace',
       display: 'inline-block',
     }}>

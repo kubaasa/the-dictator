@@ -11,7 +11,7 @@ const BAR_COUNT = 6;
 const BASE_COLOR = 'rgba(255,255,255,0.88)';
 const ERROR_COLOR = '#F87171';
 const MIN_BAR_H = 2;
-const MAX_BAR_H = 25;
+const MAX_BAR_H = 30;
 
 // LERP smoothing factors — tuned for 6 bars (more responsive than MAXI's 40-bar defaults)
 const LERP_ATTACK  = 0.75;
@@ -98,7 +98,7 @@ const KEYFRAMES = `
 `;
 
 export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps) {
-  const barWidth = 2;
+  const barWidth = 3;
   const gap      = 3;
 
   const isInitializing = state === 'initializing';
@@ -125,6 +125,12 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
   const [isProximate, setIsProximate] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset proximity when recording cycle completes — mouseLeave can be missed
+  // on transparent Electron windows during state transitions
+  useEffect(() => {
+    if (isDone) setIsProximate(false);
+  }, [isDone]);
 
   // ─── Audio visualization refs (no React state — updated in RAF loop) ────
   const barElemsRef   = useRef<(HTMLDivElement | null)[]>([]);
@@ -283,7 +289,7 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
 
   const isExpanded = isProximate || isInitializing || isRecording || isTranscribing || isError;
 
-  const collapsedH = 10;
+  const collapsedH = 12;
   const expandedH  = MAX_BAR_H + gap * 4;
 
   const pillHeight = isExpanded ? expandedH : collapsedH;
@@ -343,7 +349,7 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: 'rgba(8, 8, 8, 0.75)',
+                background: 'rgba(8, 8, 8, 1)',
                 borderRadius: 9999,
                 pointerEvents: 'none',
                 opacity: isProximate ? 1 : 0,
