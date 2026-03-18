@@ -86,6 +86,12 @@ const KEYFRAMES = `
   from { opacity: 1; transform: scale(1.0); }
   to   { opacity: 0; transform: scale(0.9); }
 }
+@keyframes processing-glitch {
+  0%, 92%, 100% { transform: translate(0, 0); opacity: 1; }
+  93%           { transform: translate(-2px, 1px); opacity: 0.8; }
+  95%           { transform: translate(1px, -1px); opacity: 0.6; }
+  97%           { transform: translate(2px, 0); opacity: 0.9; }
+}
 @keyframes error-flicker {
   0%, 12%, 40%, 57%, 74%, 90%, 100% { opacity: 1; }
   3%  { opacity: 0.4; }
@@ -126,21 +132,39 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
   const isDone         = state === 'done';
   const isError        = state === 'error';
 
+  // ─── Processing dots cycling animation ─────────────────────────────────────
+  const [processingDots, setProcessingDots] = useState('.');
+
+  useEffect(() => {
+    if (!isTranscribing) {
+      setProcessingDots('.');
+      return;
+    }
+    const id = setInterval(() => {
+      setProcessingDots(prev => prev.length >= 3 ? '.' : prev + '.');
+    }, 500);
+    return () => clearInterval(id);
+  }, [isTranscribing]);
+
   // ─── Enter / exit animation state machine ────────────────────────────────
   const isActive = isInitializing || isRecording || isTranscribing || isDone || isError;
 
-  // Track whether the widget was showing error content — sticky until next activation.
-  // Prevents normal content from flashing during the exit animation after an error.
+  // Track whether the widget was showing error/processing content — sticky until next activation.
+  // Prevents bars from flashing during the exit animation after processing or error.
   const wasErrorRef = useRef(false);
+  const wasProcessingRef = useRef(false);
   if (isError) wasErrorRef.current = true;
+  if (isTranscribing || isDone) wasProcessingRef.current = true;
 
   const showError = isError || (wasErrorRef.current && (animPhase === 'exiting' || !isActive));
+  const showProcessing = isTranscribing || isDone || (wasProcessingRef.current && (animPhase === 'exiting' || !isActive));
   useEffect(() => {
     const wasActive = prevIsActiveRef.current;
     prevIsActiveRef.current = isActive;
 
     if (isActive && !wasActive) {
       wasErrorRef.current = false;
+      wasProcessingRef.current = false;
       setAnimPhase('entering');
       const t = setTimeout(() => setAnimPhase('active'), 320);
       return () => clearTimeout(t);
@@ -299,11 +323,9 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
   // ─── Rendering ───────────────────────────────────────────────────────────
   const indicator = isRecording
     ? { dot: true,  text: 'REC',   color: RED }
-    : isTranscribing
-      ? { dot: false, text: 'PROC',  color: ORANGE }
-      : isError
-        ? { dot: false, text: 'ERROR', color: ERROR_RED }
-        : null;
+    : isError
+      ? { dot: false, text: 'ERROR', color: ERROR_RED }
+      : null;
 
   const recShortcut = hotkeyMode === 'push-to-talk'
     ? shortcuts.pushToTalk
@@ -416,71 +438,80 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
                 )}
               </div>
 
-              {/* Row 2: Waveform bars
-                  Bars expand symmetrically up & down from center (transformOrigin: center).
-                  During recording, RAF loop overrides transform/animation directly on the DOM.
-                  All other states use CSS transitions/animations declared here. */}
+              {/* Row 2: Waveform bars / Processing text */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: MAX_BAR_H,
-                gap: BAR_GAP,
+                gap: showProcessing ? 0 : BAR_GAP,
               }}>
-                {Array.from({ length: BAR_COUNT }, (_, i) => {
-                  const barColor = isError ? ERROR_RED : isTranscribing ? ORANGE : BASE_COLOR;
+                {showProcessing ? (
+                  <span style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 22,
+                    fontWeight: 600,
+                    letterSpacing: '0.25em',
+                    textTransform: 'uppercase',
+                    color: ERROR_RED,
+                    userSelect: 'none',
+                    animation: 'processing-glitch 4s linear infinite',
+                  }}>
+                    {'[ PROCESSING '}
+                    <span style={{ display: 'inline-block', width: '1.8em', textAlign: 'left' }}>
+                      {processingDots}
+                    </span>
+                    {' ]'}
+                  </span>
+                ) : (
+                  Array.from({ length: BAR_COUNT }, (_, i) => {
+                    const barColor = isError ? ERROR_RED : BASE_COLOR;
 
-                  let transform: string;
-                  let animation = 'none';
-                  let transition = 'transform 0.3s ease-out';
-                  let barOpacity: number;
-                  if (isInitializing) {
-                    transform  = `scaleY(${IDLE_SCALES[i]})`;
-                    animation  = `maxi-init 1s ease-in-out ${INIT_DELAYS[i]}s infinite`;
-                    transition = 'none';
-                    barOpacity = 0.65;
-                  } else if (isRecording) {
-                    // RAF takes over immediately — set neutral starting point
-                    transform  = `scaleY(${(MIN_BAR_H / MAX_BAR_H).toFixed(4)})`;
-                    transition = 'none';
-                    barOpacity = 0.92;
-                  } else if (isTranscribing) {
-                    transform  = 'scaleY(1)';
-                    animation  = `maxi-transcribe 1.2s linear ${TRANSCRIBE_DELAYS[i]}s infinite`;
-                    transition = 'none';
-                    barOpacity = 0.80;
-                  } else if (isDone) {
-                    transform  = `scaleY(${IDLE_SCALES[i]})`;
-                    barOpacity = 0.35;
-                  } else if (isError) {
-                    transform  = 'scaleY(0.3)';
-                    barOpacity = 0.9;
-                  } else {
-                    // idle — show faint spindle silhouette
-                    transform  = `scaleY(${IDLE_SCALES[i]})`;
-                    barOpacity = 0.35;
-                  }
+                    let transform: string;
+                    let animation = 'none';
+                    let transition = 'transform 0.3s ease-out';
+                    let barOpacity: number;
+                    if (isInitializing) {
+                      transform  = `scaleY(${IDLE_SCALES[i]})`;
+                      animation  = `maxi-init 1s ease-in-out ${INIT_DELAYS[i]}s infinite`;
+                      transition = 'none';
+                      barOpacity = 0.65;
+                    } else if (isRecording) {
+                      transform  = `scaleY(${(MIN_BAR_H / MAX_BAR_H).toFixed(4)})`;
+                      transition = 'none';
+                      barOpacity = 0.92;
+                    } else if (isDone) {
+                      transform  = `scaleY(${IDLE_SCALES[i]})`;
+                      barOpacity = 0.35;
+                    } else if (isError) {
+                      transform  = 'scaleY(0.3)';
+                      barOpacity = 0.9;
+                    } else {
+                      transform  = `scaleY(${IDLE_SCALES[i]})`;
+                      barOpacity = 0.35;
+                    }
 
-                  return (
-                    <div
-                      key={i}
-                      ref={el => { barElemsRef.current[i] = el; }}
-                      style={{
-                        width: BAR_WIDTH,
-                        height: MAX_BAR_H,
-                        borderRadius: 1,
-                        background: barColor,
-                        transformOrigin: 'center', // symmetric up + down expansion
-                        flexShrink: 0,
-                        transform,
-                        animation,
-                        transition,
-                        opacity: barOpacity,
-                        ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALE }),
-                      } as React.CSSProperties}
-                    />
-                  );
-                })}
+                    return (
+                      <div
+                        key={i}
+                        ref={el => { barElemsRef.current[i] = el; }}
+                        style={{
+                          width: BAR_WIDTH,
+                          height: MAX_BAR_H,
+                          borderRadius: 1,
+                          background: barColor,
+                          transformOrigin: 'center',
+                          flexShrink: 0,
+                          transform,
+                          animation,
+                          transition,
+                          opacity: barOpacity,
+                          ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALE }),
+                        } as React.CSSProperties}
+                      />
+                    );
+                  })
+                )}
               </div>
 
               {/* Row 3: Keyboard shortcuts */}

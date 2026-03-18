@@ -9,7 +9,6 @@ interface VoiceBarProps {
 
 const BAR_COUNT = 6;
 const BASE_COLOR = 'rgba(255,255,255,0.88)';
-const TRANSCRIBE_COLOR = '#FB923C';
 const ERROR_COLOR = '#F87171';
 const MIN_BAR_H = 2;
 const MAX_BAR_H = 25;
@@ -62,12 +61,9 @@ const BARS = Array.from({ length: BAR_COUNT }, (_, i) => {
   // Silence animation delay: index * 80ms
   const silenceDelay = (i * 0.08).toFixed(2);
 
-  // Transcribe scanner delay: left-to-right, index * 45ms
-  const transcribeDelay = (i * 0.045).toFixed(3);
-
   return {
     envelope, multiplier, rand, jitter,
-    idleScale, silenceDelay, transcribeDelay,
+    idleScale, silenceDelay,
   };
 });
 
@@ -77,13 +73,15 @@ const KEYFRAMES = `
   0%, 100% { transform: scaleY(0.1); }
   50%      { transform: scaleY(0.2); }
 }
-@keyframes vb-transcribe {
-  0%, 100% { transform: scaleY(0.3); }
-  50%      { transform: scaleY(0.85); }
-}
 @keyframes vb-done-collapse {
   from { transform: scaleY(var(--from-scale, 0.15)); }
   to   { transform: scaleY(0.05); }
+}
+@keyframes vb-processing-glitch {
+  0%, 92%, 100% { transform: translate(0, 0); opacity: 1; }
+  93%           { transform: translate(-1px, 1px); opacity: 0.8; }
+  95%           { transform: translate(1px, -1px); opacity: 0.6; }
+  97%           { transform: translate(1px, 0); opacity: 0.9; }
 }
 @keyframes vb-error-shake {
   0%   { transform: translateX(0); }
@@ -109,6 +107,20 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
   const isDone         = state === 'done';
   const isError        = state === 'error';
   const isIdle         = !isInitializing && !isRecording && !isTranscribing && !isDone && !isError;
+
+  // ─── Processing dots cycling animation ─────────────────────────────────────
+  const [processingDots, setProcessingDots] = useState('.');
+
+  useEffect(() => {
+    if (!isTranscribing) {
+      setProcessingDots('.');
+      return;
+    }
+    const id = setInterval(() => {
+      setProcessingDots(prev => prev.length >= 3 ? '.' : prev + '.');
+    }, 500);
+    return () => clearInterval(id);
+  }, [isTranscribing]);
 
   const [isProximate, setIsProximate] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -392,70 +404,83 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
               </svg>
             </div>
           ) : (
-            BARS.map((bar, i) => {
-              const { idleScale, transcribeDelay } = bar;
+            isTranscribing ? (
+              <span style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 12,
+                fontWeight: 900,
+                letterSpacing: '0.05em',
+                color: '#DC2626',
+                userSelect: 'none',
+                whiteSpace: 'pre',
+                animation: 'vb-processing-glitch 4s linear infinite',
+                display: 'inline-flex',
+                justifyContent: 'center',
+                width: BAR_COUNT * barWidth + (BAR_COUNT - 1) * gap,
+              }}>
+                {'['}
+                {[0, 1, 2].map(i => (
+                  <span key={i} style={{ opacity: i < processingDots.length ? 1 : 0, transition: 'none' }}>.</span>
+                ))}
+                {']'}
+              </span>
+            ) : (
+              BARS.map((bar, i) => {
+                const { idleScale } = bar;
 
-              const barColor = isTranscribing ? '#DC2626' : BASE_COLOR;
+                let transform: string | undefined;
+                let animation = 'none';
+                let transition = 'transform 0.3s ease-out, opacity 200ms ease-out';
+                let barOpacity: number;
 
-              let transform: string | undefined;
-              let animation = 'none';
-              let transition = 'transform 0.3s ease-out, opacity 200ms ease-out';
-              let barOpacity: number;
+                if (isInitializing) {
+                  transform = `scaleY(${IDLE_SCALES[i]})`;
+                  animation = `vb-init 1s ease-in-out ${INIT_DELAYS[i]}s infinite`;
+                  transition = 'none';
+                  barOpacity = 0.92;
 
-              if (isInitializing) {
-                transform = `scaleY(${IDLE_SCALES[i]})`;
-                animation = `vb-init 1s ease-in-out ${INIT_DELAYS[i]}s infinite`;
-                transition = 'none';
-                barOpacity = 0.92;
+                } else if (isIdle) {
+                  transform = `scaleY(${idleScale})`;
+                  barOpacity = 0.88;
 
-              } else if (isIdle) {
-                transform = `scaleY(${idleScale})`;
-                barOpacity = 0.88;
+                } else if (isRecording) {
+                  transform = `scaleY(${(MIN_BAR_H / MAX_BAR_H).toFixed(4)})`;
+                  transition = 'none';
+                  barOpacity = 0.92;
 
-              } else if (isRecording) {
-                // RAF loop takes over — set neutral starting point
-                transform = `scaleY(${(MIN_BAR_H / MAX_BAR_H).toFixed(4)})`;
-                transition = 'none';
-                barOpacity = 0.92;
+                } else if (isDone) {
+                  transform = 'scaleY(0.05)';
+                  barOpacity = 0;
 
-              } else if (isTranscribing) {
-                animation = `vb-transcribe 1.2s linear ${transcribeDelay}s infinite`;
-                barOpacity = 0.80;
-                transition = 'opacity 200ms ease-out';
+                } else {
+                  transform = 'scaleY(0.3)';
+                  barOpacity = 0.9;
+                }
 
-              } else if (isDone) {
-                animation = `vb-done-collapse 400ms cubic-bezier(0.4, 0, 1, 1) forwards`;
-                barOpacity = 0.7;
-                transition = 'opacity 200ms ease-out';
+                const finalOpacity = isExpanded ? barOpacity : 0;
 
-              } else {
-                transform = 'scaleY(0.3)';
-                barOpacity = 0.9;
-              }
-
-              const finalOpacity = isExpanded ? barOpacity : 0;
-
-              return (
-                <div
-                  key={i}
-                  ref={el => { barElemsRef.current[i] = el; }}
-                  style={{
-                    width: barWidth,
-                    height: MAX_BAR_H,
-                    borderRadius: barWidth / 2,
-                    background: barColor,
-                    transformOrigin: 'center',
-                    flexShrink: 0,
-                    transform,
-                    animation,
-                    transition,
-                    opacity: finalOpacity,
-                    '--from-scale': idleScale,
-                    ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALE }),
-                  } as React.CSSProperties}
-                />
-              );
-            })
+                return (
+                  <div
+                    key={i}
+                    ref={el => { barElemsRef.current[i] = el; }}
+                    style={{
+                      width: barWidth,
+                      height: MAX_BAR_H,
+                      borderRadius: barWidth / 2,
+                      background: BASE_COLOR,
+                      transformOrigin: 'center',
+                      flexShrink: 0,
+                      transform,
+                      animation,
+                      transition,
+                      opacity: finalOpacity,
+                      '--from-scale': idleScale,
+                      ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALE }),
+                    } as React.CSSProperties}
+                  />
+                );
+              })
+            )
           )}
         </div>
       </div>
