@@ -253,19 +253,6 @@ export class TranscriptionService {
     return text;
   }
 
-  async transcribeApi(wavPath: string): Promise<string> {
-    const client = this.getOpenAIClient();
-    const language = (this.store.get('transcription.language') as string) ?? 'auto';
-
-    const response = await client.audio.transcriptions.create({
-      model: 'whisper-1',
-      file: fs.createReadStream(wavPath),
-      ...(language !== 'auto' && { language }),
-    });
-
-    return response.text.trim();
-  }
-
   private async loadFromCache(overrideModelId?: string): Promise<void> {
     // Prevent concurrent model loads (race condition when user changes model mid-transcription)
     if (this.loadingPromise) {
@@ -286,23 +273,6 @@ export class TranscriptionService {
     }
   }
 
-  async transcribeLocal(wavPath: string): Promise<string> {
-    const { modelId } = this.resolveModelId();
-    const language = (this.store.get('transcription.language') as string) ?? 'auto';
-
-    if (!this.pipe || this.loadedModelId !== modelId) {
-      await this.loadFromCache(modelId);
-    }
-
-    const audio = readWavAsFloat32(wavPath, 16000);
-
-    const options: Record<string, unknown> = { task: 'transcribe' };
-    if (language !== 'auto') options.language = language;
-    if (language === 'pl') options.initial_prompt = 'Dyktowanie tekstu po polsku.';
-
-    const result = await this.pipe(audio, options);
-    return ((result as { text: string }).text ?? '').trim();
-  }
 }
 
 /** Converts IPC-transferred ArrayBuffer (arrives as Node.js Buffer) to Float32Array. */
@@ -362,65 +332,3 @@ function encodeWavFast(samples: Float32Array, sampleRate: number): Buffer {
   return buf;
 }
 
-/**
- * Reads a WAV file (PCM format) and returns a Float32Array of mono samples
- * resampled to the target sample rate. Replaces @xenova/transformers read_audio
- * which requires AudioContext (browser-only API, unavailable in Node.js).
- */
-function readWavAsFloat32(wavPath: string, targetSampleRate: number): Float32Array {
-  const buf = fs.readFileSync(wavPath);
-
-  const audioFormat = buf.readUInt16LE(20); // 1 = PCM, 3 = IEEE float
-  const numChannels = buf.readUInt16LE(22);
-  const sampleRate = buf.readUInt32LE(24);
-  const bitsPerSample = buf.readUInt16LE(34);
-
-  // Find "data" chunk — skip any extra chunks between fmt and data
-  let dataOffset = 36;
-  while (dataOffset < buf.length - 8) {
-    const chunkId = buf.subarray(dataOffset, dataOffset + 4).toString('ascii');
-    const chunkSize = buf.readUInt32LE(dataOffset + 4);
-    if (chunkId === 'data') {
-      dataOffset += 8;
-      break;
-    }
-    dataOffset += 8 + chunkSize;
-  }
-
-  const bytesPerSample = bitsPerSample / 8;
-  const numSamples = Math.floor((buf.length - dataOffset) / (bytesPerSample * numChannels));
-
-  // Convert PCM to mono Float32
-  const samples = new Float32Array(numSamples);
-  for (let i = 0; i < numSamples; i++) {
-    const baseOffset = dataOffset + i * bytesPerSample * numChannels;
-    let mono = 0;
-    for (let ch = 0; ch < numChannels; ch++) {
-      const chOffset = baseOffset + ch * bytesPerSample;
-      if (bitsPerSample === 16 && audioFormat === 1) {
-        mono += buf.readInt16LE(chOffset) / 32768.0;
-      } else if (bitsPerSample === 32 && audioFormat === 3) {
-        mono += buf.readFloatLE(chOffset);
-      } else if (bitsPerSample === 32 && audioFormat === 1) {
-        mono += buf.readInt32LE(chOffset) / 2147483648.0;
-      }
-    }
-    samples[i] = mono / numChannels;
-  }
-
-  if (sampleRate === targetSampleRate) return samples;
-
-  // Linear interpolation resample
-  const ratio = sampleRate / targetSampleRate;
-  const outLength = Math.floor(samples.length / ratio);
-  const resampled = new Float32Array(outLength);
-  for (let i = 0; i < outLength; i++) {
-    const pos = i * ratio;
-    const idx = Math.floor(pos);
-    const frac = pos - idx;
-    const a = samples[idx] ?? 0;
-    const b = samples[idx + 1] ?? a;
-    resampled[i] = a + frac * (b - a);
-  }
-  return resampled;
-}

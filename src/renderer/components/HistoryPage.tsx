@@ -70,8 +70,6 @@ function buildAudioUrl(audioPath: string): string {
   return 'recording:///' + audioPath.replace(/\\/g, '/');
 }
 
-// --- RecordingItem ---
-
 interface RecordingItemProps {
   entry: RecordingEntry;
   isExpanded: boolean;
@@ -86,7 +84,6 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup copy timeout on unmount
   useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
@@ -237,8 +234,6 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
   );
 }
 
-// --- HistoryPage ---
-
 const LOAD_TIMEOUT_MS = 10_000;
 
 export function HistoryPage() {
@@ -263,7 +258,7 @@ export function HistoryPage() {
     };
   }, []);
 
-  const loadAll = useCallback(async (preserveExpanded = false) => {
+  const loadAll = useCallback(async () => {
     try {
       setIsLoading(true);
       setLoadTimedOut(false);
@@ -299,9 +294,6 @@ export function HistoryPage() {
         setLoadError(result.error ?? 'Unknown error');
       }
 
-      if (!preserveExpanded) {
-        // Don't reset expandedId — keep what user had open
-      }
     } catch (err) {
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
       const msg = err instanceof Error ? err.message : String(err);
@@ -321,7 +313,7 @@ export function HistoryPage() {
   useEffect(() => {
     const unsub = window.dictator.onTranscriptionResult(() => {
       if (!searchQueryRef.current.trim()) {
-        loadAll(true);
+        loadAll();
       }
     });
     return unsub;
@@ -344,7 +336,7 @@ export function HistoryPage() {
             setRecordings(result.data);
           }
         } else {
-          await loadAll(true);
+          await loadAll();
         }
       } catch (err) {
         console.error('[HistoryPage] Search failed:', err);

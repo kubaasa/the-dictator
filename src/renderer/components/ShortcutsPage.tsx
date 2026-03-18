@@ -237,8 +237,6 @@ export function ShortcutsPage() {
   const renderShortcutRow = (config: ShortcutConfig) => {
     const inactive = isInactive(config.key);
     const isListening = !inactive && listeningFor === config.key;
-    const isDefault = shortcuts[config.key] === DEFAULT_SETTINGS.hotkey.shortcuts[config.key];
-
     return (
       <div
         key={config.key}

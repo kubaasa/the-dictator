@@ -147,6 +147,12 @@ export class HotkeyService {
     this.mode = mode;
   }
 
+  // Called when recording starts from a non-hotkey source (e.g. overlay button click).
+  // Syncs isRecordingActive so keyboard shortcuts (toggle/PTT) work correctly.
+  notifyRecordingStarted(): void {
+    this.isRecordingActive = true;
+  }
+
   // Called when the renderer confirms recording has stopped (e.g. after an error).
   // Keeps HotkeyService in sync so a stuck isRecordingActive=true can't block new PTT presses.
   notifyRecordingStopped(): void {

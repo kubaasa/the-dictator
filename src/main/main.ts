@@ -222,6 +222,9 @@ function broadcastState(state: RecordingState): void {
 function setupRecordingIpc(): void {
   ipcMain.on(IPC.RECORDING_INIT, () => {
     if (currentState === 'initializing' || currentState === 'recording') return;
+    // Sync HotkeyService for non-hotkey sources (overlay button, main window button)
+    // so keyboard shortcuts can correctly stop the recording
+    hotkeyService.notifyRecordingStarted();
     pasteService.captureTarget();
     broadcastState('initializing');
   });

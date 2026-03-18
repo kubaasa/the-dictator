@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ModelStatus } from '../hooks/useModelStatus';
-import type { DictationMode, AIProviderType } from '../../shared/types';
+import type { DictationMode, AIProviderType, AppSettings } from '../../shared/types';
 import { DICTATION_MODE_PROMPTS, WHISPER_MODEL_DESCRIPTIONS, AI_MODEL_DESCRIPTIONS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
 
 const MODEL_OPTIONS = [
@@ -44,13 +44,11 @@ function ApiKeyInput({
   onChange,
   onSave,
   saved,
-  provider,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSave: () => void;
   saved: boolean;
-  provider: 'openai' | 'anthropic' | 'whisper';
 }) {
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -124,53 +122,38 @@ export function ModesPage(props: ModelStatus) {
   const [aiOllamaUrl, setAiOllamaUrl] = useState('http://localhost:11434');
   const [aiOllamaModel, setAiOllamaModel] = useState('llama3');
   const [aiKeySaved, setAiKeySaved] = useState(false);
-  const [temperature, setTemperature] = useState(0.3);
 
   const fetchOpenAIModels = useCallback(async () => {
     const res = await window.dictator.ai.getOpenAIModels();
     if (res.success && res.models.length > 0) setOpenaiModels(res.models);
   }, []);
 
-  // Load settings
+  const syncFromSettings = useCallback((s: AppSettings) => {
+    setEngine(s.transcription.engine);
+    setModelSize(s.transcription.localModelSize);
+    setLanguage(s.transcription.language);
+    setApiKey(s.transcription.openaiApiKey);
+    setCurrentMode(s.dictation.currentMode);
+    if (s.dictation.modePrompts) setModePrompts(s.dictation.modePrompts);
+    setAiProvider(s.ai.provider);
+    setAiOpenaiKey(s.ai.openaiApiKey);
+    setAiOpenaiModel(s.ai.openaiModel);
+    setAiAnthropicKey(s.ai.anthropicApiKey);
+    setAiAnthropicModel(s.ai.anthropicModel);
+    setAiOllamaUrl(s.ai.ollamaUrl);
+    setAiOllamaModel(s.ai.ollamaModel);
+  }, []);
+
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
-      setEngine(s.transcription.engine);
-      setModelSize(s.transcription.localModelSize);
-      setLanguage(s.transcription.language);
-      setApiKey(s.transcription.openaiApiKey);
-      setCurrentMode(s.dictation.currentMode);
-      if (s.dictation.modePrompts) setModePrompts(s.dictation.modePrompts);
-      setAiProvider(s.ai.provider);
-      setAiOpenaiKey(s.ai.openaiApiKey);
-      setAiOpenaiModel(s.ai.openaiModel);
-      setAiAnthropicKey(s.ai.anthropicApiKey);
-      setAiAnthropicModel(s.ai.anthropicModel);
-      setAiOllamaUrl(s.ai.ollamaUrl);
-      setAiOllamaModel(s.ai.ollamaModel);
-      setTemperature(s.ai.temperature ?? 0.3);
+      syncFromSettings(s);
       if (s.ai.provider === 'openai' && s.ai.openaiApiKey) fetchOpenAIModels();
     });
 
-    const unsub = window.dictator.onSettingsChange((s) => {
-      setEngine(s.transcription.engine);
-      setModelSize(s.transcription.localModelSize);
-      setLanguage(s.transcription.language);
-      setApiKey(s.transcription.openaiApiKey);
-      setCurrentMode(s.dictation.currentMode);
-      if (s.dictation.modePrompts) setModePrompts(s.dictation.modePrompts);
-      setAiProvider(s.ai.provider);
-      setAiOpenaiKey(s.ai.openaiApiKey);
-      setAiOpenaiModel(s.ai.openaiModel);
-      setAiAnthropicKey(s.ai.anthropicApiKey);
-      setAiAnthropicModel(s.ai.anthropicModel);
-      setAiOllamaUrl(s.ai.ollamaUrl);
-      setAiOllamaModel(s.ai.ollamaModel);
-      setTemperature(s.ai.temperature ?? 0.3);
-    });
+    const unsub = window.dictator.onSettingsChange(syncFromSettings);
     return unsub;
-  }, []);
+  }, [syncFromSettings, fetchOpenAIModels]);
 
-  // Handlers
   const handleLanguageChange = async (newLang: string) => {
     setLanguage(newLang);
     const current = await window.dictator.getSettings();
@@ -264,14 +247,6 @@ export function ModesPage(props: ModelStatus) {
     if (aiProvider === 'openai') fetchOpenAIModels();
     setAiKeySaved(true);
     setTimeout(() => setAiKeySaved(false), 2000);
-  };
-
-  const handleTemperatureChange = async (value: number) => {
-    setTemperature(value);
-    const current = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      ai: { ...current.ai, temperature: value },
-    });
   };
 
   const isAiEnabled = aiProvider !== 'none';
@@ -475,7 +450,6 @@ export function ModesPage(props: ModelStatus) {
                   onChange={(v) => aiProvider === 'openai' ? setAiOpenaiKey(v) : setAiAnthropicKey(v)}
                   onSave={handleAiKeySave}
                   saved={aiKeySaved}
-                  provider={aiProvider as 'openai' | 'anthropic'}
                 />
               </div>
             )}
@@ -626,7 +600,6 @@ export function ModesPage(props: ModelStatus) {
                 onChange={setApiKey}
                 onSave={handleApiKeySave}
                 saved={apiKeySaved}
-                provider="whisper"
               />
             </div>
           )}

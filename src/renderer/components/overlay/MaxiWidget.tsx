@@ -109,6 +109,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
   const [isDragging, setIsDragging] = useState(false);
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
   const prevIsActiveRef = useRef(false);
+  const dragMouseUpRef = useRef<(() => void) | null>(null);
 
   // ─── Audio visualization refs (no React state — updated in RAF loop) ────
   const vizActiveRef   = useRef(false); // guards async getUserMedia against cleanup races
@@ -153,6 +154,14 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
   // Prevents bars from flashing during the exit animation after processing or error.
   const wasErrorRef = useRef(false);
   const wasProcessingRef = useRef(false);
+
+  // Clear stickiness synchronously during render (before computing showError/showProcessing)
+  // to prevent a one-frame flash of stale processing/error content on new activation
+  if (isActive && !prevIsActiveRef.current) {
+    wasErrorRef.current = false;
+    wasProcessingRef.current = false;
+  }
+
   if (isError) wasErrorRef.current = true;
   if (isTranscribing || isDone) wasProcessingRef.current = true;
 
@@ -163,8 +172,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
     prevIsActiveRef.current = isActive;
 
     if (isActive && !wasActive) {
-      wasErrorRef.current = false;
-      wasProcessingRef.current = false;
       setAnimPhase('entering');
       const t = setTimeout(() => setAnimPhase('active'), 320);
       return () => clearTimeout(t);
@@ -305,7 +312,13 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
 
   // ─── Drag logic ──────────────────────────────────────────────────────────
   useEffect(() => {
-    return () => { window.dictator.widgetDragEnd(); };
+    return () => {
+      if (dragMouseUpRef.current) {
+        document.removeEventListener('mouseup', dragMouseUpRef.current);
+        dragMouseUpRef.current = null;
+      }
+      window.dictator.widgetDragEnd();
+    };
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -316,7 +329,9 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
       window.dictator.widgetDragEnd();
       setIsDragging(false);
       document.removeEventListener('mouseup', onUp);
+      dragMouseUpRef.current = null;
     };
+    dragMouseUpRef.current = onUp;
     document.addEventListener('mouseup', onUp);
   }, []);
 
@@ -361,7 +376,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
             borderRadius: 16,
             background: '#000000',
             border: '1.5px solid rgba(255,255,255,0.08)',
-            minWidth: hotkeyMode === 'toggle' ? 500 : 380,
+            minWidth: 500,
             animation: 'none',
           } as React.CSSProperties}
         >

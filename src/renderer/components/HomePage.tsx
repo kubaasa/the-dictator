@@ -74,7 +74,6 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
     }
   }, []);
 
-  // Load stats on mount
   useEffect(() => { refreshStats(); }, [refreshStats]);
 
   // Refresh stats when a new transcription result arrives

@@ -125,9 +125,11 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
   const [isProximate, setIsProximate] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragMouseUpRef = useRef<(() => void) | null>(null);
 
   // Reset proximity when recording cycle completes — mouseLeave can be missed
-  // on transparent Electron windows during state transitions
+  // on transparent Electron windows during state transitions.
+  // Next mouse movement over the widget will re-enable proximity via handleMove.
   useEffect(() => {
     if (isDone) setIsProximate(false);
   }, [isDone]);
@@ -154,9 +156,20 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
     leaveTimer.current = setTimeout(() => setIsProximate(false), 150);
   }, []);
 
+  // Re-enable proximity on mouse movement — recovers from the isDone reset
+  // when the cursor is still physically over the widget
+  const handleMove = useCallback(() => {
+    if (leaveTimer.current) { clearTimeout(leaveTimer.current); leaveTimer.current = null; }
+    setIsProximate(true);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (leaveTimer.current) clearTimeout(leaveTimer.current);
+      if (dragMouseUpRef.current) {
+        document.removeEventListener('mouseup', dragMouseUpRef.current);
+        dragMouseUpRef.current = null;
+      }
       window.dictator.widgetDragEnd();
     };
   }, []);
@@ -177,8 +190,10 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
       window.dictator.widgetDragEnd();
       setIsDragging(false);
       document.removeEventListener('mouseup', onUp);
+      dragMouseUpRef.current = null;
     };
 
+    dragMouseUpRef.current = onUp;
     document.addEventListener('mouseup', onUp);
   }, []);
 
@@ -306,6 +321,7 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
       <div
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}
+        onMouseMove={handleMove}
         onMouseDown={handleWrapperMouseDown}
         style={{
           padding: `${PROX_V}px ${PROX_H}px`,
