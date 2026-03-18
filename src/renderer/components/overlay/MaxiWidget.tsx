@@ -23,7 +23,6 @@ const LERP_ATTACK  = 0.65;
 const LERP_RELEASE = 0.12;
 
 const RED       = '#EF4444';
-const ORANGE    = '#FB923C';
 const ERROR_RED = '#DC2626';
 const BASE_COLOR = 'rgba(255,255,255,0.88)';
 
@@ -47,11 +46,6 @@ function formatKey(k: string): string {
 //   i = N-1    → sin(π)   = 0.0  → fully attenuated (right edge)
 const HANNING_WEIGHTS = Array.from({ length: BAR_COUNT }, (_, i) =>
   Math.pow(Math.sin(Math.PI * i / (BAR_COUNT - 1)), 2)
-);
-
-// Staggered delays for transcribing scanner animation
-const TRANSCRIBE_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) =>
-  (i * 0.025).toFixed(3)
 );
 
 // Idle height per bar — tiny spindle silhouette while waiting
@@ -79,10 +73,6 @@ const KEYFRAMES = `
   40%       { transform: translateX(-4px); }
   60%       { transform: translateX(3px); }
   80%, 100% { transform: translateX(0); }
-}
-@keyframes maxi-transcribe {
-  0%, 100% { transform: scaleY(0.3); }
-  50%      { transform: scaleY(0.85); }
 }
 @keyframes maxi-init {
   0%, 100% { transform: scaleY(var(--init-idle, 0.05)); }
@@ -501,8 +491,12 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
                 <ShortcutEntry label="Mode"      raw={shortcuts.modeSelect} />
                 <Divider />
                 <ShortcutEntry label={recLabel}  raw={recShortcut} />
-                <Divider />
-                <ShortcutEntry label="Cancel"    raw={shortcuts.cancelRecording} />
+                {hotkeyMode === 'toggle' && (
+                  <>
+                    <Divider />
+                    <ShortcutEntry label="Cancel"    raw={shortcuts.cancelRecording} />
+                  </>
+                )}
               </div>
             </>
           )}
@@ -516,7 +510,7 @@ function ShortcutEntry({ label, raw }: { label: string; raw: string }) {
   const keys = raw.split('+').map(formatKey);
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-      <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#555555' }}>{label}</span>
+      <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#ffffff', lineHeight: '18px' }}>{label}</span>
       {keys.map((k, i) => <KeyBadge key={i} k={k} />)}
     </span>
   );
