@@ -9,7 +9,7 @@ interface MaxiWidgetProps {
   errorMessage?: string;
 }
 
-const BAR_COUNT  = 40;
+const BAR_COUNT  = 60;
 const BAR_WIDTH  = 3;
 const BAR_GAP    = 3;
 const MAX_BAR_H  = 88;
@@ -19,8 +19,8 @@ const MIN_BAR_H  = 2.5; // baseline height in pixels — always visible in silen
 // Range: 0 = frozen, 1 = instant. Tweakable here.
 // ATTACK: how fast bars rise toward a loud peak (higher = more responsive)
 // RELEASE: how fast bars fall back to silence (lower = slower, smoother decay)
-const LERP_ATTACK  = 0.65;
-const LERP_RELEASE = 0.12;
+const LERP_ATTACK  = 0.75;
+const LERP_RELEASE = 0.18;
 
 const RED       = '#EF4444';
 const ERROR_RED = '#DC2626';
@@ -60,6 +60,21 @@ const INIT_PEAK_SCALE = ((MIN_BAR_H + MAX_BAR_H * 0.2) / MAX_BAR_H).toFixed(4);
 // Negative delays = all bars start immediately but at different phases spanning 3 full cycles
 const INIT_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) => {
   return (-((BAR_COUNT - 1 - i) / (BAR_COUNT - 1)) * 3).toFixed(3);
+});
+
+// Pre-computed per-bar properties for organic variation during recording
+const BAR_PROPS = Array.from({ length: BAR_COUNT }, (_, i) => {
+  // Stable pseudo-random seed per bar
+  const seed = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+  const rand = seed - Math.floor(seed);
+
+  // Each bar reacts at slightly different gain (0.80–1.0)
+  const multiplier = 0.80 + rand * 0.20;
+
+  // Micro-jitter factor per bar (±5%)
+  const jitter = 0.95 + rand * 0.1;
+
+  return { multiplier, jitter };
 });
 
 const KEYFRAMES = `
@@ -257,8 +272,12 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
             if (amplitude > peak) peak = amplitude;
           }
 
+          // Speech amplitudes are typically 0.05–0.15 — boost ×4 so bars fill the widget
+          const boosted = Math.min(1, peak * 4);
+          // Per-bar variation: multiplier + jitter for organic movement
+          const varied = boosted * BAR_PROPS[i].multiplier * BAR_PROPS[i].jitter;
           // Apply Hanning window — spindle / diamond shape
-          const enveloped = peak * HANNING_WEIGHTS[i];
+          const enveloped = varied * HANNING_WEIGHTS[i];
           const targetH   = MIN_BAR_H + enveloped * (MAX_BAR_H - MIN_BAR_H);
 
           // LERP smoothing: new = old + (target - old) * factor
@@ -268,10 +287,10 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
         }
       } else {
         // Fallback path: single scalar distributed across bars via Hanning envelope.
-        // Visually identical shape — just uniform rather than per-bar detail.
-        const level = Math.pow(Math.min(1, Math.max(0, voiceLevelRef.current)), 0.45);
+        const level = Math.min(1, Math.pow(Math.min(1, Math.max(0, voiceLevelRef.current)), 0.3) * 1.5);
         for (let i = 0; i < BAR_COUNT; i++) {
-          const enveloped = level * HANNING_WEIGHTS[i];
+          const varied = level * BAR_PROPS[i].multiplier * BAR_PROPS[i].jitter;
+          const enveloped = varied * HANNING_WEIGHTS[i];
           const targetH   = MIN_BAR_H + enveloped * (MAX_BAR_H - MIN_BAR_H);
 
           const current = smoothedRef.current[i];
@@ -337,7 +356,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
 
   // ─── Rendering ───────────────────────────────────────────────────────────
   const indicator = isRecording
-    ? { dot: true,  text: 'REC',   color: RED }
+    ? { dot: true,  text: 'REC',   color: ERROR_RED }
     : isError
       ? { dot: false, text: 'ERROR', color: ERROR_RED }
       : null;
@@ -435,21 +454,21 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
               {/* Row 1: Status indicator */}
               <div style={{ height: 22, display: 'flex', alignItems: 'center' }}>
                 {indicator && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    fontFamily: 'monospace', fontSize: 14, fontWeight: 700,
+                    letterSpacing: '0.08em', color: indicator.color,
+                    display: 'inline-flex', alignItems: 'center',
+                  }}>
+                    [
                     {indicator.dot && (
                       <span style={{
-                        width: 11, height: 11, borderRadius: '50%',
-                        background: RED, display: 'inline-block', flexShrink: 0,
+                        width: 9, height: 9, borderRadius: '50%',
+                        background: ERROR_RED, display: 'inline-block', flexShrink: 0,
                         animation: 'rec-blink 1s step-start infinite',
                       }} />
                     )}
-                    <span style={{
-                      fontFamily: 'monospace', fontSize: 14, fontWeight: 700,
-                      letterSpacing: '0.08em', color: indicator.color,
-                    }}>
-                      {indicator.text}
-                    </span>
-                  </div>
+                    {indicator.text}]
+                  </span>
                 )}
               </div>
 

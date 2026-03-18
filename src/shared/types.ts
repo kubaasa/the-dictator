@@ -98,8 +98,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   hotkey: {
     shortcuts: {
-      toggleRecording: 'Ctrl+Shift+Space',
-      cancelRecording: 'Ctrl+Shift+Escape',
+      toggleRecording: 'Ctrl+Tab',
+      cancelRecording: 'Escape',
       pushToTalk: 'Ctrl+X',
       modeSelect: 'Ctrl+Shift+M',
       showWindow: 'Ctrl+Shift+D',

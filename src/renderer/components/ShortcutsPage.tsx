@@ -10,7 +10,7 @@ interface ShortcutConfig {
 }
 
 const RECORDING_SHORTCUTS: ShortcutConfig[] = [
-  { key: 'toggleRecording', label: 'Toggle Recording', description: 'Start or stop voice recording (behavior follows Recording Mode above)' },
+  { key: 'toggleRecording', label: 'Toggle Recording', description: 'Start or stop voice recording' },
   { key: 'cancelRecording', label: 'Cancel Recording', description: 'Discard current recording without transcription' },
   { key: 'pushToTalk', label: 'Push-to-Talk', description: 'One modifier + one key — hold to record, release to stop (active only in Push-to-Talk mode)' },
 ];
@@ -118,6 +118,22 @@ function formatKeyCombo(e: KeyboardEvent): string | null {
   return parts.join('+');
 }
 
+// Returns a single key OR modifier+key combo (modifier is optional)
+function formatSingleOrComboKey(e: KeyboardEvent): string | null {
+  if (MODIFIER_CODES.has(e.code)) return null;
+
+  const parts: string[] = [];
+  if (e.ctrlKey) parts.push('Ctrl');
+  if (e.shiftKey) parts.push('Shift');
+  if (e.altKey) parts.push('Alt');
+
+  const keyName = physicalKeyName(e.code);
+  if (!keyName) return null;
+
+  parts.push(keyName);
+  return parts.join('+');
+}
+
 export function ShortcutsPage() {
   const [shortcuts, setShortcuts] = useState(DEFAULT_SETTINGS.hotkey.shortcuts);
   const [hotkeyMode, setHotkeyMode] = useState<HotkeyMode>(DEFAULT_SETTINGS.hotkey.mode);
@@ -170,13 +186,14 @@ export function ShortcutsPage() {
       e.preventDefault();
       e.stopPropagation();
 
-      if (e.key === 'Escape' && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+      if (e.key === 'Escape' && !e.ctrlKey && !e.shiftKey && !e.altKey && listeningFor !== 'cancelRecording') {
         cancelListening();
         return;
       }
 
       const isPtt = listeningFor === 'pushToTalk';
-      const result = isPtt ? formatPttCombo(e) : formatKeyCombo(e);
+      const isCancelRecording = listeningFor === 'cancelRecording';
+      const result = isPtt ? formatPttCombo(e) : isCancelRecording ? formatSingleOrComboKey(e) : formatKeyCombo(e);
 
       if (result) {
         const otherShortcuts = Object.entries(shortcuts)
@@ -283,7 +300,7 @@ export function ShortcutsPage() {
             {isListening
               ? (pendingKeys
                   ? <ShortcutDisplay combo={pendingKeys} />
-                  : config.key === 'pushToTalk' ? 'MODIFIER + KEY...' : 'AWAITING INPUT...')
+                  : config.key === 'pushToTalk' ? 'MODIFIER + KEY...' : config.key === 'cancelRecording' ? 'PRESS ANY KEY...' : 'AWAITING INPUT...')
               : <ShortcutDisplay combo={shortcuts[config.key]} />
             }
           </div>
