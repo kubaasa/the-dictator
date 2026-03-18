@@ -12,7 +12,7 @@ interface ShortcutConfig {
 const RECORDING_SHORTCUTS: ShortcutConfig[] = [
   { key: 'toggleRecording', label: 'Toggle Recording', description: 'Start or stop voice recording (behavior follows Recording Mode above)' },
   { key: 'cancelRecording', label: 'Cancel Recording', description: 'Discard current recording without transcription' },
-  { key: 'pushToTalk', label: 'Push-to-Talk', description: 'Hold to record, release to stop — active only in Push-to-Talk mode' },
+  { key: 'pushToTalk', label: 'Push-to-Talk', description: 'One modifier + one key — hold to record, release to stop (active only in Push-to-Talk mode)' },
 ];
 
 const APP_SHORTCUTS: ShortcutConfig[] = [
@@ -85,6 +85,23 @@ function physicalKeyName(code: string): string | null {
   return codeMap[code] ?? null;
 }
 
+// Returns exactly one modifier + one key for push-to-talk (e.g. Ctrl+X, Shift+F9)
+function formatPttCombo(e: KeyboardEvent): string | null {
+  if (MODIFIER_CODES.has(e.code)) return null;
+
+  const mods: string[] = [];
+  if (e.ctrlKey) mods.push('Ctrl');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.altKey) mods.push('Alt');
+  if (mods.length !== 1) return null;
+
+  const keyName = physicalKeyName(e.code);
+  if (!keyName) return null;
+
+  return mods[0] + '+' + keyName;
+}
+
+// Returns a modifier+key combo string (requires at least one modifier)
 function formatKeyCombo(e: KeyboardEvent): string | null {
   if (MODIFIER_CODES.has(e.code)) return null;
 
@@ -157,29 +174,35 @@ export function ShortcutsPage() {
         return;
       }
 
-      const parts: string[] = [];
-      if (e.ctrlKey) parts.push('Ctrl');
-      if (e.shiftKey) parts.push('Shift');
-      if (e.altKey) parts.push('Alt');
+      const isPtt = listeningFor === 'pushToTalk';
+      const result = isPtt ? formatPttCombo(e) : formatKeyCombo(e);
 
-      const combo = formatKeyCombo(e);
-      if (combo) {
+      if (result) {
         const otherShortcuts = Object.entries(shortcuts)
           .filter(([k]) => k !== listeningFor)
           .map(([, v]) => v);
 
-        if (otherShortcuts.includes(combo)) {
-          setError(`"${combo}" is already used by another shortcut`);
+        if (otherShortcuts.includes(result)) {
+          setError(`"${result}" is already used by another shortcut`);
           return;
         }
 
-        const newShortcuts = { ...shortcuts, [listeningFor]: combo };
+        const newShortcuts = { ...shortcuts, [listeningFor]: result };
         saveShortcuts(newShortcuts);
         setListeningFor(null);
         setPendingKeys('');
         setError('');
       } else {
-        setPendingKeys(parts.length > 0 ? parts.join('+') + '+...' : '');
+        const parts: string[] = [];
+        if (e.ctrlKey) parts.push('Ctrl');
+        if (e.shiftKey) parts.push('Shift');
+        if (e.altKey) parts.push('Alt');
+
+        if (isPtt && parts.length > 1) {
+          setError('Push-to-Talk accepts only one modifier + one key');
+        } else {
+          setPendingKeys(parts.length > 0 ? parts.join('+') + '+...' : '');
+        }
       }
     };
 
@@ -247,7 +270,9 @@ export function ShortcutsPage() {
             }`}
           >
             {isListening
-              ? (pendingKeys ? <ShortcutDisplay combo={pendingKeys} /> : 'AWAITING INPUT...')
+              ? (pendingKeys
+                  ? <ShortcutDisplay combo={pendingKeys} />
+                  : config.key === 'pushToTalk' ? 'MODIFIER + KEY...' : 'AWAITING INPUT...')
               : <ShortcutDisplay combo={shortcuts[config.key]} />
             }
           </div>

@@ -1,9 +1,6 @@
 import { uIOhook, UiohookKey } from 'uiohook-napi';
 import type { HotkeyMode } from '../../shared/types';
 
-// Modifier keycodes — releasing a modifier alone must not stop push-to-talk
-const MODIFIER_KEYCODES = new Set([UiohookKey.Ctrl, UiohookKey.Shift, UiohookKey.Alt]);
-
 // Maps readable key names (from renderer shortcut recorder) to uiohook scan codes.
 // Recorder uses e.code-based names (physical keys), so names like "BracketRight"
 // match regardless of Shift state.
@@ -109,9 +106,7 @@ export class HotkeyService {
         }
       }
 
-      // PTT stop: any key from the binding released (including modifiers) → stop recording.
-      // Without this, releasing e.g. Ctrl from Ctrl+X leaves X held alone, and the OS
-      // starts typing "x" into the focused window (uiohook can't suppress key events).
+      // PTT stop: the PTT key released → stop recording.
       if (this.isRecordingActive && this.mode === 'push-to-talk') {
         const stopBindings = this.bindings.filter(
           (b) => b.action === 'toggleRecording' || b.action === 'pushToTalk',
