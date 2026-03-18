@@ -31,6 +31,7 @@ export function clampToVisibleArea(x: number, y: number, w: number, h: number): 
 }
 
 const TRANSCRIPTION_TIMEOUT_MS = 30_000;
+const AI_TIMEOUT_MS = 30_000;
 
 export function registerIpcHandlers(
   store: Store<AppSettings>,
@@ -45,6 +46,17 @@ export function registerIpcHandlers(
 ): void {
   const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
+
+  // Deduplicated idle-transition timeout — prevents stale setTimeout callbacks
+  // from resetting state after a new recording has already started
+  let idleTransitionTimeout: ReturnType<typeof setTimeout> | null = null;
+  function scheduleIdle(delay: number): void {
+    if (idleTransitionTimeout) clearTimeout(idleTransitionTimeout);
+    idleTransitionTimeout = setTimeout(() => {
+      broadcastState('idle');
+      idleTransitionTimeout = null;
+    }, delay);
+  }
 
   // Settings
   ipcMain.handle(IPC.SETTINGS_GET, () => {
@@ -152,7 +164,7 @@ export function registerIpcHandlers(
       // Send error message to overlay so MaxiWidget can display it
       const overlay = getOverlayWindow();
       if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, readyError);
-      setTimeout(() => broadcastState('idle'), 2500);
+      scheduleIdle(2500);
       return { ready: false, error: readyError };
     }
     return { ready: true };
@@ -192,14 +204,23 @@ export function registerIpcHandlers(
       broadcastState('processing');
       let text: string;
       try {
-        text = await aiService.process(rawText);
+        let aiTimeoutId: ReturnType<typeof setTimeout>;
+        text = await Promise.race([
+          aiService.process(rawText).then((result) => {
+            clearTimeout(aiTimeoutId);
+            return result;
+          }),
+          new Promise<never>((_, reject) => {
+            aiTimeoutId = setTimeout(() => reject(new Error('AI processing timed out')), AI_TIMEOUT_MS);
+          }),
+        ]);
       } catch (aiErr) {
         console.warn('[Dictator] AI processing failed, using raw text:', aiErr);
         text = rawText;
       }
 
       broadcastState('done');
-      setTimeout(() => broadcastState('idle'), 1500);
+      scheduleIdle(1500);
       const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
       console.log('[Dictator] Transcription done. autoPaste=%s, text="%s"', autoPaste, text);
 
@@ -241,7 +262,7 @@ export function registerIpcHandlers(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       broadcastState('error');
-      setTimeout(() => broadcastState('idle'), 1500);
+      scheduleIdle(1500);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, msg);
     }
   });

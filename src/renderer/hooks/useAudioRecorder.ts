@@ -121,20 +121,27 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current || isSettingUpRef.current) return;
+
+    // Set flag immediately to prevent concurrent startRecording calls.
+    // Without this, rapid PTT press+release triggers two overlapping
+    // startRecording() calls (both pass the guard above before either sets the flag).
+    isSettingUpRef.current = true;
+    pendingStopRef.current = false;
+
     try {
       // Show overlay immediately with loading animation (before slow getUserMedia)
       window.dictator.initRecording();
 
       const { ready, error: readyError } = await window.dictator.checkTranscriptionReady();
       if (!ready) {
+        isSettingUpRef.current = false;
+        pendingStopRef.current = false;
         setError(readyError ?? 'Transcription not ready');
         // Don't call stopRecording() — CHECK_READY handler already broadcasts
         // 'error' state and schedules 'idle' after 1.5s
         return;
       }
       setError('');
-      isSettingUpRef.current = true;
-      pendingStopRef.current = false;
 
       // Ensure previous AudioContext is fully closed before creating a new one —
       // unclosed contexts accumulate and degrade audio quality after several recordings
@@ -159,6 +166,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       // Guard: cancelled during getUserMedia (e.g. PTT released before mic was ready)
       if (!isSettingUpRef.current) {
         stream.getTracks().forEach(t => t.stop());
+        // Notify main process to reset state — it may still be in 'initializing'
+        window.dictator.stopRecording();
         return;
       }
 
@@ -318,7 +327,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
       const sampleRate = audioContext.sampleRate;
       // Fire-and-forget: result arrives via onTranscriptionResult event
-      window.dictator.transcribeBuffer(merged.buffer, sampleRate, recordingIdRef.current);
+      window.dictator.transcribeBuffer(merged.buffer, sampleRate, recordingIdRef.current)
+        .catch((err: unknown) => console.error('[Dictator] transcribeBuffer failed:', err));
     }
 
     // Always close AudioContext — even for empty recordings (prevents accumulation)

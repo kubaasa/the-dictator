@@ -62,11 +62,30 @@ let overlayWindow: BrowserWindow | null = null;
 let currentState: RecordingState = 'idle';
 let overlayHideTimeout: ReturnType<typeof setTimeout> | null = null;
 let historyService: HistoryService | null = null;
+let pttSafetyTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const hotkeyService = new HotkeyService(
-  () => { pasteService.captureTarget(); broadcastState('initializing'); sendToggleToRenderer(); },
+  () => {
+    // Clear safety timeout on new recording start
+    if (pttSafetyTimeout) { clearTimeout(pttSafetyTimeout); pttSafetyTimeout = null; }
+    pasteService.captureTarget();
+    broadcastState('initializing');
+    sendToggleToRenderer();
+  },
   () => {
     sendToggleToRenderer();
+    // Safety net: if state is still non-idle after all timeouts expire,
+    // force reset. Normal flow should never hit this — covers edge cases
+    // where renderer/IPC chain breaks silently.
+    if (pttSafetyTimeout) clearTimeout(pttSafetyTimeout);
+    pttSafetyTimeout = setTimeout(() => {
+      if (currentState !== 'idle') {
+        console.warn('[Dictator] PTT safety timeout: forcing idle from state "%s"', currentState);
+        broadcastState('idle');
+        hotkeyService.notifyRecordingStopped();
+      }
+      pttSafetyTimeout = null;
+    }, 65_000);
   },
 );
 
@@ -166,6 +185,11 @@ function createOverlayWindow(): BrowserWindow {
 
 function broadcastState(state: RecordingState): void {
   currentState = state;
+  // Clear PTT safety timeout when state reaches idle normally
+  if (state === 'idle' && pttSafetyTimeout) {
+    clearTimeout(pttSafetyTimeout);
+    pttSafetyTimeout = null;
+  }
   trayManager.updateState(state);
 
   for (const win of BrowserWindow.getAllWindows()) {
