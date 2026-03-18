@@ -110,6 +110,9 @@ export function ModesPage(props: ModelStatus) {
   const [aiOllamaModel, setAiOllamaModel] = useState('llama3');
   const [aiKeySaved, setAiKeySaved] = useState(false);
 
+  // Output settings (read-only for pipeline bar)
+  const [autoPaste, setAutoPaste] = useState(DEFAULT_SETTINGS.dictation.autoPaste);
+
   const fetchOpenAIModels = useCallback(async () => {
     const res = await window.dictator.ai.getOpenAIModels();
     if (res.success && res.models.length > 0) setOpenaiModels(res.models);
@@ -122,6 +125,7 @@ export function ModesPage(props: ModelStatus) {
     setApiKey(s.transcription.openaiApiKey);
     setAiPostProcessing(s.dictation.aiPostProcessing);
     setCustomPrompt(s.dictation.customPrompt);
+    setAutoPaste(s.dictation.autoPaste);
     setAiProvider(s.ai.provider);
     setAiOpenaiKey(s.ai.openaiApiKey);
     setAiOpenaiModel(s.ai.openaiModel);
@@ -247,213 +251,77 @@ export function ModesPage(props: ModelStatus) {
   const currentAiModels = aiProvider === 'openai' ? openaiModels : aiProvider === 'anthropic' ? ANTHROPIC_MODELS : [];
   const currentAiModel = aiProvider === 'openai' ? aiOpenaiModel : aiProvider === 'anthropic' ? aiAnthropicModel : '';
 
+  // ── Pipeline status bar helpers ──
+  const transcriptionSummary = engine === 'api' ? 'Whisper API' : `Local (${modelSize.charAt(0).toUpperCase() + modelSize.slice(1)})`;
+  const languageLabel = language === 'en' ? 'EN' : 'PL';
+
+  const aiModelLabel = aiProvider === 'openai'
+    ? openaiModels.find(m => m.value === aiOpenaiModel)?.label ?? aiOpenaiModel
+    : aiProvider === 'anthropic'
+      ? ANTHROPIC_MODELS.find(m => m.value === aiAnthropicModel)?.label ?? aiAnthropicModel
+      : aiProvider === 'ollama' ? aiOllamaModel : '';
+
+  const aiSummary = !aiPostProcessing
+    ? 'OFF'
+    : aiProvider === 'none'
+      ? 'No provider'
+      : !isAiConfigured
+        ? `${aiProvider === 'openai' ? 'OpenAI' : aiProvider === 'anthropic' ? 'Anthropic' : 'Ollama'} / No key`
+        : `${aiProvider === 'openai' ? 'OpenAI' : aiProvider === 'anthropic' ? 'Anthropic' : 'Ollama'} / ${aiModelLabel}`;
+
+  const transcriptionStatus: 'ready' | 'warning' | 'off' =
+    engine === 'api' ? (apiKey ? 'ready' : 'warning') : (downloaded ? 'ready' : 'warning');
+  const aiStatus: 'ready' | 'warning' | 'off' =
+    !aiPostProcessing ? 'off' : (isAiEnabled && isAiConfigured) ? 'ready' : 'warning';
+  const outputStatus: 'ready' | 'warning' | 'off' = 'ready';
+
+  const statusColor = (s: 'ready' | 'warning' | 'off') =>
+    s === 'ready' ? 'bg-green-600/60' : s === 'warning' ? 'bg-amber-600/60' : 'bg-neutral-700';
+
   return (
     <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
       <div className="flex flex-col gap-8">
 
-        {/* ── Section 1: AI Post-Processing ── */}
-        <section>
-          <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
-            AI Post-Processing
-          </h2>
-
-          <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-4">
-            {/* Toggle row */}
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-0.5">
-                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">
-                  Process with AI
-                </span>
-                <span className="text-xs text-neutral-500">
-                  When enabled, transcribed text is processed through the prompt below before pasting
-                </span>
-              </div>
-              <button
-                onClick={handleToggleAi}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                  aiPostProcessing ? 'bg-red-600' : 'bg-neutral-700'
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    aiPostProcessing ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
+        {/* ── Pipeline Status Bar ── */}
+        <div className="rounded-xl border border-neutral-800 bg-[#0f0f0f] p-4">
+          <div className="flex items-center">
+            {/* Stage 01: Transcribe */}
+            <div className="flex-1 flex flex-col items-center gap-1.5 px-3 py-2">
+              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">Stage 01</span>
+              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-400">Transcribe</span>
+              <span className="text-xs text-neutral-500">{transcriptionSummary} ({languageLabel})</span>
+              <div className={`mt-1 h-1 w-full rounded-full ${statusColor(transcriptionStatus)}`} />
             </div>
 
-            {(!isAiEnabled || !isAiConfigured) && aiPostProcessing && (
-              <div className="flex items-center gap-3 rounded-lg border border-green-800/40 bg-green-950/20 px-4 py-3">
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-50" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-                  </span>
-                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-green-500">[IDLE]</span>
-                </div>
-                <span className="text-xs text-green-400/70">
-                  {!isAiEnabled
-                    ? 'AI processing enabled but no provider selected — choose one below.'
-                    : 'Provider selected — enter your API key below and click Save to activate.'}
-                </span>
-              </div>
-            )}
+            {/* Connector */}
+            <svg className="h-4 w-4 shrink-0 text-neutral-700" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+            </svg>
 
-            {/* Prompt editor — visible only when toggle is ON */}
-            {aiPostProcessing && (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
-                    System Prompt
-                  </span>
-                  {isPromptModified && (
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-amber-600/70">Modified</span>
-                  )}
-                </div>
-                <textarea
-                  value={customPrompt}
-                  onChange={(e) => handlePromptChange(e.target.value)}
-                  onBlur={handlePromptSave}
-                  placeholder="Enter system prompt..."
-                  rows={6}
-                  className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-4 py-3 text-sm text-neutral-300 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 resize-none leading-relaxed"
-                />
-
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handlePromptReset}
-                    disabled={!isPromptModified}
-                    className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
-                      isPromptModified
-                        ? 'border-neutral-700 text-neutral-400 hover:border-neutral-600 hover:text-neutral-300 cursor-pointer'
-                        : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
-                    }`}
-                  >
-                    Reset to Default
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-
-        </section>
-
-        {/* ── Section 2: AI Provider ── */}
-        <section>
-          <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
-            AI Provider
-          </h2>
-          <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-5">
-
-            {/* Provider pills */}
-            <div>
-              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
-                Provider
-              </span>
-              <div className="flex gap-2">
-                {AI_PROVIDER_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => handleProviderChange(opt.value)}
-                    className={`rounded-lg border px-5 py-2 font-mono text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-200 cursor-pointer ${
-                      aiProvider === opt.value
-                        ? 'border-red-600/50 bg-red-600/10 text-red-400'
-                        : 'border-neutral-700 bg-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+            {/* Stage 02: AI Process */}
+            <div className="flex-1 flex flex-col items-center gap-1.5 px-3 py-2">
+              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">Stage 02</span>
+              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-400">AI Process</span>
+              <span className="text-xs text-neutral-500">{aiSummary}</span>
+              <div className={`mt-1 h-1 w-full rounded-full ${statusColor(aiStatus)}`} />
             </div>
 
-            {/* AI Model cards */}
-            {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
-              <div>
-                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
-                  Model
-                </span>
-                <div className="grid grid-cols-3 gap-2">
-                  {currentAiModels.map((opt) => {
-                    const isSelected = opt.value === currentAiModel;
-                    return (
-                      <button
-                        key={opt.value}
-                        onClick={() => handleAiModelChange(opt.value)}
-                        className={`flex flex-col items-start rounded-lg border p-3 text-left transition-all duration-200 cursor-pointer ${
-                          isSelected
-                            ? 'border-red-600/50 bg-red-600/5'
-                            : 'border-neutral-800 bg-[#0f0f0f] hover:border-neutral-700'
-                        }`}
-                      >
-                        <span className={`font-mono text-sm font-semibold ${isSelected ? 'text-red-400' : 'text-neutral-300'}`}>
-                          {opt.label}
-                        </span>
-                        <span className="mt-1 text-xs text-neutral-600 leading-tight">
-                          {AI_MODEL_DESCRIPTIONS[opt.value] ?? ''}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {/* Connector */}
+            <svg className="h-4 w-4 shrink-0 text-neutral-700" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+            </svg>
 
-            {/* Ollama config */}
-            {aiProvider === 'ollama' && (
-              <div className="flex flex-col gap-3">
-                <div>
-                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">URL</span>
-                  <input
-                    type="text"
-                    value={aiOllamaUrl}
-                    onChange={(e) => setAiOllamaUrl(e.target.value)}
-                    placeholder="http://localhost:11434"
-                    className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30"
-                  />
-                </div>
-                <div>
-                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">Model</span>
-                  <input
-                    type="text"
-                    value={aiOllamaModel}
-                    onChange={(e) => setAiOllamaModel(e.target.value)}
-                    placeholder="llama3"
-                    className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* API Key */}
-            {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
-              <div>
-                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">
-                  API Key
-                </span>
-                <ApiKeyInput
-                  value={aiProvider === 'openai' ? aiOpenaiKey : aiAnthropicKey}
-                  onChange={(v) => aiProvider === 'openai' ? setAiOpenaiKey(v) : setAiAnthropicKey(v)}
-                  onSave={handleAiKeySave}
-                  saved={aiKeySaved}
-                />
-              </div>
-            )}
-
-            {/* Ollama save */}
-            {aiProvider === 'ollama' && (
-              <button
-                onClick={handleAiKeySave}
-                className="self-start rounded-lg bg-neutral-700 px-4 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider text-neutral-200 transition-colors hover:bg-neutral-600 cursor-pointer"
-              >
-                {aiKeySaved ? 'Saved' : 'Save'}
-              </button>
-            )}
-
+            {/* Stage 03: Output */}
+            <div className="flex-1 flex flex-col items-center gap-1.5 px-3 py-2">
+              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">Stage 03</span>
+              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-400">Output</span>
+              <span className="text-xs text-neutral-500">{autoPaste ? 'Auto-paste' : 'Clipboard only'}</span>
+              <div className={`mt-1 h-1 w-full rounded-full ${statusColor(outputStatus)}`} />
+            </div>
           </div>
-        </section>
+        </div>
 
-        {/* ── Section 3: Transcription ── */}
+        {/* ── Section 1: Transcription ── */}
         <section>
           <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
             Transcription
@@ -570,25 +438,243 @@ export function ModesPage(props: ModelStatus) {
                 </p>
               )}
             </div>
-          </div>
 
-          {/* API key section (transcription) */}
-          {engine === 'api' && (
-            <div className="mt-4 rounded-xl border border-neutral-800 bg-[#141414] p-5">
-              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">
-                OpenAI API Key
-              </span>
-              <p className="text-xs text-neutral-600 mb-3">
-                Used for Whisper API transcription. Stored locally, never sent anywhere except OpenAI.
-              </p>
-              <ApiKeyInput
-                value={apiKey}
-                onChange={setApiKey}
-                onSave={handleApiKeySave}
-                saved={apiKeySaved}
-              />
+            {/* OpenAI API Key — Transcription */}
+            {engine === 'api' && (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
+                    OpenAI API Key
+                  </span>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-blue-600/10 text-blue-400 border border-blue-600/20">
+                    Whisper
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-600 mb-3">
+                  Used for Whisper speech-to-text. Not the same as AI processing key.
+                </p>
+                <ApiKeyInput
+                  value={apiKey}
+                  onChange={setApiKey}
+                  onSave={handleApiKeySave}
+                  saved={apiKeySaved}
+                />
+              </div>
+            )}
+
+          </div>
+        </section>
+
+        {/* ── Section 2: AI Processing ── */}
+        <section>
+          <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
+            AI Processing
+          </h2>
+
+          <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-5">
+            {/* Toggle row */}
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">
+                  Process with AI
+                </span>
+                <span className="text-xs text-neutral-500">
+                  When enabled, transcribed text is processed through AI before pasting
+                </span>
+              </div>
+              <button
+                onClick={handleToggleAi}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                  aiPostProcessing ? 'bg-red-600' : 'bg-neutral-700'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    aiPostProcessing ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
             </div>
-          )}
+
+            {/* [IDLE] banner */}
+            {aiPostProcessing && (!isAiEnabled || !isAiConfigured) && (
+              <div className="flex items-center gap-3 rounded-lg border border-green-800/40 bg-green-950/20 px-4 py-3">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-50" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+                  </span>
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-green-500">[IDLE]</span>
+                </div>
+                <span className="text-xs text-green-400/70">
+                  {!isAiEnabled
+                    ? 'AI processing enabled but no provider selected — choose one below.'
+                    : 'Provider selected — enter your API key below and click Save to activate.'}
+                </span>
+              </div>
+            )}
+
+            {/* All AI config — visible only when toggle is ON */}
+            {aiPostProcessing && (
+              <>
+                {/* Provider pills */}
+                <div>
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
+                    Provider
+                  </span>
+                  <div className="flex gap-2">
+                    {AI_PROVIDER_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => handleProviderChange(opt.value)}
+                        className={`rounded-lg border px-5 py-2 font-mono text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-200 cursor-pointer ${
+                          aiProvider === opt.value
+                            ? 'border-red-600/50 bg-red-600/10 text-red-400'
+                            : 'border-neutral-700 bg-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* AI Model cards */}
+                {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
+                  <div>
+                    <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
+                      Model
+                    </span>
+                    <div className="grid grid-cols-3 gap-2">
+                      {currentAiModels.map((opt) => {
+                        const isSelected = opt.value === currentAiModel;
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => handleAiModelChange(opt.value)}
+                            className={`flex flex-col items-start rounded-lg border p-3 text-left transition-all duration-200 cursor-pointer ${
+                              isSelected
+                                ? 'border-red-600/50 bg-red-600/5'
+                                : 'border-neutral-800 bg-[#0f0f0f] hover:border-neutral-700'
+                            }`}
+                          >
+                            <span className={`font-mono text-sm font-semibold ${isSelected ? 'text-red-400' : 'text-neutral-300'}`}>
+                              {opt.label}
+                            </span>
+                            <span className="mt-1 text-xs text-neutral-600 leading-tight">
+                              {AI_MODEL_DESCRIPTIONS[opt.value] ?? ''}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Ollama config */}
+                {aiProvider === 'ollama' && (
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">URL</span>
+                      <input
+                        type="text"
+                        value={aiOllamaUrl}
+                        onChange={(e) => setAiOllamaUrl(e.target.value)}
+                        placeholder="http://localhost:11434"
+                        className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30"
+                      />
+                    </div>
+                    <div>
+                      <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">Model</span>
+                      <input
+                        type="text"
+                        value={aiOllamaModel}
+                        onChange={(e) => setAiOllamaModel(e.target.value)}
+                        placeholder="llama3"
+                        className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* API Key — AI Processing */}
+                {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
+                        API Key
+                      </span>
+                      {aiProvider === 'openai' && (
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-emerald-600/10 text-emerald-400 border border-emerald-600/20">
+                          GPT
+                        </span>
+                      )}
+                      {aiProvider === 'anthropic' && (
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-amber-600/10 text-amber-400 border border-amber-600/20">
+                          Claude
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-neutral-600 mb-3">
+                      Used for AI text processing. Separate from transcription key.
+                    </p>
+                    <ApiKeyInput
+                      value={aiProvider === 'openai' ? aiOpenaiKey : aiAnthropicKey}
+                      onChange={(v) => aiProvider === 'openai' ? setAiOpenaiKey(v) : setAiAnthropicKey(v)}
+                      onSave={handleAiKeySave}
+                      saved={aiKeySaved}
+                    />
+                  </div>
+                )}
+
+                {/* Ollama save */}
+                {aiProvider === 'ollama' && (
+                  <button
+                    onClick={handleAiKeySave}
+                    className="self-start rounded-lg bg-neutral-700 px-4 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider text-neutral-200 transition-colors hover:bg-neutral-600 cursor-pointer"
+                  >
+                    {aiKeySaved ? 'Saved' : 'Save'}
+                  </button>
+                )}
+
+                {/* ── System Prompt ── */}
+                <div className="border-t border-neutral-800 pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
+                        System Prompt
+                      </span>
+                      {isPromptModified && (
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-amber-600/70">Modified</span>
+                      )}
+                    </div>
+                  </div>
+                  <textarea
+                    value={customPrompt}
+                    onChange={(e) => handlePromptChange(e.target.value)}
+                    onBlur={handlePromptSave}
+                    placeholder="Enter system prompt..."
+                    rows={6}
+                    className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-4 py-3 text-sm text-neutral-300 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 resize-none leading-relaxed"
+                  />
+
+                  <div className="flex items-center gap-3 mt-2">
+                    <button
+                      onClick={handlePromptReset}
+                      disabled={!isPromptModified}
+                      className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
+                        isPromptModified
+                          ? 'border-neutral-700 text-neutral-400 hover:border-neutral-600 hover:text-neutral-300 cursor-pointer'
+                          : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
+                      }`}
+                    >
+                      Reset to Default
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </section>
 
       </div>
