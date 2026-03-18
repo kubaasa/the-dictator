@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
+import { useState, Component, type ReactNode, type ErrorInfo } from 'react';
 import { OverlayWindow } from './components/OverlayWindow';
 import { Sidebar } from './components/Sidebar';
 import type { View as ActiveView } from './components/Sidebar';
@@ -13,8 +13,6 @@ import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
-import type { DictationMode } from '../shared/types';
-
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
 
@@ -45,8 +43,6 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
-const MODES_CYCLE: DictationMode[] = ['voice', 'email', 'chat', 'note', 'custom'];
-
 export function App() {
   const isOverlay = window.location.hash === '#overlay';
   const recordingState = useRecordingState();
@@ -54,34 +50,6 @@ export function App() {
   const [activeView, setActiveView] = useState<ActiveView>('home');
   const micSelector = useMicrophoneSelector();
   const audioRecorder = useAudioRecorder(micSelector.selectedDeviceId);
-
-  const isCyclingModeRef = useRef(false);
-
-  // Cycle dictation mode on hotkey.
-  // Guard against rapid repeated presses: a second hotkey fires before the first
-  // setSettings resolves, which would make both calls read the same currentMode
-  // and land on the same next mode, skipping a step.
-  const cycleDictationMode = useCallback(async () => {
-    if (isCyclingModeRef.current) return;
-    isCyclingModeRef.current = true;
-    try {
-      const settings = await window.dictator.getSettings();
-      const currentIdx = MODES_CYCLE.indexOf(settings.dictation.currentMode);
-      // Guard against a corrupted/unknown mode value in the store — fall back to 'voice'
-      const validIdx = currentIdx === -1 ? 0 : currentIdx;
-      const nextIdx = (validIdx + 1) % MODES_CYCLE.length;
-      await window.dictator.setSettings({
-        dictation: { ...settings.dictation, currentMode: MODES_CYCLE[nextIdx] },
-      });
-    } finally {
-      isCyclingModeRef.current = false;
-    }
-  }, []);
-
-  useEffect(() => {
-    const unsub = window.dictator.onHotkeyModeSelect(cycleDictationMode);
-    return unsub;
-  }, [cycleDictationMode]);
 
   if (isOverlay) {
     return <ErrorBoundary><OverlayWindow state={recordingState} /></ErrorBoundary>;

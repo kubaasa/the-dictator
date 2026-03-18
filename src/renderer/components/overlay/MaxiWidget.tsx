@@ -553,8 +553,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 gap: 0, paddingTop: 7, whiteSpace: 'nowrap',
               }}>
-                <ShortcutEntry label="Mode"      raw={shortcuts.modeSelect} />
-                <Divider />
                 <ShortcutEntry label={recLabel}  raw={recShortcut} />
                 {hotkeyMode === 'toggle' && (
                   <>

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ModelStatus } from '../hooks/useModelStatus';
-import type { DictationMode, AIProviderType, AppSettings } from '../../shared/types';
-import { DICTATION_MODE_PROMPTS, WHISPER_MODEL_DESCRIPTIONS, AI_MODEL_DESCRIPTIONS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
+import type { AIProviderType, AppSettings } from '../../shared/types';
+import { DEFAULT_SETTINGS } from '../../shared/types';
+import { WHISPER_MODEL_DESCRIPTIONS, AI_MODEL_DESCRIPTIONS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
 
 const MODEL_OPTIONS = [
   { value: 'tiny', label: 'Tiny' },
@@ -14,14 +15,6 @@ const MODEL_OPTIONS = [
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
   { value: 'pl', label: 'Polish' },
-];
-
-const DICTATION_MODES: { id: DictationMode; label: string; icon: string }[] = [
-  { id: 'voice', label: 'Voice', icon: 'M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z' },
-  { id: 'email', label: 'Email', icon: 'M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75' },
-  { id: 'chat', label: 'Chat', icon: 'M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z' },
-  { id: 'note', label: 'Note', icon: 'M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z' },
-  { id: 'custom', label: 'Custom', icon: 'M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z' },
 ];
 
 const AI_PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
@@ -105,14 +98,8 @@ export function ModesPage(props: ModelStatus) {
   const [apiKeySaved, setApiKeySaved] = useState(false);
 
   // AI + Dictation state
-  const [currentMode, setCurrentMode] = useState<DictationMode>('voice');
-  const [modePrompts, setModePrompts] = useState<Record<DictationMode, string>>({
-    voice: DICTATION_MODE_PROMPTS.voice,
-    email: DICTATION_MODE_PROMPTS.email,
-    chat: DICTATION_MODE_PROMPTS.chat,
-    note: DICTATION_MODE_PROMPTS.note,
-    custom: DICTATION_MODE_PROMPTS.custom,
-  });
+  const [aiPostProcessing, setAiPostProcessing] = useState(DEFAULT_SETTINGS.dictation.aiPostProcessing);
+  const [customPrompt, setCustomPrompt] = useState(DEFAULT_SETTINGS.dictation.customPrompt);
   const [aiProvider, setAiProvider] = useState<AIProviderType>('none');
   const [aiOpenaiKey, setAiOpenaiKey] = useState('');
   const [aiOpenaiModel, setAiOpenaiModel] = useState('gpt-4o-mini');
@@ -133,8 +120,8 @@ export function ModesPage(props: ModelStatus) {
     setModelSize(s.transcription.localModelSize);
     setLanguage(s.transcription.language);
     setApiKey(s.transcription.openaiApiKey);
-    setCurrentMode(s.dictation.currentMode);
-    if (s.dictation.modePrompts) setModePrompts(s.dictation.modePrompts);
+    setAiPostProcessing(s.dictation.aiPostProcessing);
+    setCustomPrompt(s.dictation.customPrompt);
     setAiProvider(s.ai.provider);
     setAiOpenaiKey(s.ai.openaiApiKey);
     setAiOpenaiModel(s.ai.openaiModel);
@@ -180,32 +167,31 @@ export function ModesPage(props: ModelStatus) {
     setTimeout(() => setApiKeySaved(false), 2000);
   };
 
-  const handleModeChange = async (mode: DictationMode) => {
-    setCurrentMode(mode);
+  const handleToggleAi = async () => {
+    const next = !aiPostProcessing;
+    setAiPostProcessing(next);
     const current = await window.dictator.getSettings();
     await window.dictator.setSettings({
-      dictation: { ...current.dictation, currentMode: mode },
+      dictation: { ...current.dictation, aiPostProcessing: next },
     });
   };
 
-  const handlePromptChange = (mode: DictationMode, value: string) => {
-    setModePrompts((prev) => ({ ...prev, [mode]: value }));
+  const handlePromptChange = (value: string) => {
+    setCustomPrompt(value);
   };
 
   const handlePromptSave = async () => {
     const current = await window.dictator.getSettings();
     await window.dictator.setSettings({
-      dictation: { ...current.dictation, modePrompts },
+      dictation: { ...current.dictation, customPrompt },
     });
   };
 
-  const handlePromptReset = async (mode: DictationMode) => {
-    const defaultPrompt = DICTATION_MODE_PROMPTS[mode] ?? '';
-    const updated = { ...modePrompts, [mode]: defaultPrompt };
-    setModePrompts(updated);
+  const handlePromptReset = async () => {
+    setCustomPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
     const current = await window.dictator.getSettings();
     await window.dictator.setSettings({
-      dictation: { ...current.dictation, modePrompts: updated },
+      dictation: { ...current.dictation, customPrompt: DEFAULT_SETTINGS.dictation.customPrompt },
     });
   };
 
@@ -256,9 +242,7 @@ export function ModesPage(props: ModelStatus) {
     aiProvider === 'ollama' ? !!aiOllamaUrl :
     false;
 
-  const currentPrompt = modePrompts[currentMode] ?? '';
-  const defaultPrompt = DICTATION_MODE_PROMPTS[currentMode] ?? '';
-  const isPromptModified = currentPrompt !== defaultPrompt;
+  const isPromptModified = customPrompt !== DEFAULT_SETTINGS.dictation.customPrompt;
 
   const currentAiModels = aiProvider === 'openai' ? openaiModels : aiProvider === 'anthropic' ? ANTHROPIC_MODELS : [];
   const currentAiModel = aiProvider === 'openai' ? aiOpenaiModel : aiProvider === 'anthropic' ? aiAnthropicModel : '';
@@ -267,87 +251,89 @@ export function ModesPage(props: ModelStatus) {
     <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
       <div className="flex flex-col gap-8">
 
-        {/* ── Section 1: Dictation Modes ── */}
+        {/* ── Section 1: AI Post-Processing ── */}
         <section>
           <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
-            Dictation Mode
+            AI Post-Processing
           </h2>
 
-          {/* Mode selector pills */}
-          <div className="flex gap-2">
-            {DICTATION_MODES.map((mode) => (
+          <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-4">
+            {/* Toggle row */}
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">
+                  Process with AI
+                </span>
+                <span className="text-xs text-neutral-500">
+                  When enabled, transcribed text is processed through the prompt below before pasting
+                </span>
+              </div>
               <button
-                key={mode.id}
-                onClick={() => handleModeChange(mode.id)}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-lg border py-2.5 transition-all duration-200 cursor-pointer ${
-                  currentMode === mode.id
-                    ? 'border-red-600/50 bg-red-600/10 text-red-400'
-                    : 'border-neutral-800 bg-[#141414] text-neutral-500 hover:border-neutral-700 hover:text-neutral-300'
+                onClick={handleToggleAi}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                  aiPostProcessing ? 'bg-red-600' : 'bg-neutral-700'
                 }`}
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d={mode.icon} />
-                </svg>
-                <span className="font-mono text-xs font-semibold uppercase tracking-[0.15em]">{mode.label}</span>
-              </button>
-            ))}
-          </div>
-
-          {(!isAiEnabled || !isAiConfigured) && (
-            <div className="mt-4 flex items-center gap-3 rounded-lg border border-green-800/40 bg-green-950/20 px-4 py-3">
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-50" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-                </span>
-                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-green-500">[IDLE]</span>
-              </div>
-              <span className="text-xs text-green-400/70">
-                {!isAiEnabled
-                  ? 'AI processing disabled — select a provider below to activate dictation modes.'
-                  : 'Provider selected — enter your API key below and click Save to activate dictation modes.'}
-              </span>
-            </div>
-          )}
-
-          {/* Expandable prompt editor */}
-          <div
-            className="overflow-hidden transition-all duration-300 ease-in-out"
-            style={{ maxHeight: '600px', opacity: 1 }}
-          >
-            <div className="mt-4 rounded-xl border border-neutral-800 bg-[#141414] p-5">
-              <div className="flex items-center justify-between mb-3">
-                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
-                  System Prompt
-                </span>
-                {isPromptModified && (
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-amber-600/70">Modified</span>
-                )}
-              </div>
-              <textarea
-                value={currentPrompt}
-                onChange={(e) => handlePromptChange(currentMode, e.target.value)}
-                onBlur={handlePromptSave}
-                placeholder="Enter system prompt..."
-                rows={4}
-                className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-4 py-3 text-sm text-neutral-300 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 resize-none leading-relaxed"
-              />
-
-              {/* Action buttons */}
-              <div className="mt-3 flex items-center gap-3">
-                <button
-                  onClick={() => handlePromptReset(currentMode)}
-                  disabled={!isPromptModified}
-                  className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
-                    isPromptModified
-                      ? 'border-neutral-700 text-neutral-400 hover:border-neutral-600 hover:text-neutral-300 cursor-pointer'
-                      : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    aiPostProcessing ? 'translate-x-5' : 'translate-x-0'
                   }`}
-                >
-                  Reset to Default
-                </button>
-              </div>
+                />
+              </button>
             </div>
+
+            {(!isAiEnabled || !isAiConfigured) && aiPostProcessing && (
+              <div className="flex items-center gap-3 rounded-lg border border-green-800/40 bg-green-950/20 px-4 py-3">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-50" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+                  </span>
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-green-500">[IDLE]</span>
+                </div>
+                <span className="text-xs text-green-400/70">
+                  {!isAiEnabled
+                    ? 'AI processing enabled but no provider selected — choose one below.'
+                    : 'Provider selected — enter your API key below and click Save to activate.'}
+                </span>
+              </div>
+            )}
+
+            {/* Prompt editor — visible only when toggle is ON */}
+            {aiPostProcessing && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
+                    System Prompt
+                  </span>
+                  {isPromptModified && (
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-amber-600/70">Modified</span>
+                  )}
+                </div>
+                <textarea
+                  value={customPrompt}
+                  onChange={(e) => handlePromptChange(e.target.value)}
+                  onBlur={handlePromptSave}
+                  placeholder="Enter system prompt..."
+                  rows={6}
+                  className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-4 py-3 text-sm text-neutral-300 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 resize-none leading-relaxed"
+                />
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handlePromptReset}
+                    disabled={!isPromptModified}
+                    className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
+                      isPromptModified
+                        ? 'border-neutral-700 text-neutral-400 hover:border-neutral-600 hover:text-neutral-300 cursor-pointer'
+                        : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
+                    }`}
+                  >
+                    Reset to Default
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
         </section>

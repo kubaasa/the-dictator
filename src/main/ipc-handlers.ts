@@ -67,7 +67,6 @@ export function registerIpcHandlers(
         shortcuts: {
           toggleRecording: hotkey.shortcut as string,
           cancelRecording: DEFAULT_SETTINGS.hotkey.shortcuts.cancelRecording,
-          modeSelect: DEFAULT_SETTINGS.hotkey.shortcuts.modeSelect,
           showWindow: DEFAULT_SETTINGS.hotkey.shortcuts.showWindow,
         },
         mode: hotkey.mode ?? DEFAULT_SETTINGS.hotkey.mode,
@@ -84,17 +83,12 @@ export function registerIpcHandlers(
       store.set('hotkey.shortcuts.pushToTalk', DEFAULT_SETTINGS.hotkey.shortcuts.pushToTalk);
     }
 
-    // Migrate old dictation.customPrompt → dictation.modePrompts format
+    // Migrate old dictation format (modePrompts/currentMode) → new format (aiPostProcessing/customPrompt)
     const dictation = store.get('dictation') as Record<string, unknown>;
-    if (dictation && !dictation.modePrompts) {
+    if (dictation && ('modePrompts' in dictation || 'currentMode' in dictation)) {
       const migrated = {
-        currentMode: dictation.currentMode ?? DEFAULT_SETTINGS.dictation.currentMode,
-        modePrompts: {
-          ...DEFAULT_SETTINGS.dictation.modePrompts,
-          ...(typeof dictation.customPrompt === 'string' && dictation.customPrompt
-            ? { custom: dictation.customPrompt }
-            : {}),
-        },
+        aiPostProcessing: dictation.aiPostProcessing ?? DEFAULT_SETTINGS.dictation.aiPostProcessing,
+        customPrompt: dictation.customPrompt ?? DEFAULT_SETTINGS.dictation.customPrompt,
         autoPaste: dictation.autoPaste ?? DEFAULT_SETTINGS.dictation.autoPaste,
         restoreClipboard: dictation.restoreClipboard ?? DEFAULT_SETTINGS.dictation.restoreClipboard,
       };
@@ -240,7 +234,6 @@ export function registerIpcHandlers(
       // Save to history
       const entryId = recordingId ?? Date.now().toString();
       const durationSeconds = samples.length / sampleRate;
-      const mode = (store.get('dictation.currentMode') as string) ?? 'voice';
       const countWordsInline = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
       const wordCount = countWordsInline(text);
       const rawWordCount = countWordsInline(rawText);
@@ -252,7 +245,6 @@ export function registerIpcHandlers(
         rawWordCount,
         durationSeconds,
         appName,
-        mode,
       };
       try {
         historyService.add(entry);

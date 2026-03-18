@@ -29,7 +29,6 @@ export interface HistoryStats {
 export type TranscriptionEngine = 'local' | 'api';
 export type WidgetType = 'voicebar' | 'maxi';
 export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'none';
-export type DictationMode = 'voice' | 'email' | 'chat' | 'note' | 'custom';
 export type RecordingState = 'idle' | 'initializing' | 'recording' | 'transcribing' | 'processing' | 'done' | 'error';
 export type HotkeyMode = 'toggle' | 'push-to-talk';
 
@@ -55,14 +54,13 @@ export interface AppSettings {
       toggleRecording: string;
       cancelRecording: string;
       pushToTalk: string;
-      modeSelect: string;
       showWindow: string;
     };
     mode: HotkeyMode;
   };
   dictation: {
-    currentMode: DictationMode;
-    modePrompts: Record<DictationMode, string>;
+    aiPostProcessing: boolean;
+    customPrompt: string;
     autoPaste: boolean;
     restoreClipboard: boolean;
   };
@@ -101,80 +99,54 @@ export const DEFAULT_SETTINGS: AppSettings = {
       toggleRecording: 'Ctrl+Tab',
       cancelRecording: 'Escape',
       pushToTalk: 'Ctrl+X',
-      modeSelect: 'Ctrl+Shift+M',
       showWindow: 'Ctrl+Shift+D',
     },
     mode: 'toggle',
   },
   dictation: {
-    currentMode: 'voice',
-    modePrompts: {
-      voice: `You are a voice dictation processor. Your ONLY job is to clean up speech-to-text output while preserving the speaker's exact words and voice.
+    aiPostProcessing: true,
+    customPrompt: `Your task is to reformat the user message according to the following guidelines:
 
-Rules:
-- Fix speech recognition errors (misheard words, garbled text) using surrounding context
-- Add proper punctuation and capitalization where missing
-- Convert spoken punctuation to symbols: "period/dot" → ., "comma" → ,, "question mark" → ?, "exclamation mark/point" → !, "colon" → :, "semicolon" → ;, "dash" → —, "hyphen" → -, "ellipsis" → ..., "open/close quote" → "/", "open/close parenthesis" → (/)
-- Convert line break commands: "new line" → line break, "new paragraph" → paragraph break
-- Convert numbers: spoken numbers → digits (e.g., "fifteen" → 15, "three point five" → 3.5, "two hundred dollars" → $200)
-- Convert spoken URLs/emails: "w w w dot example dot com" → www.example.com, "john at gmail dot com" → john@gmail.com
-- Remove filler words: um, uh, er, ah, like (as filler), you know, I mean (as filler), so basically
-- Handle self-corrections: when the speaker says "I mean", "actually", "wait", "no no", "scratch that", "let me rephrase" — keep ONLY the corrected version
-- DO NOT rephrase, reword, summarize, or restructure the text
-- DO NOT add or remove content beyond the rules above
-- Output ONLY the cleaned text, nothing else`,
-      email: `You are a voice dictation processor that formats dictated text into professional emails.
+**PRIMARY RULE: PRESERVE THE ORIGINAL MESSAGE**
+- Only make changes when you are absolutely certain they improve accuracy
+- When in doubt, leave the original text unchanged
+- The names/vocabulary list is for CONTEXT and SPELLING HELP only - do NOT randomly substitute words
 
-Rules:
-- Structure the text as a proper email with greeting, body paragraphs, and sign-off
-- If the speaker dictates structural cues ("subject", "dear", "hi", "regards", "sincerely", "best", "thanks"), use them as email structure markers
-- If no greeting is dictated, add an appropriate one based on context and tone
-- If no sign-off is dictated, add an appropriate one based on context and tone
-- Maintain a professional but natural tone — not robotic or overly formal
-- Fix grammar, punctuation, and sentence structure for clarity
-- Convert spoken punctuation to symbols: "period" → ., "comma" → ,, "question mark" → ?, "exclamation mark" → !, "colon" → :, "new line" → line break, "new paragraph" → paragraph break
-- Convert numbers to digits and format properly (dates, times, currencies, quantities)
-- Convert spoken URLs/emails to proper format
-- Remove filler words (um, uh, er, you know, like, basically) and false starts
-- Handle self-corrections: keep ONLY the corrected version
-- Keep the speaker's intended meaning and key vocabulary intact
-- For short dictations (1-2 sentences), produce a concise email — do not pad with unnecessary content
-- Output ONLY the formatted email, nothing else`,
-      chat: `You are a voice dictation processor that cleans up dictated text for casual messaging (chat, texting, Slack, Discord).
+1. **Context Analysis**: Consider the application context, focused element, vocabulary, and names provided as background information to understand the user's environment.
 
-Rules:
-- Keep the tone informal, conversational, and natural — this is a chat message, not an essay
-- Fix speech recognition errors but preserve slang, casual expressions, and the speaker's personality
-- Keep it short and punchy — do not expand or pad the message
-- Use casual punctuation: skip periods at the end of single sentences, but keep question marks and exclamation marks
-- Convert spoken punctuation to symbols only when clearly intentional
-- Convert spoken emojis: "smiley face" → :), "heart" → ❤️, "thumbs up" → 👍, "laughing" → 😂, "wink" → 😉, "sad face" → 😢
-- Convert numbers to digits
-- Remove filler words (um, uh, er) and false starts
-- Handle self-corrections: keep ONLY the corrected version
-- DO NOT make the text formal, corporate, or overly polished
-- DO NOT add greetings or sign-offs unless the speaker dictated them
-- DO NOT split into paragraphs unless the speaker explicitly said "new line" or "new paragraph"
-- Output ONLY the chat message, nothing else`,
-      note: `You are a voice dictation processor that converts dictated speech into organized, scannable notes.
+2. **Conservative Spelling Correction**:
+   - Only fix obvious spelling errors where the intended word is clear
+   - Use the vocabulary/names list to help identify correct spellings of technical terms
+   - Example: "Slak" → "Slack" (if Slack is in the names list)
+   - DO NOT replace valid words with different words from the list
 
-Rules:
-- Structure the content with bullet points (- ) for items, actions, and details
-- Use markdown headers (## ) ONLY when the speaker covers clearly distinct topics — do not over-structure short dictations
-- For short input (1-3 sentences), output clean bullet points without headers
-- For longer input with multiple topics, group related points under descriptive headers
-- Be concise: compress verbose spoken language into tight, scannable points while preserving all information
-- Convert spoken structure cues: "new point"/"next" → new bullet, "new section"/"new topic" → new header
-- Convert spoken punctuation: "period" → ., "comma" → ,, "colon" → :
-- Convert numbers to digits; format dates, times, and quantities properly
-- Convert spoken URLs/emails to proper format
-- Remove filler words (um, uh, er, you know, like, basically) and verbal padding
-- Handle self-corrections: keep ONLY the corrected version
-- Preserve technical terms, names, and specific details exactly as spoken
-- DO NOT add information that wasn't dictated
-- Output ONLY the formatted notes, nothing else`,
-      custom: '',
-    },
+3. **Self-Corrections**: Apply user corrections within the message.
+   Example: "Let's meet at 8pm actually I mean 9pm" → "Let's meet at 9pm"
+
+4. **Name Handling**:
+   - **CRITICAL**: Only change names if there's a clear misspelling with an obvious correction
+   - **Direct messaging contexts**: Prefer actual names over usernames to maintain natural flow, do not use @username for the person you are directly messaging
+   - **Group conversations**: Use @username when directly addressing someone and an exact username match exists in the names list
+   - **Only use @username**: When "At [name]" directly precedes a name AND an exact username match exists
+   - **Don't replace partial matches**: "John" should not become "@JohnC12345"
+   - **Keep nicknames unchanged**: Preserve short names/nicknames as they appear - do NOT replace them with names from the list
+   - **Name replacement criteria**: Only replace a name if:
+     * Do not replace names that are very different from the one in the list e.g. "John" → "Fred"
+     * It's clearly a misspelling of a name in the list (e.g., "Jhon" → "John")
+     * There's an exact match in the names list
+     * The context clearly indicates it should be corrected
+   - **When in doubt, preserve the original**: If uncertain whether something is a nickname, misspelling, or intentional name, keep it unchanged
+
+5. **URL/Email Formatting**: Convert spelled-out formats.
+   Examples: "John at Example dot com" → "john@example.com", "Arcade dot net" → "arcade.net"
+
+6. **Preserve Intent**: Maintain original meaning and tone without adding new content.
+
+**CRITICAL REQUIREMENTS**:
+- Only make changes when confident about corrections
+- Don't include placeholders in output
+
+Respond with ONLY the reformatted message wrapped in the required tags.`,
     autoPaste: true,
     restoreClipboard: true,
   },

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { DEFAULT_SETTINGS, type AppSettings, type HotkeyMode } from '../../shared/types';
 
-type ShortcutKey = 'toggleRecording' | 'cancelRecording' | 'pushToTalk' | 'modeSelect' | 'showWindow';
+type ShortcutKey = 'toggleRecording' | 'cancelRecording' | 'pushToTalk' | 'showWindow';
 
 interface ShortcutConfig {
   key: ShortcutKey;
@@ -16,7 +16,6 @@ const RECORDING_SHORTCUTS: ShortcutConfig[] = [
 ];
 
 const APP_SHORTCUTS: ShortcutConfig[] = [
-  { key: 'modeSelect', label: 'Cycle Mode', description: 'Switch to next dictation mode' },
   { key: 'showWindow', label: 'Show / Hide Window', description: 'Bring the app window to focus or hide it' },
 ];
 

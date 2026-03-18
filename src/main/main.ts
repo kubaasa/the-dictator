@@ -41,12 +41,6 @@ function sendCancelToRenderer(): void {
   }
 }
 
-function sendModeSelectToRenderer(): void {
-  if (mainWindow) {
-    mainWindow.webContents.send(IPC.HOTKEY_MODE_SELECT);
-  }
-}
-
 function showOrHideMainWindow(): void {
   if (!mainWindow) return;
   if (mainWindow.isVisible()) {
@@ -258,9 +252,6 @@ function setupRecordingIpc(): void {
     sendCancelToRenderer();
   });
 
-  ipcMain.on(IPC.OVERLAY_MODE_CYCLE, () => {
-    sendModeSelectToRenderer();
-  });
 }
 
 function setupWindowControlIpc(): void {
@@ -339,7 +330,6 @@ app.on('ready', () => {
   const mode = hotkey?.mode ?? DEFAULT_SETTINGS.hotkey.mode;
   hotkeyService.start(shortcuts, mode, {
     onCancel: sendCancelToRenderer,
-    onModeSelect: sendModeSelectToRenderer,
     onShowWindow: showOrHideMainWindow,
   });
 

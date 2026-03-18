@@ -1,8 +1,7 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Store from 'electron-store';
-import type { AppSettings, DictationMode } from '../../shared/types';
-import { DICTATION_MODE_PROMPTS } from '../../shared/constants';
+import type { AppSettings } from '../../shared/types';
 
 export class AIService {
   private openaiClient: OpenAI | null = null;
@@ -13,14 +12,13 @@ export class AIService {
   constructor(private store: Store<AppSettings>) {}
 
   async process(rawText: string): Promise<string> {
-    const mode = (this.store.get('dictation.currentMode') as DictationMode) ?? 'voice';
-    const provider = (this.store.get('ai.provider') as string) ?? 'none';
+    const aiEnabled = (this.store.get('dictation.aiPostProcessing') as boolean) ?? true;
+    if (!aiEnabled) return rawText;
 
+    const provider = (this.store.get('ai.provider') as string) ?? 'none';
     if (provider === 'none') return rawText;
 
-    const modePrompts = this.store.get('dictation.modePrompts') as Record<string, string> | undefined;
-    const basePrompt = modePrompts?.[mode] ?? DICTATION_MODE_PROMPTS[mode] ?? '';
-
+    const basePrompt = (this.store.get('dictation.customPrompt') as string) ?? '';
     if (!basePrompt) return rawText;
 
     const language = (this.store.get('transcription.language') as string) ?? 'en';

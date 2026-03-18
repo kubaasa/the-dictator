@@ -1,9 +1,24 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { WidgetType } from '../../shared/types';
 
-const WIDGETS: { id: WidgetType; label: string; description: string }[] = [
-  { id: 'voicebar', label: 'Mini', description: 'Compact pill with animated bars' },
-  { id: 'maxi', label: 'Maxi', description: 'Detailed card with waveform & controls' },
+const WIDGETS: { id: WidgetType; label: string; tag: string; description: string }[] = [
+  { id: 'voicebar', label: 'Mini', tag: 'COMPACT', description: 'Floating pill — hover to interact' },
+  { id: 'maxi', label: 'Maxi', tag: 'FULL', description: 'Detailed card with waveform & shortcuts' },
+];
+
+type FeatureRow = {
+  feature: string;
+  mini: string | boolean;
+  maxi: string | boolean;
+};
+
+const COMPARISON: FeatureRow[] = [
+  { feature: 'Audio bars',          mini: '6',                    maxi: '60 (Hanning shape)' },
+  { feature: 'Form factor',         mini: 'Compact pill',         maxi: 'Wide card' },
+  { feature: 'Hover expand',        mini: true,                   maxi: false },
+  { feature: 'Error details',       mini: 'Icon only',            maxi: 'Full message' },
+  { feature: 'Processing state',    mini: '[...]',                maxi: '[ PROCESSING ... ]' },
+  { feature: 'Drag & drop',         mini: true,                   maxi: true },
 ];
 
 export function WidgetPage() {
@@ -30,92 +45,196 @@ export function WidgetPage() {
   if (!loaded) return null;
 
   return (
-    <div className="flex flex-col gap-8 p-6 overflow-y-auto h-full">
-      {/* Widget Appearance */}
-      <div className="flex flex-col gap-3">
-        <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.25em] text-neutral-400">
-          Appearance
-        </span>
-        <div className="flex gap-3">
-          {WIDGETS.map((w) => {
-            const isActive = activeWidget === w.id;
-            return (
-              <button
-                key={w.id}
-                onClick={() => save(w.id)}
-                className={`flex flex-col items-center gap-2 rounded-lg border p-4 transition-colors flex-1 ${
-                  isActive
-                    ? 'border-red-600/50 bg-red-600/10 text-red-400'
-                    : 'border-neutral-800 bg-[#141414] text-neutral-500 hover:border-neutral-700'
-                }`}
-              >
-                {/* Thumbnail icon */}
-                <div className="flex items-center justify-center h-10">
-                  {w.id === 'voicebar' ? (
-                    <MiniIcon active={isActive} />
-                  ) : (
-                    <MaxiIcon active={isActive} />
-                  )}
-                </div>
-                <span className="font-mono text-sm font-semibold">{w.label}</span>
-                <span className="text-[10px] text-neutral-600">{w.description}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+    <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
+      <div className="flex flex-col gap-8">
 
-    </div>
+        {/* ── Section 1: Widget Selector ── */}
+        <section>
+          <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
+            Overlay Widget
+          </h2>
+
+          <div className="grid grid-cols-2 gap-3">
+            {WIDGETS.map((w) => {
+              const isActive = activeWidget === w.id;
+              return (
+                <button
+                  key={w.id}
+                  onClick={() => save(w.id)}
+                  className={`group relative flex flex-col items-center gap-3 rounded-xl border p-5 transition-all duration-200 cursor-pointer ${
+                    isActive
+                      ? 'border-red-600/50 bg-red-600/5'
+                      : 'border-neutral-800 bg-[#141414] hover:border-neutral-700'
+                  }`}
+                >
+                  {/* Active badge */}
+                  {isActive && (
+                    <span className="absolute top-3 right-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-red-500">
+                      Active
+                    </span>
+                  )}
+
+                  {/* Tag */}
+                  <span className={`font-mono text-[11px] font-bold uppercase tracking-[0.3em] ${
+                    isActive ? 'text-red-600/60' : 'text-neutral-600'
+                  }`}>
+                    {w.tag}
+                  </span>
+
+                  {/* Preview */}
+                  <div className="flex items-center justify-center h-12">
+                    {w.id === 'voicebar' ? (
+                      <MiniPreview active={isActive} />
+                    ) : (
+                      <MaxiPreview active={isActive} />
+                    )}
+                  </div>
+
+                  {/* Label + description */}
+                  <div className="flex flex-col items-center gap-1">
+                    <span className={`font-mono text-base font-semibold ${
+                      isActive ? 'text-red-400' : 'text-neutral-200'
+                    }`}>
+                      {w.label}
+                    </span>
+                    <span className="text-xs text-neutral-500 text-center leading-tight">
+                      {w.description}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ── Section 2: Comparison Table ── */}
+        <section>
+          <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
+            Comparison
+          </h2>
+
+          <div className="rounded-xl border border-neutral-800 bg-[#141414] overflow-hidden">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-neutral-800">
+                  <th className="px-4 py-3 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
+                    Feature
+                  </th>
+                  <th className="px-4 py-3 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-center text-neutral-500">
+                    Mini
+                  </th>
+                  <th className="px-4 py-3 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-center text-neutral-500">
+                    Maxi
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {COMPARISON.map((row, i) => (
+                  <tr
+                    key={row.feature}
+                    className={i < COMPARISON.length - 1 ? 'border-b border-neutral-800/50' : ''}
+                  >
+                    <td className="px-4 py-3 font-mono text-sm text-neutral-300">
+                      {row.feature}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <CellValue value={row.mini} />
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <CellValue value={row.maxi} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+    </main>
   );
 }
 
-function MiniIcon({ active }: { active: boolean }) {
-  const color = active ? '#EF4444' : '#737373';
+function CellValue({ value }: { value: string | boolean }) {
+  if (value === true) {
+    return (
+      <svg className="inline-block" width="18" height="18" viewBox="0 0 16 16">
+        <path d="M4 8.5L6.5 11L12 5" stroke="#22C55E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </svg>
+    );
+  }
+  if (value === false) {
+    return (
+      <svg className="inline-block" width="18" height="18" viewBox="0 0 16 16">
+        <path d="M5 5L11 11M11 5L5 11" stroke="#737373" strokeWidth="2" strokeLinecap="round" fill="none" />
+      </svg>
+    );
+  }
   return (
-    <svg width="64" height="24" viewBox="0 0 64 24">
-      <rect x="0" y="0" width="64" height="24" rx="12" fill="none" stroke={color} strokeWidth="1" opacity="0.5" />
-      {[14, 22, 30, 34, 26, 18].map((h, i) => (
+    <span className="font-mono text-sm text-neutral-400">{value}</span>
+  );
+}
+
+function MiniPreview({ active }: { active: boolean }) {
+  const stroke = active ? '#EF4444' : '#525252';
+  const bar = active ? '#EF4444' : '#737373';
+  const barOpacity = active ? 0.8 : 0.5;
+  const heights = [10, 18, 26, 30, 22, 14];
+
+  return (
+    <svg width="80" height="28" viewBox="0 0 80 28">
+      <rect x="0.5" y="0.5" width="79" height="27" rx="13.5" fill="none" stroke={stroke} strokeWidth="1" opacity={active ? 0.6 : 0.35} />
+      {heights.map((h, i) => (
         <rect
           key={i}
-          x={12 + i * 7}
-          y={12 - h / 5}
+          x={18 + i * 8}
+          y={14 - h / 2}
           width="3"
-          height={h / 2.5}
+          height={h}
           rx="1.5"
-          fill={color}
-          opacity="0.7"
+          fill={bar}
+          opacity={barOpacity}
         />
       ))}
     </svg>
   );
 }
 
-function MaxiIcon({ active }: { active: boolean }) {
-  const color = active ? '#EF4444' : '#737373';
+function MaxiPreview({ active }: { active: boolean }) {
+  const stroke = active ? '#EF4444' : '#525252';
+  const bar = active ? '#EF4444' : '#737373';
+  const barOpacity = active ? 0.7 : 0.4;
+  const text = active ? '#EF4444' : '#737373';
+
   return (
-    <svg width="64" height="32" viewBox="0 0 64 32">
-      <rect x="0" y="0" width="64" height="32" rx="6" fill="none" stroke={color} strokeWidth="1" opacity="0.5" />
-      {/* Mode pill */}
-      <rect x="4" y="11" width="12" height="10" rx="3" fill={color} opacity="0.3" />
+    <svg width="120" height="40" viewBox="0 0 120 40">
+      <rect x="0.5" y="0.5" width="119" height="39" rx="8" fill="none" stroke={stroke} strokeWidth="1" opacity={active ? 0.6 : 0.35} />
+
+      {/* [REC] indicator */}
+      <circle cx="10" cy="8" r="2.5" fill={text} opacity={0.6} />
+      <text x="15" y="10.5" fontFamily="monospace" fontSize="6" fontWeight="700" fill={text} opacity={0.5}>REC</text>
+
       {/* Waveform bars */}
-      {Array.from({ length: 12 }, (_, i) => {
-        const h = 4 + Math.sin(i * 0.8) * 6 + Math.cos(i * 1.3) * 4;
+      {Array.from({ length: 20 }, (_, i) => {
+        const w = Math.sin(Math.PI * i / 19);
+        const h = 2 + w * 14;
         return (
           <rect
             key={i}
-            x={20 + i * 3}
-            y={16 - h / 2}
-            width="2"
+            x={8 + i * 5.2}
+            y={22 - h / 2}
+            width="2.5"
             height={h}
             rx="1"
-            fill={color}
-            opacity="0.6"
+            fill={bar}
+            opacity={barOpacity}
           />
         );
       })}
-      {/* Buttons */}
-      <rect x="56" y="11" width="5" height="5" rx="1" fill={color} opacity="0.4" />
-      <path d="M56.5 20L60.5 24M56.5 24L60.5 20" stroke={color} strokeWidth="0.8" opacity="0.4" />
+
+      {/* Shortcut hints */}
+      <rect x="8" y="33" width="20" height="5" rx="1.5" fill={text} opacity={0.15} />
+      <rect x="31" y="33" width="14" height="5" rx="1.5" fill={text} opacity={0.15} />
     </svg>
   );
 }

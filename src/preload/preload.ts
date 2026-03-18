@@ -37,12 +37,9 @@ export interface DictatorAPI {
   // Hotkey
   onHotkeyToggle: (callback: () => void) => () => void;
   onHotkeyCancel: (callback: () => void) => () => void;
-  onHotkeyModeSelect: (callback: () => void) => () => void;
-
   // Overlay
   requestToggleRecording: () => void;
   requestCancelRecording: () => void;
-  requestModeCycle: () => void;
 
   // History
   history: {
@@ -155,16 +152,9 @@ const api: DictatorAPI = {
     ipcRenderer.on(IPC.HOTKEY_CANCEL, handler);
     return () => ipcRenderer.removeListener(IPC.HOTKEY_CANCEL, handler);
   },
-  onHotkeyModeSelect: (callback) => {
-    const handler = () => callback();
-    ipcRenderer.on(IPC.HOTKEY_MODE_SELECT, handler);
-    return () => ipcRenderer.removeListener(IPC.HOTKEY_MODE_SELECT, handler);
-  },
-
   // Overlay
   requestToggleRecording: () => ipcRenderer.send(IPC.OVERLAY_TOGGLE),
   requestCancelRecording: () => ipcRenderer.send(IPC.OVERLAY_CANCEL),
-  requestModeCycle: () => ipcRenderer.send(IPC.OVERLAY_MODE_CYCLE),
 
   // History
   history: {

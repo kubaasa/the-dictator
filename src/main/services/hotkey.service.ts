@@ -72,9 +72,9 @@ export class HotkeyService {
   }
 
   start(
-    shortcuts: { toggleRecording: string; cancelRecording: string; pushToTalk: string; modeSelect: string; showWindow: string },
+    shortcuts: { toggleRecording: string; cancelRecording: string; pushToTalk: string; showWindow: string },
     mode: HotkeyMode,
-    callbacks: { onCancel: () => void; onModeSelect: () => void; onShowWindow: () => void },
+    callbacks: { onCancel: () => void; onShowWindow: () => void },
   ): void {
     this.mode = mode;
 
@@ -82,7 +82,6 @@ export class HotkeyService {
       { action: 'toggleRecording', keys: this.parseShortcut(shortcuts.toggleRecording), callback: () => this.handleToggle() },
       { action: 'cancelRecording', keys: this.parseShortcut(shortcuts.cancelRecording), callback: callbacks.onCancel },
       { action: 'pushToTalk', keys: this.parseShortcut(shortcuts.pushToTalk), callback: () => this.handlePushToTalkStart() },
-      { action: 'modeSelect', keys: this.parseShortcut(shortcuts.modeSelect), callback: callbacks.onModeSelect },
       { action: 'showWindow', keys: this.parseShortcut(shortcuts.showWindow), callback: callbacks.onShowWindow },
     ];
 
@@ -128,7 +127,7 @@ export class HotkeyService {
     uIOhook.stop();
   }
 
-  updateShortcuts(shortcuts: { toggleRecording: string; cancelRecording: string; pushToTalk: string; modeSelect: string; showWindow: string }): void {
+  updateShortcuts(shortcuts: { toggleRecording: string; cancelRecording: string; pushToTalk: string; showWindow: string }): void {
     // If a recording is active when shortcuts change, stop it to avoid a state where
     // the old shortcut key can no longer trigger stop (binding was replaced).
     if (this.isRecordingActive) {

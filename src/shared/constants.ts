@@ -13,7 +13,6 @@ export const IPC = {
   // Hotkey → renderer (main tells renderer to toggle recording)
   HOTKEY_TOGGLE: 'hotkey:toggle',
   HOTKEY_CANCEL: 'hotkey:cancel',
-  HOTKEY_MODE_SELECT: 'hotkey:mode-select',
 
   // Transcription
   TRANSCRIPTION_CHECK_READY: 'transcription:check-ready',
@@ -36,7 +35,6 @@ export const IPC = {
   // Overlay button → main → renderer toggle
   OVERLAY_TOGGLE: 'overlay:toggle',
   OVERLAY_CANCEL: 'overlay:cancel',
-  OVERLAY_MODE_CYCLE: 'overlay:mode-cycle',
 
   // History
   HISTORY_GET_ALL: 'history:get-all',
@@ -66,11 +64,6 @@ export const IPC = {
   WIDGET_DRAG_START: 'widget:drag-start',
   WIDGET_DRAG_END: 'widget:drag-end',
 } as const;
-
-import { DEFAULT_SETTINGS } from './types';
-
-/** Single source of truth is DEFAULT_SETTINGS.dictation.modePrompts in types.ts */
-export const DICTATION_MODE_PROMPTS: Record<string, string> = DEFAULT_SETTINGS.dictation.modePrompts;
 
 export const WHISPER_MODEL_DESCRIPTIONS: Record<string, string> = {
   tiny: 'Fastest, lowest accuracy',
