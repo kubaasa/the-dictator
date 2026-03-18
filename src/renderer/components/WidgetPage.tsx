@@ -74,13 +74,6 @@ export function WidgetPage() {
                     </span>
                   )}
 
-                  {/* Tag */}
-                  <span className={`font-mono text-[11px] font-bold uppercase tracking-[0.3em] ${
-                    isActive ? 'text-red-600/60' : 'text-neutral-600'
-                  }`}>
-                    {w.tag}
-                  </span>
-
                   {/* Preview */}
                   <div className="flex items-center justify-center h-12">
                     {w.id === 'voicebar' ? (
@@ -92,12 +85,12 @@ export function WidgetPage() {
 
                   {/* Label + description */}
                   <div className="flex flex-col items-center gap-1">
-                    <span className={`font-mono text-base font-semibold ${
+                    <span className={`font-mono text-lg font-semibold ${
                       isActive ? 'text-red-400' : 'text-neutral-200'
                     }`}>
                       {w.label}
                     </span>
-                    <span className="text-xs text-neutral-500 text-center leading-tight">
+                    <span className="text-sm text-neutral-500 text-center leading-tight">
                       {w.description}
                     </span>
                   </div>
@@ -179,7 +172,7 @@ function MiniPreview({ active }: { active: boolean }) {
   const stroke = active ? '#EF4444' : '#525252';
   const bar = active ? '#EF4444' : '#737373';
   const barOpacity = active ? 0.8 : 0.5;
-  const heights = [10, 18, 26, 30, 22, 14];
+  const heights = [5, 14, 8, 18, 10, 15];
 
   return (
     <svg width="80" height="28" viewBox="0 0 80 28">
@@ -216,8 +209,8 @@ function MaxiPreview({ active }: { active: boolean }) {
 
       {/* Waveform bars */}
       {Array.from({ length: 20 }, (_, i) => {
-        const w = Math.sin(Math.PI * i / 19);
-        const h = 2 + w * 14;
+        const pattern = [4, 12, 7, 15, 5, 14, 9, 16, 6, 13, 3, 11, 8, 15, 4, 10, 14, 6, 12, 5];
+        const h = pattern[i];
         return (
           <rect
             key={i}
