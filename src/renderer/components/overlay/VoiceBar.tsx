@@ -8,10 +8,31 @@ interface VoiceBarProps {
 }
 
 const BAR_COUNT = 6;
-const SILENCE_THRESHOLD = 0.04;
 const BASE_COLOR = 'rgba(255,255,255,0.88)';
 const TRANSCRIBE_COLOR = '#FB923C';
 const ERROR_COLOR = '#F87171';
+const MIN_BAR_H = 2;
+const MAX_BAR_H = 25;
+
+// LERP smoothing factors — tuned for 6 bars (more responsive than MAXI's 40-bar defaults)
+const LERP_ATTACK  = 0.75;
+const LERP_RELEASE = 0.18;
+
+// Flat envelope — all 6 bars react at full amplitude
+const HANNING_WEIGHTS = Array.from({ length: BAR_COUNT }, () => 1.0);
+
+// Idle height per bar — tiny spindle silhouette while waiting
+const IDLE_SCALES = HANNING_WEIGHTS.map(w =>
+  ((MIN_BAR_H + w * 3) / MAX_BAR_H).toFixed(4)
+);
+
+// Init animation peak height
+const INIT_PEAK_SCALE = ((MIN_BAR_H + MAX_BAR_H * 0.2) / MAX_BAR_H).toFixed(4);
+
+// Init animation: 3 simultaneous waves flowing right-to-left (negative delays)
+const INIT_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) =>
+  (-((BAR_COUNT - 1 - i) / (BAR_COUNT - 1)) * 3).toFixed(3)
+);
 
 // Proximity zone padding around the pill (px)
 const PROX_V = 20;
@@ -72,26 +93,38 @@ const KEYFRAMES = `
   80%  { transform: translateX(0); }
   100% { transform: translateX(0); }
 }
+@keyframes vb-init {
+  0%, 100% { transform: scaleY(var(--init-idle, 0.08)); }
+  50%      { transform: scaleY(var(--init-peak, 0.28)); }
+}
 `;
 
 export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps) {
-  // Fixed dimensions (60% of previous default)
   const barWidth = 2;
-  const maxBarH  = 25;
   const gap      = 3;
 
+  const isInitializing = state === 'initializing';
   const isRecording    = state === 'recording';
   const isTranscribing = state === 'transcribing' || state === 'processing';
   const isDone         = state === 'done';
   const isError        = state === 'error';
-  const isIdle         = !isRecording && !isTranscribing && !isDone && !isError;
-
-  const level    = Math.min(1, Math.max(0, voiceLevel));
-  const isSilent = isRecording && level < SILENCE_THRESHOLD;
+  const isIdle         = !isInitializing && !isRecording && !isTranscribing && !isDone && !isError;
 
   const [isProximate, setIsProximate] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ─── Audio visualization refs (no React state — updated in RAF loop) ────
+  const barElemsRef   = useRef<(HTMLDivElement | null)[]>([]);
+  const smoothedRef   = useRef<Float32Array>(new Float32Array(BAR_COUNT).fill(MIN_BAR_H));
+  const voiceLevelRef = useRef(0);
+  const vizActiveRef  = useRef(false);
+  const audioCtxRef   = useRef<AudioContext | null>(null);
+  const analyserRef   = useRef<AnalyserNode | null>(null);
+  const streamRef     = useRef<MediaStream | null>(null);
+  const rafRef        = useRef<number>(0);
+
+  useEffect(() => { voiceLevelRef.current = voiceLevel; }, [voiceLevel]);
 
   const handleEnter = useCallback(() => {
     if (leaveTimer.current) { clearTimeout(leaveTimer.current); leaveTimer.current = null; }
@@ -131,10 +164,115 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
     document.addEventListener('mouseup', onUp);
   }, []);
 
-  const isExpanded = isProximate || isRecording || isTranscribing || isError;
+  // ─── Start / stop visualization based on recording state ────────────────
+  useEffect(() => {
+    if (!isRecording) {
+      vizActiveRef.current = false;
+      stopVisualization();
+      return;
+    }
+    vizActiveRef.current = true;
+    startVisualization().catch(() => {
+      vizActiveRef.current = false;
+      stopVisualization();
+    });
+    return () => {
+      vizActiveRef.current = false;
+      stopVisualization();
+    };
+  }, [isRecording]);
+
+  async function startVisualization() {
+    let localAnalyser: AnalyserNode | null = null;
+    let dataArray: Uint8Array | null = null;
+    let samplesPerBar = 0;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      if (!vizActiveRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+      streamRef.current = stream;
+
+      const ctx = new AudioContext();
+      await ctx.resume();
+      if (!vizActiveRef.current) { stream.getTracks().forEach(t => t.stop()); ctx.close(); return; }
+      audioCtxRef.current = ctx;
+
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyserRef.current = analyser;
+      localAnalyser = analyser;
+
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      dataArray = new Uint8Array(analyser.fftSize);
+      samplesPerBar = Math.floor(analyser.fftSize / BAR_COUNT);
+    } catch (err) {
+      console.warn('[VoiceBar] getUserMedia failed, falling back to voiceLevel prop:', err);
+    }
+
+    if (!vizActiveRef.current) return;
+
+    const tick = () => {
+      if (localAnalyser && dataArray) {
+        localAnalyser.getByteTimeDomainData(dataArray);
+        for (let i = 0; i < BAR_COUNT; i++) {
+          let peak = 0;
+          const offset = i * samplesPerBar;
+          for (let s = 0; s < samplesPerBar; s++) {
+            const amplitude = Math.abs(dataArray[offset + s] - 128) / 128;
+            if (amplitude > peak) peak = amplitude;
+          }
+          // Speech amplitudes are typically 0.05–0.15 — boost ×4 so bars fill the small pill
+          const boosted = Math.min(1, peak * 4);
+          const enveloped = boosted * HANNING_WEIGHTS[i];
+          const targetH = MIN_BAR_H + enveloped * (MAX_BAR_H - MIN_BAR_H);
+          const current = smoothedRef.current[i];
+          const factor = targetH > current ? LERP_ATTACK : LERP_RELEASE;
+          smoothedRef.current[i] = current + (targetH - current) * factor;
+        }
+      } else {
+        // Fallback: boost voiceLevel prop with aggressive curve for visibility
+        const level = Math.min(1, Math.pow(Math.min(1, Math.max(0, voiceLevelRef.current)), 0.3) * 1.5);
+        for (let i = 0; i < BAR_COUNT; i++) {
+          const enveloped = level * HANNING_WEIGHTS[i];
+          const targetH = MIN_BAR_H + enveloped * (MAX_BAR_H - MIN_BAR_H);
+          const current = smoothedRef.current[i];
+          const factor = targetH > current ? LERP_ATTACK : LERP_RELEASE;
+          smoothedRef.current[i] = current + (targetH - current) * factor;
+        }
+      }
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const el = barElemsRef.current[i];
+        if (el) {
+          const scaleY = (smoothedRef.current[i] / MAX_BAR_H).toFixed(4);
+          el.style.transform = `scaleY(${scaleY})`;
+          el.style.transition = 'none';
+          el.style.animation = 'none';
+        }
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+  }
+
+  function stopVisualization() {
+    cancelAnimationFrame(rafRef.current);
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    audioCtxRef.current?.close();
+    audioCtxRef.current = null;
+    analyserRef.current = null;
+    smoothedRef.current.fill(MIN_BAR_H);
+  }
+
+  const isExpanded = isProximate || isInitializing || isRecording || isTranscribing || isError;
 
   const collapsedH = 10;
-  const expandedH  = maxBarH + gap * 4;
+  const expandedH  = MAX_BAR_H + gap * 4;
 
   const pillHeight = isExpanded ? expandedH : collapsedH;
 
@@ -217,12 +355,12 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
               >
                 {isRecording ? (
                   // Stop: white rounded square
-                  <svg width={Math.round(maxBarH * 0.75)} height={Math.round(maxBarH * 0.75)} viewBox="0 0 24 24">
+                  <svg width={Math.round(MAX_BAR_H * 0.75)} height={Math.round(MAX_BAR_H * 0.75)} viewBox="0 0 24 24">
                     <rect x="5" y="5" width="14" height="14" rx="2.5" fill="rgba(255,255,255,0.92)" />
                   </svg>
                 ) : (
                   // Record: red circle with outer ring
-                  <svg width={Math.round(maxBarH * 0.75)} height={Math.round(maxBarH * 0.75)} viewBox="0 0 24 24">
+                  <svg width={Math.round(MAX_BAR_H * 0.75)} height={Math.round(MAX_BAR_H * 0.75)} viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10" fill="none" stroke="#EF4444" strokeWidth="1.5" />
                     <circle cx="12" cy="12" r="6" fill="#EF4444" />
                   </svg>
@@ -255,67 +393,55 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
             </div>
           ) : (
             BARS.map((bar, i) => {
-              const {
-                envelope, multiplier, jitter,
-                idleScale, transcribeDelay,
-              } = bar;
+              const { idleScale, transcribeDelay } = bar;
 
-              const barColor = isTranscribing ? TRANSCRIBE_COLOR : BASE_COLOR;
+              const barColor = isTranscribing ? '#DC2626' : BASE_COLOR;
 
               let transform: string | undefined;
               let animation = 'none';
               let transition = 'transform 0.3s ease-out, opacity 200ms ease-out';
               let barOpacity: number;
-              let filter: string | undefined;
 
-              if (isIdle) {
+              if (isInitializing) {
+                transform = `scaleY(${IDLE_SCALES[i]})`;
+                animation = `vb-init 1s ease-in-out ${INIT_DELAYS[i]}s infinite`;
+                transition = 'none';
+                barOpacity = 0.92;
+
+              } else if (isIdle) {
                 transform = `scaleY(${idleScale})`;
                 barOpacity = 0.88;
-                filter = undefined;
 
               } else if (isRecording) {
-                if (isSilent) {
-                  // Static low bars — no animation when silent
-                  transform = `scaleY(${idleScale})`;
-                  barOpacity = 0.45;
-                  filter = undefined;
-                  transition = 'transform 150ms ease-out, opacity 200ms ease-out';
-                } else {
-                  const curvedLevel = Math.pow(level, 0.45);
-                  const barScale = Math.min(1.0, Math.max(0.05, curvedLevel * envelope * multiplier * jitter));
-                  transform = `scaleY(${barScale.toFixed(4)})`;
-                  transition = 'transform 50ms linear, opacity 200ms ease-out';
-                  barOpacity = 0.6 + curvedLevel * 0.4;
-                  filter = undefined;
-                }
+                // RAF loop takes over — set neutral starting point
+                transform = `scaleY(${(MIN_BAR_H / MAX_BAR_H).toFixed(4)})`;
+                transition = 'none';
+                barOpacity = 0.92;
 
               } else if (isTranscribing) {
                 animation = `vb-transcribe 1.2s linear ${transcribeDelay}s infinite`;
                 barOpacity = 0.80;
-                filter = undefined;
                 transition = 'opacity 200ms ease-out';
 
               } else if (isDone) {
                 animation = `vb-done-collapse 400ms cubic-bezier(0.4, 0, 1, 1) forwards`;
                 barOpacity = 0.7;
-                filter = undefined;
                 transition = 'opacity 200ms ease-out';
 
               } else {
                 transform = 'scaleY(0.3)';
                 barOpacity = 0.9;
-                filter = undefined;
               }
 
-              // Fade bars in/out with pill expand/collapse
               const finalOpacity = isExpanded ? barOpacity : 0;
 
               return (
                 <div
                   key={i}
+                  ref={el => { barElemsRef.current[i] = el; }}
                   style={{
                     width: barWidth,
-                    height: maxBarH,
+                    height: MAX_BAR_H,
                     borderRadius: barWidth / 2,
                     background: barColor,
                     transformOrigin: 'center',
@@ -324,8 +450,8 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
                     animation,
                     transition,
                     opacity: finalOpacity,
-                    filter,
                     '--from-scale': idleScale,
+                    ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALE }),
                   } as React.CSSProperties}
                 />
               );

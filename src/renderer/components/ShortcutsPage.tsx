@@ -124,6 +124,7 @@ export function ShortcutsPage() {
   const [listeningFor, setListeningFor] = useState<ShortcutKey | null>(null);
   const [pendingKeys, setPendingKeys] = useState('');
   const [error, setError] = useState('');
+  const [shakingKey, setShakingKey] = useState<ShortcutKey | null>(null);
   const inputRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -217,6 +218,11 @@ export function ShortcutsPage() {
   }, [listeningFor]);
 
   const resetShortcut = useCallback(async (key: ShortcutKey) => {
+    if (shortcuts[key] === DEFAULT_SETTINGS.hotkey.shortcuts[key]) {
+      setShakingKey(key);
+      setTimeout(() => setShakingKey(null), 300);
+      return;
+    }
     const newShortcuts = { ...shortcuts, [key]: DEFAULT_SETTINGS.hotkey.shortcuts[key] };
     await saveShortcuts(newShortcuts);
     setError('');
@@ -248,15 +254,21 @@ export function ShortcutsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {!isDefault && !isListening && !inactive && (
-            <button
-              onClick={() => resetShortcut(config.key)}
-              className="text-xs text-neutral-600 hover:text-neutral-400 transition-colors px-1"
-              title="Reset to default"
-            >
-              reset
-            </button>
-          )}
+          <button
+            onClick={() => resetShortcut(config.key)}
+            className={`p-1 rounded transition-colors ${
+              inactive
+                ? 'text-neutral-700 pointer-events-none'
+                : 'text-white hover:text-neutral-400'
+            }`}
+            title="Reset to default"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="5" y1="4" x2="5" y2="20" />
+              <polyline points="11 8 7 12 11 16" />
+              <path d="M7 12h10a3 3 0 0 0 0-6h-2" />
+            </svg>
+          </button>
           <div
             ref={isListening ? inputRef : undefined}
             tabIndex={inactive ? -1 : 0}
@@ -268,6 +280,7 @@ export function ShortcutsPage() {
                   ? 'cursor-default border-neutral-800 bg-neutral-900 text-neutral-600'
                   : 'cursor-pointer border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600'
             }`}
+            style={shakingKey === config.key ? { animation: 'sc-shake 0.3s ease-in-out' } : undefined}
           >
             {isListening
               ? (pendingKeys
@@ -283,6 +296,15 @@ export function ShortcutsPage() {
 
   return (
     <main className="flex-1 overflow-y-auto p-6 space-y-8">
+      <style>{`
+        @keyframes sc-shake {
+          0%, 100% { transform: translateX(0); }
+          20% { transform: translateX(-3px); }
+          40% { transform: translateX(3px); }
+          60% { transform: translateX(-2px); }
+          80% { transform: translateX(1px); }
+        }
+      `}</style>
 
       {/* Recording Mode */}
       <section>
