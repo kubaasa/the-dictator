@@ -206,7 +206,7 @@ function broadcastState(state: RecordingState): void {
       // cancel any pending hide and ensure the widget is visible
       if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
       if (!overlayWindow.isVisible()) {
-        overlayWindow.show();
+        overlayWindow.showInactive();
       }
     }
   }
