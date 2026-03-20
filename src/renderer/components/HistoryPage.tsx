@@ -262,19 +262,6 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
             </p>
           </div>
 
-          {/* Metadata row */}
-          <div className="px-4 py-2 border-b border-neutral-800">
-            <div className="flex items-center gap-3 font-mono text-sm text-neutral-600">
-              {entry.mode && <span>Mode: {MODE_LABELS[entry.mode] ?? entry.mode.toUpperCase()}</span>}
-              {entry.mode && entry.appName && <span>·</span>}
-              {entry.appName && <span>App: {entry.appName}</span>}
-              {(entry.mode || entry.appName) && <span>·</span>}
-              {entry.wordCount > 0 && <span>{entry.wordCount} words</span>}
-              {entry.wordCount > 0 && <span>·</span>}
-              <span>{formatDuration(entry.durationSeconds)}</span>
-            </div>
-          </div>
-
           {/* Delete error */}
           {deleteError && (
             <div className="px-4 py-1.5 text-sm text-red-400 bg-red-950/30" role="alert">
