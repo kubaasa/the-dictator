@@ -77,6 +77,9 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const chunksRef = useRef<Float32Array[]>([]);
 
+  // Persistent AudioContext + worklet — created once, reused across recordings
+  const persistentCtxRef = useRef<AudioContext | null>(null);
+  const workletReadyRef = useRef(false);
 
   // Bug #2: race condition flags for push-to-talk
   const isSettingUpRef = useRef(false);
@@ -119,6 +122,28 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     return unsub;
   }, [trySendAudio]);
 
+  // Get or create a persistent AudioContext with worklet already registered.
+  // First call: ~15–30ms (create + addModule). Subsequent calls: ~0–1ms (resume only).
+  const getOrCreateAudioContext = useCallback(async (): Promise<AudioContext> => {
+    if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
+      if (persistentCtxRef.current.state === 'suspended') {
+        await persistentCtxRef.current.resume();
+      }
+      return persistentCtxRef.current;
+    }
+
+    const ctx = new AudioContext({ sampleRate: 16000 });
+    persistentCtxRef.current = ctx;
+
+    const blob = new Blob([WORKLET_PROCESSOR_CODE], { type: 'application/javascript' });
+    const workletUrl = URL.createObjectURL(blob);
+    await ctx.audioWorklet.addModule(workletUrl);
+    URL.revokeObjectURL(workletUrl);
+    workletReadyRef.current = true;
+
+    return ctx;
+  }, []);
+
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current || isSettingUpRef.current) return;
 
@@ -142,13 +167,6 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         return;
       }
       setError('');
-
-      // Ensure previous AudioContext is fully closed before creating a new one —
-      // unclosed contexts accumulate and degrade audio quality after several recordings
-      if (audioContextRef.current) {
-        try { await audioContextRef.current.close(); } catch { /* already closed */ }
-        audioContextRef.current = null;
-      }
 
       // Disable WebRTC processing — dictation needs raw, clean audio signal.
       // echoCancellation/noiseSuppression are designed for VoIP calls and cause
@@ -208,20 +226,12 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
       mediaStreamRef.current = stream;
 
-      // Force 16kHz: Whisper only needs 16kHz, this makes IPC payload 3x smaller
-      const audioContext = new AudioContext({ sampleRate: 16000 });
+      // Reuse persistent AudioContext + worklet (created once, ~0ms on subsequent calls)
+      const audioContext = await getOrCreateAudioContext();
       audioContextRef.current = audioContext;
 
       const source = audioContext.createMediaStreamSource(stream);
       sourceRef.current = source;
-
-      // Register AudioWorklet processor (runs in dedicated audio thread — immune to
-      // main-thread GC pauses, React re-renders, and IPC overhead that caused frame
-      // drops with the old ScriptProcessorNode)
-      const blob = new Blob([WORKLET_PROCESSOR_CODE], { type: 'application/javascript' });
-      const workletUrl = URL.createObjectURL(blob);
-      await audioContext.audioWorklet.addModule(workletUrl);
-      URL.revokeObjectURL(workletUrl);
 
       const workletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
       workletNodeRef.current = workletNode;
@@ -260,7 +270,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       // Safety: in case startRecording IPC was already sent
       window.dictator.stopRecording();
     }
-  }, [deviceId]);
+  }, [deviceId, getOrCreateAudioContext]);
 
   const stopRecording = useCallback(async () => {
     // Bug #2: if still setting up, defer the stop
@@ -294,7 +304,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       workletNodeRef.current.port.postMessage('stop');
     }
 
-    // Snapshot refs and null immediately to prevent race with rapid re-start
+    // Snapshot chunks and null immediately to prevent race with rapid re-start.
+    // AudioContext is NOT closed — it's reused across recordings (persistentCtxRef).
     const audioContext = audioContextRef.current;
     audioContextRef.current = null;
     const chunks = chunksRef.current;
@@ -331,10 +342,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         .catch((err: unknown) => console.error('[Dictator] transcribeBuffer failed:', err));
     }
 
-    // Always close AudioContext — even for empty recordings (prevents accumulation)
-    if (audioContext) {
-      try { await audioContext.close(); } catch { /* already closed */ }
-    }
+    // AudioContext stays alive in persistentCtxRef — no close() here
 
   }, []);
 
@@ -369,10 +377,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       workletNodeRef.current.disconnect();
       workletNodeRef.current = null;
     }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
+    // AudioContext stays alive in persistentCtxRef — only null the working ref
+    audioContextRef.current = null;
     chunksRef.current = [];
     window.dictator.stopRecording();
   }, []);
@@ -396,6 +402,17 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     });
     return unsub;
   }, [cancelRecording]);
+
+  // Cleanup persistent AudioContext on unmount
+  useEffect(() => {
+    return () => {
+      if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
+        persistentCtxRef.current.close();
+        persistentCtxRef.current = null;
+        workletReadyRef.current = false;
+      }
+    };
+  }, []);
 
   const clearError = useCallback(() => setError(''), []);
 

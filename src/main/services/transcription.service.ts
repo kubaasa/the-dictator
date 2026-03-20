@@ -236,6 +236,12 @@ export class TranscriptionService {
     if (language !== 'auto') options.language = language;
     if (language === 'pl') options.initial_prompt = 'Dyktowanie tekstu po polsku.';
 
+    // Cap output tokens based on audio duration to prevent hallucination loops.
+    // Normal speech: ~2-4 tokens/s, 8 tokens/s is a safe margin.
+    // Normal transcriptions hit EOS well before this limit (zero impact).
+    // Hallucinations: cut from up to 448 tokens down to a reasonable cap (saves 1-5s).
+    options.max_new_tokens = Math.max(50, Math.ceil(durationSeconds * 8));
+
     const result = await this.pipe(audio, options);
     const text = ((result as { text: string }).text ?? '').trim();
 
