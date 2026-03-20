@@ -87,9 +87,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ai: {
     provider: 'none',
     openaiApiKey: '',
-    openaiModel: 'gpt-4o-mini',
+    openaiModel: 'gpt-4.1-nano',
     anthropicApiKey: '',
-    anthropicModel: 'claude-sonnet-4-6',
+    anthropicModel: 'claude-haiku-4-5-20251001',
     ollamaUrl: 'http://localhost:11434',
     ollamaModel: 'llama3',
     temperature: 0.3,

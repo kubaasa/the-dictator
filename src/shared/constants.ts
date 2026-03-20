@@ -75,22 +75,20 @@ export const WHISPER_MODEL_DESCRIPTIONS: Record<string, string> = {
 
 // Single source of truth for AI model lists — update here when providers release new models
 export const OPENAI_MODELS: { value: string; label: string }[] = [
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-  { value: 'gpt-4o', label: 'GPT-4o' },
+  { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
+  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
   { value: 'gpt-4.1', label: 'GPT-4.1' },
 ];
 
 export const ANTHROPIC_MODELS: { value: string; label: string }[] = [
-  { value: 'claude-opus-4-6', label: 'Claude Opus' },
   { value: 'claude-sonnet-4-6', label: 'Claude Sonnet' },
   { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku' },
 ];
 
 export const AI_MODEL_DESCRIPTIONS: Record<string, string> = {
-  'gpt-4o-mini': 'Fast & affordable',
-  'gpt-4o': 'Powerful multimodal model',
-  'gpt-4.1': 'Latest GPT-4 generation',
-  'claude-opus-4-6': 'Most capable Anthropic model',
-  'claude-sonnet-4-6': 'Best quality & reasoning',
+  'gpt-4.1-nano': 'Cheapest & fastest',
+  'gpt-4.1-mini': 'Fast & affordable',
+  'gpt-4.1': 'Most capable OpenAI model',
+  'claude-sonnet-4-6': 'Powerful & balanced',
   'claude-haiku-4-5-20251001': 'Fast & lightweight',
 };

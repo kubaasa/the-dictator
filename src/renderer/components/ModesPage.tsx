@@ -102,10 +102,10 @@ export function ModesPage(props: ModelStatus) {
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_SETTINGS.dictation.customPrompt);
   const [aiProvider, setAiProvider] = useState<AIProviderType>('none');
   const [aiOpenaiKey, setAiOpenaiKey] = useState('');
-  const [aiOpenaiModel, setAiOpenaiModel] = useState('gpt-4o-mini');
+  const [aiOpenaiModel, setAiOpenaiModel] = useState('gpt-4.1-nano');
   const [openaiModels, setOpenaiModels] = useState(OPENAI_MODELS);
   const [aiAnthropicKey, setAiAnthropicKey] = useState('');
-  const [aiAnthropicModel, setAiAnthropicModel] = useState('claude-sonnet-4-6');
+  const [aiAnthropicModel, setAiAnthropicModel] = useState('claude-haiku-4-5-20251001');
   const [aiOllamaUrl, setAiOllamaUrl] = useState('http://localhost:11434');
   const [aiOllamaModel, setAiOllamaModel] = useState('llama3');
   const [aiKeySaved, setAiKeySaved] = useState(false);

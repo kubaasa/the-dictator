@@ -60,7 +60,7 @@ export class AIService {
 
   private async processOpenAI(text: string, systemPrompt: string): Promise<string> {
     const client = this.getOpenAIClient();
-    const model = (this.store.get('ai.openaiModel') as string) ?? 'gpt-4o-mini';
+    const model = (this.store.get('ai.openaiModel') as string) ?? 'gpt-4.1-nano';
     const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
 
     const response = await client.chat.completions.create({
@@ -77,7 +77,7 @@ export class AIService {
 
   private async processAnthropic(text: string, systemPrompt: string): Promise<string> {
     const client = this.getAnthropicClient();
-    const model = (this.store.get('ai.anthropicModel') as string) ?? 'claude-sonnet-4-6';
+    const model = (this.store.get('ai.anthropicModel') as string) ?? 'claude-haiku-4-5-20251001';
     const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
 
     const response = await client.messages.create({
