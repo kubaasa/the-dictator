@@ -63,7 +63,7 @@ export class AIService {
     if (!basePrompt) return rawText;
 
     const language = (this.store.get('transcription.language') as string) ?? 'en';
-    const languageNames: Record<string, string> = { en: 'English', pl: 'Polish' };
+    const languageNames: Record<string, string> = { en: 'English', pl: 'Polish', th: 'Thai' };
     const languageName = languageNames[language] ?? 'English';
     const systemPrompt = `${basePrompt} Always respond in ${languageName}.`;
 
@@ -230,7 +230,7 @@ export class AIService {
     if (!systemPrompt) throw new Error('System prompt is empty.');
 
     const language = (this.store.get('transcription.language') as string) ?? 'en';
-    const languageNames: Record<string, string> = { en: 'English', pl: 'Polish' };
+    const languageNames: Record<string, string> = { en: 'English', pl: 'Polish', th: 'Thai' };
     const languageName = languageNames[language] ?? 'English';
     const fullPrompt = `${systemPrompt} Always respond in ${languageName}.`;
 

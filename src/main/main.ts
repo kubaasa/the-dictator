@@ -17,6 +17,10 @@ if (started) {
   app.quit();
 }
 
+// Fix GPU/disk cache "Access Denied" errors on Windows
+app.commandLine.appendSwitch('disk-cache-dir', path.join(app.getPath('userData'), 'Cache'));
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+
 // Must be called before app 'ready'
 protocol.registerSchemesAsPrivileged([
   { scheme: 'recording', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } },

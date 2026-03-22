@@ -15,6 +15,7 @@ const MODEL_OPTIONS = [
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
   { value: 'pl', label: 'Polish' },
+  { value: 'th', label: 'Thai' },
 ];
 
 const AI_PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
@@ -317,7 +318,7 @@ export function ModesPage(props: ModelStatus) {
 
   // ── Pipeline status bar helpers ──
   const transcriptionSummary = engine === 'groq' ? 'Groq API' : engine === 'api' ? 'Whisper API' : `Local (${modelSize.charAt(0).toUpperCase() + modelSize.slice(1)})`;
-  const languageLabel = language === 'en' ? 'EN' : 'PL';
+  const languageLabel = LANGUAGE_OPTIONS.find(o => o.value === language)?.value.toUpperCase() ?? 'EN';
 
   const aiModelLabel = aiProvider === 'openai'
     ? openaiModels.find(m => m.value === aiOpenaiModel)?.label ?? aiOpenaiModel

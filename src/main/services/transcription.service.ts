@@ -324,6 +324,7 @@ export class TranscriptionService {
 
     if (language !== 'auto') options.language = language;
     if (language === 'pl') options.initial_prompt = 'Dyktowanie tekstu po polsku.';
+    if (language === 'th') options.initial_prompt = 'การเขียนตามคำบอกเป็นภาษาไทย';
 
     // Cap output tokens based on audio duration to prevent hallucination loops.
     // Normal speech: ~2-4 tokens/s, 8 tokens/s is a safe margin.
