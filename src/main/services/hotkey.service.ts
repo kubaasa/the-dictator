@@ -90,27 +90,30 @@ export class HotkeyService {
     if (this.keyupHandler) uIOhook.off('keyup', this.keyupHandler);
 
     this.keydownHandler = (e) => {
+      // Skip OS auto-repeat events — without this, holding a toggle shortcut
+      // (e.g. Ctrl+Tab) causes rapid start/stop cycling (~30 toggles/second)
+      if (this.pressedKeys.has(e.keycode)) return;
       this.pressedKeys.add(e.keycode);
       this.checkBindings();
     };
 
     this.keyupHandler = (e) => {
-      // Clear PTT suppress flag when a PTT key is released — allows next press to start fresh
+      // Clear PTT suppress flag when a PTT key is released — allows next press to start fresh.
+      // Only check the pushToTalk binding — toggleRecording is inactive in PTT mode,
+      // and checking it would clear the flag on unrelated key releases.
       if (this.suppressPttRestart) {
-        const pttBindings = this.bindings.filter(
-          (b) => b.action === 'pushToTalk' || b.action === 'toggleRecording',
-        );
-        if (pttBindings.some((b) => b.keys.includes(e.keycode))) {
+        const pttBinding = this.bindings.find((b) => b.action === 'pushToTalk');
+        if (pttBinding && pttBinding.keys.includes(e.keycode)) {
           this.suppressPttRestart = false;
         }
       }
 
-      // PTT stop: the PTT key released → stop recording.
+      // PTT stop: a key from the PTT combo released → stop recording.
+      // Only check the pushToTalk binding — toggleRecording is inactive in PTT mode,
+      // and checking it would cause false stops when releasing unrelated shortcut keys.
       if (this.isRecordingActive && this.mode === 'push-to-talk') {
-        const stopBindings = this.bindings.filter(
-          (b) => b.action === 'toggleRecording' || b.action === 'pushToTalk',
-        );
-        if (stopBindings.some((b) => b.keys.length > 0 && b.keys.includes(e.keycode))) {
+        const pttBinding = this.bindings.find((b) => b.action === 'pushToTalk');
+        if (pttBinding && pttBinding.keys.length > 0 && pttBinding.keys.includes(e.keycode)) {
           this.isRecordingActive = false;
           this.onRecordingStop();
         }
@@ -125,6 +128,7 @@ export class HotkeyService {
 
   stop(): void {
     uIOhook.stop();
+    this.pressedKeys.clear();
   }
 
   updateShortcuts(shortcuts: { toggleRecording: string; cancelRecording: string; pushToTalk: string; showWindow: string }): void {
@@ -143,6 +147,12 @@ export class HotkeyService {
   }
 
   setMode(mode: HotkeyMode): void {
+    // Stop active recording before switching — prevents a state where the old
+    // mode's stop mechanism no longer works (e.g. toggle can't stop in PTT mode)
+    if (this.isRecordingActive) {
+      this.isRecordingActive = false;
+      this.onRecordingStop();
+    }
     this.mode = mode;
   }
 
@@ -157,14 +167,13 @@ export class HotkeyService {
   notifyRecordingStopped(): void {
     this.isRecordingActive = false;
 
-    // In PTT mode, if the key is still physically held, suppress auto-repeat from
-    // re-triggering a new recording. The flag is cleared on key release.
+    // In PTT mode, if the PTT key combo is still physically held, suppress auto-repeat
+    // from re-triggering a new recording. The flag is cleared on key release.
     if (this.mode === 'push-to-talk') {
-      const pttKeys = this.bindings
-        .filter(b => b.action === 'pushToTalk' || b.action === 'toggleRecording')
-        .filter(b => b.keys.length > 0);
-      const isKeyHeld = pttKeys.some(b => b.keys.every(k => this.pressedKeys.has(k)));
-      if (isKeyHeld) this.suppressPttRestart = true;
+      const pttBinding = this.bindings.find(b => b.action === 'pushToTalk');
+      if (pttBinding && pttBinding.keys.length > 0 && pttBinding.keys.every(k => this.pressedKeys.has(k))) {
+        this.suppressPttRestart = true;
+      }
     }
   }
 
