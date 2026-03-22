@@ -67,6 +67,7 @@ export function registerIpcHandlers(
         shortcuts: {
           toggleRecording: hotkey.shortcut as string,
           cancelRecording: DEFAULT_SETTINGS.hotkey.shortcuts.cancelRecording,
+          pushToTalk: DEFAULT_SETTINGS.hotkey.shortcuts.pushToTalk,
           showWindow: DEFAULT_SETTINGS.hotkey.shortcuts.showWindow,
         },
         mode: hotkey.mode ?? DEFAULT_SETTINGS.hotkey.mode,
@@ -132,7 +133,7 @@ export function registerIpcHandlers(
           // Show invisible first so the renderer can re-render, then fade in
           overlayWindow.setOpacity(0);
           overlayWindow.show();
-          setTimeout(() => { if (!overlayWindow.isDestroyed()) overlayWindow.setOpacity(1); }, 120);
+          setTimeout(() => { if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.setOpacity(1); }, 120);
         }
       }
     }
@@ -181,7 +182,7 @@ export function registerIpcHandlers(
 
     broadcastState('transcribing');
     // Warmup AI connection in parallel with transcription (best-effort, fire-and-forget)
-    aiService.warmup().catch(() => {});
+    aiService.warmup().catch((err) => { console.warn('[Dictator] AI warmup failed:', err); });
     try {
       let timeoutId: ReturnType<typeof setTimeout>;
       const rawText = await Promise.race([
@@ -195,7 +196,7 @@ export function registerIpcHandlers(
       ]);
 
       // Safety net: filter known Whisper hallucinations that appear on near-silence audio
-      const HALLUCINATION_RE = /^\s*[\[(]?(muzyka|music|cisza|silence|szum|noise|applause|oklaski|śmiech|laughter)[\])]?\s*$/i;
+      const HALLUCINATION_RE = /^\s*[[(]?(muzyka|music|cisza|silence|szum|noise|applause|oklaski|śmiech|laughter)[\])]?\s*$/i;
       if (!rawText || HALLUCINATION_RE.test(rawText)) {
         broadcastState('idle');
         return;

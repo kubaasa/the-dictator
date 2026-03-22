@@ -311,9 +311,10 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       mediaStreamRef.current = null;
     }
 
-    // Signal the worklet processor to stop
+    // Signal the worklet processor to stop and clean up the message handler
     if (workletNodeRef.current) {
       workletNodeRef.current.port.postMessage('stop');
+      workletNodeRef.current.port.onmessage = null;
     }
 
     // Snapshot chunks and null immediately to prevent race with rapid re-start.

@@ -22,7 +22,6 @@ const MIN_BAR_H  = 2.5; // baseline height in pixels — always visible in silen
 const LERP_ATTACK  = 0.75;
 const LERP_RELEASE = 0.18;
 
-const RED       = '#EF4444';
 const ERROR_RED = '#DC2626';
 const BASE_COLOR = 'rgba(255,255,255,0.88)';
 

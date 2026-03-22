@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, screen } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
@@ -366,6 +366,8 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
+  if (pttSafetyTimeout) { clearTimeout(pttSafetyTimeout); pttSafetyTimeout = null; }
   hotkeyService.stop();
   trayManager.destroy();
   historyService?.close();

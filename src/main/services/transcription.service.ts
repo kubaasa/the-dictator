@@ -349,7 +349,9 @@ export class TranscriptionService {
     // Prevent concurrent model loads (race condition when user changes model mid-transcription)
     if (this.loadingPromise) {
       await this.loadingPromise;
-      return;
+      // After waiting, check if the loaded model matches what we need — if not, load ours
+      const modelId = overrideModelId ?? this.getModelId();
+      if (this.loadedModelId === modelId) return;
     }
 
     const modelId = overrideModelId ?? this.getModelId();

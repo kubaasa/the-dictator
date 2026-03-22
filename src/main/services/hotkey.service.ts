@@ -127,6 +127,10 @@ export class HotkeyService {
   }
 
   stop(): void {
+    if (this.keydownHandler) uIOhook.off('keydown', this.keydownHandler);
+    if (this.keyupHandler) uIOhook.off('keyup', this.keyupHandler);
+    this.keydownHandler = null;
+    this.keyupHandler = null;
     uIOhook.stop();
     this.pressedKeys.clear();
   }

@@ -233,10 +233,18 @@ export function ShortcutsPage() {
     }
   }, [listeningFor]);
 
+  const shakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up shake timer on unmount
+  useEffect(() => {
+    return () => { if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current); };
+  }, []);
+
   const resetShortcut = useCallback(async (key: ShortcutKey) => {
     if (shortcuts[key] === DEFAULT_SETTINGS.hotkey.shortcuts[key]) {
       setShakingKey(key);
-      setTimeout(() => setShakingKey(null), 300);
+      if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current);
+      shakeTimerRef.current = setTimeout(() => { setShakingKey(null); shakeTimerRef.current = null; }, 300);
       return;
     }
     const newShortcuts = { ...shortcuts, [key]: DEFAULT_SETTINGS.hotkey.shortcuts[key] };

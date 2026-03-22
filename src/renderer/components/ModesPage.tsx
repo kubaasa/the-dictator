@@ -150,54 +150,78 @@ export function ModesPage(props: ModelStatus) {
 
   const handleLanguageChange = async (newLang: string) => {
     setLanguage(newLang);
-    const current = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      transcription: { ...current.transcription, language: newLang },
-    });
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        transcription: { ...current.transcription, language: newLang },
+      });
+    } catch (err) {
+      console.error('[ModesPage] Failed to save language:', err);
+    }
   };
 
   const handleModelChange = async (newSize: string) => {
     setModelSize(newSize);
-    const current = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      transcription: { ...current.transcription, localModelSize: newSize },
-    });
-    recheck();
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        transcription: { ...current.transcription, localModelSize: newSize },
+      });
+      recheck();
+    } catch (err) {
+      console.error('[ModesPage] Failed to save model:', err);
+    }
   };
 
   const handleEngineChange = async (newEngine: TranscriptionEngine) => {
     setEngine(newEngine);
-    const current = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      transcription: { ...current.transcription, engine: newEngine },
-    });
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        transcription: { ...current.transcription, engine: newEngine },
+      });
+    } catch (err) {
+      console.error('[ModesPage] Failed to save engine:', err);
+    }
   };
 
   const handleApiKeySave = async () => {
-    const current = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      transcription: { ...current.transcription, openaiApiKey: apiKey },
-    });
-    setApiKeySaved(true);
-    setTimeout(() => setApiKeySaved(false), 2000);
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        transcription: { ...current.transcription, openaiApiKey: apiKey },
+      });
+      setApiKeySaved(true);
+      setTimeout(() => setApiKeySaved(false), 2000);
+    } catch (err) {
+      console.error('[ModesPage] Failed to save API key:', err);
+    }
   };
 
   const handleGroqKeySave = async () => {
-    const current = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      transcription: { ...current.transcription, groqApiKey: groqApiKey },
-    });
-    setGroqKeySaved(true);
-    setTimeout(() => setGroqKeySaved(false), 2000);
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        transcription: { ...current.transcription, groqApiKey: groqApiKey },
+      });
+      setGroqKeySaved(true);
+      setTimeout(() => setGroqKeySaved(false), 2000);
+    } catch (err) {
+      console.error('[ModesPage] Failed to save Groq key:', err);
+    }
   };
 
   const handleToggleAi = async () => {
     const next = !aiPostProcessing;
     setAiPostProcessing(next);
-    const current = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      dictation: { ...current.dictation, aiPostProcessing: next },
-    });
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        dictation: { ...current.dictation, aiPostProcessing: next },
+      });
+    } catch (err) {
+      console.error('[ModesPage] Failed to toggle AI:', err);
+    }
   };
 
   const handlePromptChange = (value: string) => {
@@ -205,58 +229,78 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const handlePromptSave = async () => {
-    const current = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      dictation: { ...current.dictation, customPrompt },
-    });
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        dictation: { ...current.dictation, customPrompt },
+      });
+    } catch (err) {
+      console.error('[ModesPage] Failed to save prompt:', err);
+    }
   };
 
   const handlePromptReset = async () => {
     setCustomPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
-    const current = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      dictation: { ...current.dictation, customPrompt: DEFAULT_SETTINGS.dictation.customPrompt },
-    });
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        dictation: { ...current.dictation, customPrompt: DEFAULT_SETTINGS.dictation.customPrompt },
+      });
+    } catch (err) {
+      console.error('[ModesPage] Failed to reset prompt:', err);
+    }
   };
 
   const handleProviderChange = async (provider: AIProviderType) => {
     setAiProvider(provider);
-    const current = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      ai: { ...current.ai, provider },
-    });
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        ai: { ...current.ai, provider },
+      });
+    } catch (err) {
+      console.error('[ModesPage] Failed to save provider:', err);
+    }
   };
 
   const handleAiModelChange = async (model: string) => {
-    const current = await window.dictator.getSettings();
-    if (aiProvider === 'openai') {
-      setAiOpenaiModel(model);
-      await window.dictator.setSettings({ ai: { ...current.ai, openaiModel: model } });
-    } else if (aiProvider === 'anthropic') {
-      setAiAnthropicModel(model);
-      await window.dictator.setSettings({ ai: { ...current.ai, anthropicModel: model } });
+    try {
+      const current = await window.dictator.getSettings();
+      if (aiProvider === 'openai') {
+        setAiOpenaiModel(model);
+        await window.dictator.setSettings({ ai: { ...current.ai, openaiModel: model } });
+      } else if (aiProvider === 'anthropic') {
+        setAiAnthropicModel(model);
+        await window.dictator.setSettings({ ai: { ...current.ai, anthropicModel: model } });
+      }
+    } catch (err) {
+      console.error('[ModesPage] Failed to save AI model:', err);
     }
   };
 
   const handleAiKeySave = async () => {
-    const current = await window.dictator.getSettings();
-    const updates: Record<string, unknown> = {};
-    if (aiProvider === 'openai') {
-      updates.openaiApiKey = aiOpenaiKey;
-      updates.openaiModel = aiOpenaiModel;
-    } else if (aiProvider === 'anthropic') {
-      updates.anthropicApiKey = aiAnthropicKey;
-      updates.anthropicModel = aiAnthropicModel;
-    } else if (aiProvider === 'ollama') {
-      updates.ollamaUrl = aiOllamaUrl;
-      updates.ollamaModel = aiOllamaModel;
+    try {
+      const current = await window.dictator.getSettings();
+      const updates: Record<string, unknown> = {};
+      if (aiProvider === 'openai') {
+        updates.openaiApiKey = aiOpenaiKey;
+        updates.openaiModel = aiOpenaiModel;
+      } else if (aiProvider === 'anthropic') {
+        updates.anthropicApiKey = aiAnthropicKey;
+        updates.anthropicModel = aiAnthropicModel;
+      } else if (aiProvider === 'ollama') {
+        updates.ollamaUrl = aiOllamaUrl;
+        updates.ollamaModel = aiOllamaModel;
+      }
+      await window.dictator.setSettings({
+        ai: { ...current.ai, ...updates },
+      });
+      if (aiProvider === 'openai') fetchOpenAIModels();
+      setAiKeySaved(true);
+      setTimeout(() => setAiKeySaved(false), 2000);
+    } catch (err) {
+      console.error('[ModesPage] Failed to save AI key:', err);
     }
-    await window.dictator.setSettings({
-      ai: { ...current.ai, ...updates },
-    });
-    if (aiProvider === 'openai') fetchOpenAIModels();
-    setAiKeySaved(true);
-    setTimeout(() => setAiKeySaved(false), 2000);
   };
 
   const isAiEnabled = aiProvider !== 'none';

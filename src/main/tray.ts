@@ -1,5 +1,4 @@
 import { app, Menu, Tray, nativeImage, BrowserWindow } from 'electron';
-import * as path from 'node:path';
 import type { RecordingState } from '../shared/types';
 
 export class TrayManager {
