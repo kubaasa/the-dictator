@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ModelStatus } from '../hooks/useModelStatus';
-import type { AIProviderType, AppSettings } from '../../shared/types';
+import type { AIProviderType, TranscriptionEngine, AppSettings } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import { WHISPER_MODEL_DESCRIPTIONS, AI_MODEL_DESCRIPTIONS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
 
@@ -91,11 +91,13 @@ export function ModesPage(props: ModelStatus) {
   const { downloaded, downloadedModels, downloading, progress, error, download, cancel, recheck } = props;
 
   // Transcription state
-  const [engine, setEngine] = useState<'local' | 'api'>('api');
+  const [engine, setEngine] = useState<TranscriptionEngine>('api');
   const [modelSize, setModelSize] = useState('base');
   const [language, setLanguage] = useState('en');
   const [apiKey, setApiKey] = useState('');
   const [apiKeySaved, setApiKeySaved] = useState(false);
+  const [groqApiKey, setGroqApiKey] = useState('');
+  const [groqKeySaved, setGroqKeySaved] = useState(false);
 
   // AI + Dictation state
   const [aiPostProcessing, setAiPostProcessing] = useState(DEFAULT_SETTINGS.dictation.aiPostProcessing);
@@ -123,6 +125,7 @@ export function ModesPage(props: ModelStatus) {
     setModelSize(s.transcription.localModelSize);
     setLanguage(s.transcription.language);
     setApiKey(s.transcription.openaiApiKey);
+    setGroqApiKey(s.transcription.groqApiKey);
     setAiPostProcessing(s.dictation.aiPostProcessing);
     setCustomPrompt(s.dictation.customPrompt);
     setAutoPaste(s.dictation.autoPaste);
@@ -162,6 +165,14 @@ export function ModesPage(props: ModelStatus) {
     recheck();
   };
 
+  const handleEngineChange = async (newEngine: TranscriptionEngine) => {
+    setEngine(newEngine);
+    const current = await window.dictator.getSettings();
+    await window.dictator.setSettings({
+      transcription: { ...current.transcription, engine: newEngine },
+    });
+  };
+
   const handleApiKeySave = async () => {
     const current = await window.dictator.getSettings();
     await window.dictator.setSettings({
@@ -169,6 +180,15 @@ export function ModesPage(props: ModelStatus) {
     });
     setApiKeySaved(true);
     setTimeout(() => setApiKeySaved(false), 2000);
+  };
+
+  const handleGroqKeySave = async () => {
+    const current = await window.dictator.getSettings();
+    await window.dictator.setSettings({
+      transcription: { ...current.transcription, groqApiKey: groqApiKey },
+    });
+    setGroqKeySaved(true);
+    setTimeout(() => setGroqKeySaved(false), 2000);
   };
 
   const handleToggleAi = async () => {
@@ -252,7 +272,7 @@ export function ModesPage(props: ModelStatus) {
   const currentAiModel = aiProvider === 'openai' ? aiOpenaiModel : aiProvider === 'anthropic' ? aiAnthropicModel : '';
 
   // ── Pipeline status bar helpers ──
-  const transcriptionSummary = engine === 'api' ? 'Whisper API' : `Local (${modelSize.charAt(0).toUpperCase() + modelSize.slice(1)})`;
+  const transcriptionSummary = engine === 'groq' ? 'Groq API' : engine === 'api' ? 'Whisper API' : `Local (${modelSize.charAt(0).toUpperCase() + modelSize.slice(1)})`;
   const languageLabel = language === 'en' ? 'EN' : 'PL';
 
   const aiModelLabel = aiProvider === 'openai'
@@ -270,6 +290,7 @@ export function ModesPage(props: ModelStatus) {
         : `${aiProvider === 'openai' ? 'OpenAI' : aiProvider === 'anthropic' ? 'Anthropic' : 'Ollama'} / ${aiModelLabel}`;
 
   const transcriptionStatus: 'ready' | 'warning' | 'off' =
+    engine === 'groq' ? (groqApiKey ? 'ready' : 'warning') :
     engine === 'api' ? (apiKey ? 'ready' : 'warning') : (downloaded ? 'ready' : 'warning');
   const aiStatus: 'ready' | 'warning' | 'off' =
     !aiPostProcessing ? 'off' : (isAiEnabled && isAiConfigured) ? 'ready' : 'warning';
@@ -327,6 +348,32 @@ export function ModesPage(props: ModelStatus) {
             Transcription
           </h2>
           <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-5">
+
+            {/* Engine pills */}
+            <div>
+              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
+                Engine
+              </span>
+              <div className="flex gap-2">
+                {([
+                  { value: 'local' as TranscriptionEngine, label: 'Local' },
+                  { value: 'api' as TranscriptionEngine, label: 'OpenAI API' },
+                  { value: 'groq' as TranscriptionEngine, label: 'Groq' },
+                ]).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleEngineChange(opt.value)}
+                    className={`rounded-lg border px-5 py-2 font-mono text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-200 cursor-pointer ${
+                      engine === opt.value
+                        ? 'border-red-600/50 bg-red-600/10 text-red-400'
+                        : 'border-neutral-700 bg-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* Language pills */}
             <div>
@@ -458,6 +505,29 @@ export function ModesPage(props: ModelStatus) {
                   onChange={setApiKey}
                   onSave={handleApiKeySave}
                   saved={apiKeySaved}
+                />
+              </div>
+            )}
+
+            {/* Groq API Key — Transcription */}
+            {engine === 'groq' && (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
+                    Groq API Key
+                  </span>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-orange-600/10 text-orange-400 border border-orange-600/20">
+                    Whisper v3
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-600 mb-3">
+                  Groq runs Whisper large-v3 on dedicated hardware — up to 10x faster than local inference.
+                </p>
+                <ApiKeyInput
+                  value={groqApiKey}
+                  onChange={setGroqApiKey}
+                  onSave={handleGroqKeySave}
+                  saved={groqKeySaved}
                 />
               </div>
             )}

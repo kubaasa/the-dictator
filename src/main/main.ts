@@ -369,4 +369,5 @@ app.on('before-quit', () => {
   hotkeyService.stop();
   trayManager.destroy();
   historyService?.close();
+  pasteService.destroy();
 });

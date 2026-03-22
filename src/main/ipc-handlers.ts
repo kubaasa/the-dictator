@@ -147,6 +147,9 @@ export function registerIpcHandlers(
     if (engine === 'api') {
       const apiKey = (store.get('transcription.openaiApiKey') as string) ?? '';
       if (!apiKey) readyError = 'OpenAI API key is not set. Go to Modes and enter your key.';
+    } else if (engine === 'groq') {
+      const groqKey = (store.get('transcription.groqApiKey') as string) ?? '';
+      if (!groqKey) readyError = 'Groq API key is not set. Go to Modes and enter your key.';
     } else {
       if (!transcriptionService.isModelDownloaded()) {
         readyError = 'Model not downloaded. Go to Modes and do it.';
@@ -177,6 +180,8 @@ export function registerIpcHandlers(
     }
 
     broadcastState('transcribing');
+    // Warmup AI connection in parallel with transcription (best-effort, fire-and-forget)
+    aiService.warmup().catch(() => {});
     try {
       let timeoutId: ReturnType<typeof setTimeout>;
       const rawText = await Promise.race([

@@ -36,6 +36,8 @@ export class TranscriptionService {
   private loadingPromise: Promise<void> | null = null;
   private openaiClient: OpenAI | null = null;
   private openaiClientKey: string | null = null;
+  private groqClient: OpenAI | null = null;
+  private groqClientKey: string | null = null;
   private transcriptionCount = 0;
   private static readonly PIPELINE_RESET_INTERVAL = 8;
 
@@ -181,11 +183,13 @@ export class TranscriptionService {
 
     // API path: prefer pre-compressed WebM/Opus from MediaRecorder (~8x smaller upload).
     // Trade-off: compressed blob is raw recording (no trimSilence/normalizeAudio) because
-    // we can't apply Float32 preprocessing to an already-encoded WebM. OpenAI Whisper API
+    // we can't apply Float32 preprocessing to an already-encoded WebM. OpenAI/Groq Whisper API
     // is robust to silence and volume variations, so faster upload outweighs preprocessing.
     const compressedSize = compressedAudio ? (Buffer.isBuffer(compressedAudio) ? compressedAudio.length : compressedAudio.byteLength) : 0;
-    if (engine === 'api' && compressedSize > 0) {
-      return this.transcribeApiFromCompressed(compressedAudio);
+    if ((engine === 'api' || engine === 'groq') && compressedSize > 0) {
+      return engine === 'groq'
+        ? this.transcribeGroqFromCompressed(compressedAudio)
+        : this.transcribeApiFromCompressed(compressedAudio);
     }
 
     // Preprocess: trim silence edges + normalize peak level before transcription.
@@ -196,6 +200,7 @@ export class TranscriptionService {
     const normalized = normalizeAudio(trimmed);
     const preprocessed = Buffer.from(normalized.buffer, normalized.byteOffset, normalized.byteLength);
 
+    if (engine === 'groq') return this.transcribeGroqFromBuffer(preprocessed, sampleRate);
     return engine === 'api'
       ? this.transcribeApiFromBuffer(preprocessed, sampleRate)
       : this.transcribeLocalFromBuffer(preprocessed, sampleRate);
@@ -239,6 +244,50 @@ export class TranscriptionService {
 
     const response = await client.audio.transcriptions.create({
       model: 'whisper-1',
+      file,
+      ...(language !== 'auto' && { language }),
+    });
+
+    return response.text.trim();
+  }
+
+  /** Returns a cached Groq client (OpenAI-compatible SDK with Groq base URL). */
+  private getGroqClient(): OpenAI {
+    const apiKey = (this.store.get('transcription.groqApiKey') as string) ?? '';
+    if (!apiKey) throw new Error('Groq API key is not set. Go to Modes and enter your key.');
+    if (!this.groqClient || this.groqClientKey !== apiKey) {
+      this.groqClient = new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' });
+      this.groqClientKey = apiKey;
+    }
+    return this.groqClient;
+  }
+
+  private async transcribeGroqFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
+    const client = this.getGroqClient();
+    const language = (this.store.get('transcription.language') as string) ?? 'auto';
+
+    const float32 = ipcBufferToFloat32(audioBuffer);
+    const wavBuffer = encodeWavFast(float32, sampleRate);
+    const file = await toFile(wavBuffer, 'audio.wav', { type: 'audio/wav' });
+
+    const response = await client.audio.transcriptions.create({
+      model: 'whisper-large-v3',
+      file,
+      ...(language !== 'auto' && { language }),
+    });
+
+    return response.text.trim();
+  }
+
+  private async transcribeGroqFromCompressed(compressedAudio: ArrayBuffer): Promise<string> {
+    const client = this.getGroqClient();
+    const language = (this.store.get('transcription.language') as string) ?? 'auto';
+
+    const buf = Buffer.isBuffer(compressedAudio) ? compressedAudio : Buffer.from(compressedAudio);
+    const file = await toFile(buf, 'audio.webm', { type: 'audio/webm' });
+
+    const response = await client.audio.transcriptions.create({
+      model: 'whisper-large-v3',
       file,
       ...(language !== 'auto' && { language }),
     });
