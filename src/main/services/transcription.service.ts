@@ -1,4 +1,4 @@
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline, env } from '@huggingface/transformers';
 import OpenAI, { toFile } from 'openai';
 import type { AppSettings } from '../../shared/types';
 import Store from 'electron-store';
@@ -6,14 +6,15 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 
 const MODEL_MAP: Record<string, string> = {
-  tiny: 'Xenova/whisper-tiny',
-  'tiny.en': 'Xenova/whisper-tiny.en',
-  base: 'Xenova/whisper-base',
-  'base.en': 'Xenova/whisper-base.en',
-  small: 'Xenova/whisper-small',
-  medium: 'Xenova/whisper-medium',
-  large: 'Xenova/whisper-large-v2',
-  'large-v3': 'Xenova/whisper-large-v3',
+  tiny: 'onnx-community/whisper-tiny',
+  'tiny.en': 'onnx-community/whisper-tiny.en',
+  base: 'onnx-community/whisper-base',
+  'base.en': 'onnx-community/whisper-base.en',
+  small: 'onnx-community/whisper-small',
+  medium: 'onnx-community/whisper-medium-ONNX',
+  large: 'onnx-community/whisper-large-v2-ONNX',
+  'large-v3': 'onnx-community/whisper-large-v3-ONNX',
+  'large-v3-turbo': 'onnx-community/whisper-large-v3-turbo',
   'distil-medium.en': 'distil-whisper/distil-medium.en',
   'distil-large-v3': 'distil-whisper/distil-large-v3',
 };
@@ -21,10 +22,8 @@ const MODEL_MAP: Record<string, string> = {
 env.allowLocalModels = false;
 
 // Explicitly pin the cache dir so both download and detection always use the same path.
-// Relying on env.cacheDir from @xenova/transformers is fragile in Electron (ESM loaded
-// via CJS require — import.meta.url may be unavailable, leaving env.cacheDir null).
 const MODELS_CACHE_DIR = path.join(
-  path.dirname(require.resolve('@xenova/transformers')),
+  path.dirname(require.resolve('@huggingface/transformers')),
   '../.cache',
 );
 
@@ -40,6 +39,10 @@ export class TranscriptionService {
   private groqClientKey: string | null = null;
   private transcriptionCount = 0;
   private static readonly PIPELINE_RESET_INTERVAL = 8;
+
+  // Resolved ONNX execution device: 'dml' (DirectML GPU) or 'cpu'.
+  // Detected on first pipeline load, cached for subsequent loads.
+  private resolvedDevice: string | null = null;
 
   constructor(private store: Store<AppSettings>) {
     env.cacheDir = MODELS_CACHE_DIR;
@@ -62,7 +65,7 @@ export class TranscriptionService {
     console.log('[Dictator] Preloading local model in background…');
     const t0 = Date.now();
     await this.loadFromCache(modelId);
-    console.log('[Dictator] Model preloaded in %dms', Date.now() - t0);
+    console.log('[Dictator] Model preloaded in %dms (device=%s)', Date.now() - t0, this.resolvedDevice);
   }
 
   private getModelId(): string {
@@ -86,7 +89,7 @@ export class TranscriptionService {
 
   // Ordered from largest/best to smallest — used for fallback selection
   private static readonly MODEL_SIZE_PRIORITY = [
-    'distil-large-v3', 'large-v3', 'large', 'distil-medium.en', 'medium', 'small', 'base', 'base.en', 'tiny', 'tiny.en',
+    'distil-large-v3', 'large-v3-turbo', 'large-v3', 'large', 'distil-medium.en', 'medium', 'small', 'base', 'base.en', 'tiny', 'tiny.en',
   ];
 
   /** Find the largest downloaded model key, or null if none downloaded. */
@@ -115,6 +118,12 @@ export class TranscriptionService {
     return { modelId: MODEL_MAP[bestSize], fallback: true };
   }
 
+  /** Pick the best ONNX device: DirectML on Windows (GPU), otherwise CPU. */
+  private getPreferredDevice(): string {
+    if (this.resolvedDevice) return this.resolvedDevice;
+    return process.platform === 'win32' ? 'dml' : 'cpu';
+  }
+
   async downloadModel(onProgress: (pct: number) => void): Promise<void> {
     const modelId = this.getModelId();
 
@@ -130,7 +139,7 @@ export class TranscriptionService {
     const fileBytes = new Map<string, { loaded: number; total: number }>();
 
     // Monkey-patch global.fetch to inject AbortSignal — the only way to stop
-    // xenova's internal HTTP requests since it calls fetch() directly without
+    // the library's internal HTTP requests since it calls fetch() directly without
     // exposing any cancellation API.
     this.cancelController = new AbortController();
     const { signal } = this.cancelController;
@@ -138,9 +147,11 @@ export class TranscriptionService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     global.fetch = (input: any, init?: any) => originalFetch(input, { ...init, signal });
 
+    const device = this.getPreferredDevice();
     try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.pipe = await pipeline('automatic-speech-recognition', modelId, {
+      device: device as any,
       progress_callback: (info: { status: string; file?: string; loaded?: number; total?: number }) => {
         if (info.status === 'progress' && info.file != null) {
           fileBytes.set(info.file, {
@@ -163,7 +174,32 @@ export class TranscriptionService {
         }
       },
     });
+    this.resolvedDevice = device;
     this.loadedModelId = modelId;
+    } catch (err) {
+      // DirectML session creation can fail on unsupported GPU — retry with CPU.
+      // Files are already cached from the first attempt, so no re-download happens.
+      if (device === 'dml') {
+        console.warn('[Dictator] DirectML failed during download, falling back to CPU:', err);
+        this.resolvedDevice = 'cpu';
+        this.pipe = await pipeline('automatic-speech-recognition', modelId, {
+          device: 'cpu' as any,
+          progress_callback: (info: { status: string; file?: string; loaded?: number; total?: number }) => {
+            if (info.status === 'progress' && info.file != null) {
+              fileBytes.set(info.file, { loaded: info.loaded ?? 0, total: info.total ?? 0 });
+              const largeFiles = [...fileBytes.values()].filter((f) => f.total > LARGE_FILE_THRESHOLD);
+              if (largeFiles.length === 0) return;
+              const totalBytes = largeFiles.reduce((s, f) => s + f.total, 0);
+              const loadedBytes = largeFiles.reduce((s, f) => s + f.loaded, 0);
+              const pct = Math.min(Math.round((loadedBytes / totalBytes) * 100), 99);
+              if (pct > hwm) { hwm = pct; onProgress(pct); }
+            }
+          },
+        });
+        this.loadedModelId = modelId;
+      } else {
+        throw err;
+      }
     } finally {
       global.fetch = originalFetch;
       this.cancelController = null;
@@ -331,9 +367,8 @@ export class TranscriptionService {
     const result = await this.pipe(audio, options);
     const text = ((result as { text: string }).text ?? '').trim();
 
-    // Reset WASM heap periodically — ONNX Runtime heap grows monotonically,
-    // causing slowdowns after many recordings. Reload in background so the
-    // next call doesn't block.
+    // Reset pipeline periodically — native ONNX Runtime can accumulate memory over
+    // many inference sessions. Reload in background so the next call doesn't block.
     this.transcriptionCount++;
     if (this.transcriptionCount % TranscriptionService.PIPELINE_RESET_INTERVAL === 0) {
       this.pipe = null;
@@ -349,15 +384,30 @@ export class TranscriptionService {
     // Prevent concurrent model loads (race condition when user changes model mid-transcription)
     if (this.loadingPromise) {
       await this.loadingPromise;
-      // After waiting, check if the loaded model matches what we need — if not, load ours
       const modelId = overrideModelId ?? this.getModelId();
       if (this.loadedModelId === modelId) return;
     }
 
     const modelId = overrideModelId ?? this.getModelId();
     this.loadingPromise = (async () => {
-      this.pipe = await pipeline('automatic-speech-recognition', modelId);
+      const device = this.getPreferredDevice();
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        this.pipe = await pipeline('automatic-speech-recognition', modelId, { device: device as any });
+        this.resolvedDevice = device;
+      } catch (err) {
+        // DirectML can fail on unsupported GPU hardware — fall back to native CPU
+        if (device === 'dml') {
+          console.warn('[Dictator] DirectML not available, falling back to CPU:', err);
+          this.resolvedDevice = 'cpu';
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          this.pipe = await pipeline('automatic-speech-recognition', modelId, { device: 'cpu' as any });
+        } else {
+          throw err;
+        }
+      }
       this.loadedModelId = modelId;
+      console.log('[Dictator] Pipeline loaded (device=%s, model=%s)', this.resolvedDevice, modelId);
     })();
 
     try {
@@ -488,4 +538,3 @@ function encodeWavFast(samples: Float32Array, sampleRate: number): Buffer {
 
   return buf;
 }
-

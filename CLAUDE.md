@@ -64,7 +64,8 @@ The following packages are **native modules** or large non-bundleable packages. 
 |---|---|
 | `uiohook-napi` | Native C++ addon (global hotkeys) |
 | `better-sqlite3` | Native C++ addon (SQLite) |
-| `@xenova/transformers` | Large ONNX runtime, incompatible with Vite bundling |
+| `@huggingface/transformers` | ML pipeline library, must stay external |
+| `onnxruntime-node` | Native ONNX runtime with DirectML GPU support |
 | `openai` | Must be loaded at runtime in main process |
 | `@anthropic-ai/sdk` | Must be loaded at runtime in main process |
 
@@ -72,7 +73,7 @@ The following packages are **native modules** or large non-bundleable packages. 
 
 1. Add to `externals` in `vite.main.config.ts`:
    ```ts
-   external: ['uiohook-napi', '@xenova/transformers', ..., 'new-native-module']
+   external: ['uiohook-napi', '@huggingface/transformers', 'onnxruntime-node', ..., 'new-native-module']
    ```
 
 2. Add to `rebuildConfig.onlyModules` in `forge.config.ts` (only for true native C++ addons):
