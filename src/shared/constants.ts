@@ -71,6 +71,8 @@ export const WHISPER_MODEL_DESCRIPTIONS: Record<string, string> = {
   small: 'Better accuracy, moderate speed',
   medium: 'High accuracy, slower',
   'large-v3': 'Best accuracy, slowest',
+  'distil-medium.en': 'Fast, near-medium quality (English only)',
+  'distil-large-v3': '2x faster than large-v3, similar accuracy',
 };
 
 // Single source of truth for AI model lists — update here when providers release new models

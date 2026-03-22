@@ -14,6 +14,8 @@ const MODEL_MAP: Record<string, string> = {
   medium: 'Xenova/whisper-medium',
   large: 'Xenova/whisper-large-v2',
   'large-v3': 'Xenova/whisper-large-v3',
+  'distil-medium.en': 'distil-whisper/distil-medium.en',
+  'distil-large-v3': 'distil-whisper/distil-large-v3',
 };
 
 env.allowLocalModels = false;
@@ -82,7 +84,7 @@ export class TranscriptionService {
 
   // Ordered from largest/best to smallest — used for fallback selection
   private static readonly MODEL_SIZE_PRIORITY = [
-    'large-v3', 'large', 'medium', 'small', 'base', 'base.en', 'tiny', 'tiny.en',
+    'distil-large-v3', 'large-v3', 'large', 'distil-medium.en', 'medium', 'small', 'base', 'base.en', 'tiny', 'tiny.en',
   ];
 
   /** Find the largest downloaded model key, or null if none downloaded. */
@@ -174,11 +176,29 @@ export class TranscriptionService {
     return MODELS_CACHE_DIR;
   }
 
-  async transcribeFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
+  async transcribeFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number, compressedAudio?: ArrayBuffer): Promise<string> {
     const engine = (this.store.get('transcription.engine') as string) ?? 'local';
+
+    // API path: prefer pre-compressed WebM/Opus from MediaRecorder (~8x smaller upload).
+    // Trade-off: compressed blob is raw recording (no trimSilence/normalizeAudio) because
+    // we can't apply Float32 preprocessing to an already-encoded WebM. OpenAI Whisper API
+    // is robust to silence and volume variations, so faster upload outweighs preprocessing.
+    const compressedSize = compressedAudio ? (Buffer.isBuffer(compressedAudio) ? compressedAudio.length : compressedAudio.byteLength) : 0;
+    if (engine === 'api' && compressedSize > 0) {
+      return this.transcribeApiFromCompressed(compressedAudio);
+    }
+
+    // Preprocess: trim silence edges + normalize peak level before transcription.
+    // Both are near-zero-cost (single pass over Float32) but improve accuracy and reduce
+    // wasted inference time on leading/trailing silence.
+    const raw = ipcBufferToFloat32(audioBuffer);
+    const trimmed = trimSilence(raw, sampleRate);
+    const normalized = normalizeAudio(trimmed);
+    const preprocessed = Buffer.from(normalized.buffer, normalized.byteOffset, normalized.byteLength);
+
     return engine === 'api'
-      ? this.transcribeApiFromBuffer(audioBuffer, sampleRate)
-      : this.transcribeLocalFromBuffer(audioBuffer, sampleRate);
+      ? this.transcribeApiFromBuffer(preprocessed, sampleRate)
+      : this.transcribeLocalFromBuffer(preprocessed, sampleRate);
   }
 
   /** Returns a cached OpenAI client (re-creates only when API key changes). */
@@ -196,9 +216,26 @@ export class TranscriptionService {
     const client = this.getOpenAIClient();
     const language = (this.store.get('transcription.language') as string) ?? 'auto';
 
-    const float32 = ipcBufferToFloat32(audioBuffer);
+    const float32 = ipcBufferToFloat32(audioBuffer); // already preprocessed (trimmed + normalized)
     const wavBuffer = encodeWavFast(float32, sampleRate);
     const file = await toFile(wavBuffer, 'audio.wav', { type: 'audio/wav' });
+
+    const response = await client.audio.transcriptions.create({
+      model: 'whisper-1',
+      file,
+      ...(language !== 'auto' && { language }),
+    });
+
+    return response.text.trim();
+  }
+
+  /** Transcribe using pre-compressed WebM/Opus from MediaRecorder — skips WAV encoding entirely. */
+  private async transcribeApiFromCompressed(compressedAudio: ArrayBuffer): Promise<string> {
+    const client = this.getOpenAIClient();
+    const language = (this.store.get('transcription.language') as string) ?? 'auto';
+
+    const buf = Buffer.isBuffer(compressedAudio) ? compressedAudio : Buffer.from(compressedAudio);
+    const file = await toFile(buf, 'audio.webm', { type: 'audio/webm' });
 
     const response = await client.audio.transcriptions.create({
       model: 'whisper-1',
@@ -217,11 +254,11 @@ export class TranscriptionService {
       await this.loadFromCache(modelId);
     }
 
-    const float32 = ipcBufferToFloat32(audioBuffer);
+    const float32 = ipcBufferToFloat32(audioBuffer); // already preprocessed (trimmed + normalized)
     // Skip resampling if audio is already at 16kHz (renderer records at 16kHz)
     const audio = sampleRate === 16000 ? float32 : resampleFloat32(float32, sampleRate, 16000);
 
-    const durationSeconds = float32.length / 16000;
+    const durationSeconds = float32.length / sampleRate;
     const options: Record<string, unknown> = { task: 'transcribe' };
 
     // Long-form pipeline (chunk_length_s + stride_length_s) is needed only for audio > 30s.
@@ -279,6 +316,69 @@ export class TranscriptionService {
     }
   }
 
+}
+
+/**
+ * Trim leading and trailing silence from audio.
+ * Scans inward from both edges until RMS of a 512-sample window exceeds threshold.
+ * Keeps a safety margin (200ms) to avoid clipping speech onset/offset.
+ */
+function trimSilence(samples: Float32Array, sampleRate: number): Float32Array {
+  const WINDOW = 512;
+  const THRESHOLD = 0.015;
+  const MARGIN = Math.round(sampleRate * 0.2); // 200ms
+
+  // Too short to analyze — return as-is (also handles edge case where length < WINDOW)
+  if (samples.length < WINDOW * 2) return samples;
+
+  function windowRms(start: number): number {
+    const end = Math.min(start + WINDOW, samples.length);
+    let sum = 0;
+    for (let i = start; i < end; i++) sum += samples[i] * samples[i];
+    return Math.sqrt(sum / (end - start));
+  }
+
+  // If no window exceeds threshold (full silence), both loops complete without break,
+  // leaving startIdx=0 and endIdx=samples.length → returns original audio unchanged.
+  // This is fine: ipc-handlers.ts already skips transcription for RMS < 0.01 audio.
+  let startIdx = 0;
+  for (let i = 0; i < samples.length - WINDOW; i += WINDOW) {
+    if (windowRms(i) >= THRESHOLD) { startIdx = i; break; }
+  }
+
+  let endIdx = samples.length;
+  for (let i = samples.length - WINDOW; i > startIdx; i -= WINDOW) {
+    if (windowRms(i) >= THRESHOLD) { endIdx = Math.min(i + WINDOW, samples.length); break; }
+  }
+
+  startIdx = Math.max(0, startIdx - MARGIN);
+  endIdx = Math.min(samples.length, endIdx + MARGIN);
+
+  // Don't trim if the result would be too short (<500ms) — likely a false positive
+  if (endIdx - startIdx < sampleRate * 0.5) return samples;
+
+  return samples.subarray(startIdx, endIdx);
+}
+
+/**
+ * Peak-normalize audio so the loudest sample reaches targetPeak (0.9).
+ * Ensures consistent input level regardless of microphone gain.
+ * Returns the original array if already near target or silent.
+ */
+function normalizeAudio(samples: Float32Array, targetPeak = 0.9): Float32Array {
+  let peak = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const abs = Math.abs(samples[i]);
+    if (abs > peak) peak = abs;
+  }
+
+  // Skip if already near target (within 10%) or audio is near-silent
+  if (peak < 0.001 || (peak > targetPeak * 0.9 && peak < targetPeak * 1.1)) return samples;
+
+  const gain = targetPeak / peak;
+  const out = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) out[i] = samples[i] * gain;
+  return out;
 }
 
 /** Converts IPC-transferred ArrayBuffer (arrives as Node.js Buffer) to Float32Array. */

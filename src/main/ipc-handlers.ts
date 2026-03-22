@@ -164,8 +164,9 @@ export function registerIpcHandlers(
     return { ready: true };
   });
 
-  // Transcription — receives raw audio buffer + sampleRate + recordingId from renderer
-  ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, async (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string) => {
+  // Transcription — receives raw audio buffer + sampleRate + recordingId from renderer.
+  // compressedAudio: optional WebM/Opus blob from MediaRecorder (used for API upload — 8x smaller than WAV).
+  ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, async (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer) => {
     // Silence detection: skip transcription if audio is below speech threshold.
     // Prevents Whisper hallucinations like [muzyka], [music], [cisza] on silence.
     const samples = new Float32Array(audioBuffer);
@@ -179,7 +180,7 @@ export function registerIpcHandlers(
     try {
       let timeoutId: ReturnType<typeof setTimeout>;
       const rawText = await Promise.race([
-        transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate).then((result) => {
+        transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate, compressedAudio).then((result) => {
           clearTimeout(timeoutId);
           return result;
         }),

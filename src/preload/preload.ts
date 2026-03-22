@@ -12,7 +12,7 @@ export interface DictatorAPI {
 
   // Transcription
   checkTranscriptionReady: () => Promise<{ ready: boolean; error?: string }>;
-  transcribeBuffer: (audioBuffer: ArrayBuffer, sampleRate: number, id?: string) => Promise<void>;
+  transcribeBuffer: (audioBuffer: ArrayBuffer, sampleRate: number, id?: string, compressedAudio?: ArrayBuffer) => Promise<void>;
   onTranscriptionResult: (callback: (result: TranscriptionResult) => void) => () => void;
   onTranscriptionError: (callback: (message: string) => void) => () => void;
 
@@ -90,8 +90,8 @@ const api: DictatorAPI = {
 
   // Transcription
   checkTranscriptionReady: () => ipcRenderer.invoke(IPC.TRANSCRIPTION_CHECK_READY),
-  transcribeBuffer: (audioBuffer, sampleRate, id) =>
-    ipcRenderer.invoke(IPC.TRANSCRIPTION_START_BUFFER, audioBuffer, sampleRate, id),
+  transcribeBuffer: (audioBuffer, sampleRate, id, compressedAudio) =>
+    ipcRenderer.invoke(IPC.TRANSCRIPTION_START_BUFFER, audioBuffer, sampleRate, id, compressedAudio),
   onTranscriptionResult: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, result: TranscriptionResult) => callback(result);
     ipcRenderer.on(IPC.TRANSCRIPTION_RESULT, handler);

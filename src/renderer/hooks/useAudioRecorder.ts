@@ -206,12 +206,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         mr.ondataavailable = (e) => {
           if (e.data.size > 0) mediaChunksRef.current.push(e.data);
         };
-        mr.onstop = async () => {
-          const blob = new Blob(mediaChunksRef.current, { type: mimeType });
-          mediaChunksRef.current = [];
-          const buffer = await blob.arrayBuffer();
-          trySendAudio(recordingIdRef.current, buffer);
-        };
+        // onstop is set dynamically in stopRecording() — it collects the WebM blob
+        // for both API upload (compressed audio) and history save
         mr.start();
         mediaRecorderRef.current = mr;
       }
@@ -288,9 +284,25 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     }
     setRecordingStartTime(null);
 
-    // Stop MediaRecorder before stopping stream tracks so it captures all audio
+    // Stop MediaRecorder and collect compressed WebM/Opus blob for API upload.
+    // The blob is available once onstop fires (~<10ms flush).
+    let compressedBlobPromise: Promise<ArrayBuffer> | null = null;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop(); // onstop fires async with the collected blob
+      const mr = mediaRecorderRef.current;
+      compressedBlobPromise = new Promise<ArrayBuffer>((resolve) => {
+        const prevOnStop = mr.onstop;
+        mr.onstop = async (ev) => {
+          const blob = new Blob(mediaChunksRef.current, { type: mr.mimeType });
+          mediaChunksRef.current = [];
+          const buffer = await blob.arrayBuffer();
+          // Still save audio to history via the existing coordination flow
+          trySendAudio(recordingIdRef.current, buffer);
+          resolve(buffer);
+          // Call previous onstop if any (defensive)
+          if (prevOnStop) prevOnStop.call(mr, ev);
+        };
+      });
+      mr.stop();
       mediaRecorderRef.current = null;
     }
 
@@ -337,8 +349,13 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       }
 
       const sampleRate = audioContext.sampleRate;
+      // Collect compressed WebM/Opus blob if available (~<10ms wait for MediaRecorder flush).
+      // API transcription uses this instead of re-encoding to WAV (~8x smaller upload).
+      // For local engine the blob is unused, but the ~10ms await is negligible vs inference time
+      // and the renderer doesn't know which engine is active.
+      const compressedAudio = compressedBlobPromise ? await compressedBlobPromise : undefined;
       // Fire-and-forget: result arrives via onTranscriptionResult event
-      window.dictator.transcribeBuffer(merged.buffer, sampleRate, recordingIdRef.current)
+      window.dictator.transcribeBuffer(merged.buffer, sampleRate, recordingIdRef.current, compressedAudio)
         .catch((err: unknown) => console.error('[Dictator] transcribeBuffer failed:', err));
     }
 
