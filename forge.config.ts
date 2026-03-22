@@ -4,14 +4,73 @@ import { MakerZIP } from '@electron-forge/maker-zip';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import fs from 'fs';
+import path from 'path';
+
+// Modules externalized by Vite — must be copied to the packaged app
+const EXTERNAL_MODULES = [
+  'uiohook-napi',
+  'better-sqlite3',
+  'onnxruntime-node',
+  '@huggingface/transformers',
+  'openai',
+  '@anthropic-ai/sdk',
+  'electron-store',
+];
+
+/**
+ * Recursively copies a module and all its production + optional dependencies
+ * from project node_modules into the build staging directory.
+ */
+function copyModuleWithDeps(moduleName: string, buildPath: string, copied: Set<string>) {
+  if (copied.has(moduleName)) return;
+  copied.add(moduleName);
+
+  const src = path.resolve('node_modules', moduleName);
+  const dest = path.join(buildPath, 'node_modules', moduleName);
+
+  if (!fs.existsSync(src)) return;
+
+  fs.cpSync(src, dest, { recursive: true });
+
+  const pkgPath = path.join(src, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    const deps = [
+      ...Object.keys(pkg.dependencies || {}),
+      ...Object.keys(pkg.optionalDependencies || {}),
+    ];
+    for (const dep of deps) {
+      copyModuleWithDeps(dep, buildPath, copied);
+    }
+  }
+}
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      unpack: '*.{node,dll}',
+    },
+    asarUnpack: [
+      'node_modules/uiohook-napi/**',
+      'node_modules/better-sqlite3/**',
+      'node_modules/onnxruntime-node/**',
+      'node_modules/sharp/**',
+      'node_modules/@img/**',
+    ],
     name: 'The Dictator',
   },
   rebuildConfig: {
     onlyModules: ['better-sqlite3', 'uiohook-napi'],
+  },
+  hooks: {
+    packageAfterCopy: async (_config, buildPath) => {
+      const copied = new Set<string>();
+      for (const mod of EXTERNAL_MODULES) {
+        copyModuleWithDeps(mod, buildPath, copied);
+      }
+      console.log(`[forge] Copied ${copied.size} external modules to packaged app`);
+    },
   },
   makers: [
     new MakerSquirrel({}),
