@@ -25,16 +25,16 @@ const INIT_SCRIPT = [
   `Write-Output '${MARKER}'`,
 ].join('\n');
 
-const CAPTURE_CMD = `$h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder(256); [WinCapE]::GetClassName($h,$sb,256)|Out-Null; $pid=0; [WinCapE]::GetWindowThreadProcessId($h,[ref]$pid)|Out-Null; $pname=try{[System.Diagnostics.Process]::GetProcessById($pid).ProcessName}catch{'unknown'}; Write-Output "$h|$($sb.ToString())|$pname"`;
+const CAPTURE_CMD = `$h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder(256); [WinCapE]::GetClassName($h,$sb,256)|Out-Null; $wpid=0; [WinCapE]::GetWindowThreadProcessId($h,[ref]$wpid)|Out-Null; $pname=try{[System.Diagnostics.Process]::GetProcessById($wpid).ProcessName}catch{'unknown'}; Write-Output "$h|$($sb.ToString())|$pname"`;
 
 function buildPasteCmd(hwnd: string): string {
-  return `$t=[IntPtr]${hwnd}; $fg=[PW]::GetForegroundWindow(); $ft=[PW]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $mt=[PW]::GetCurrentThreadId(); $att=$false; if($ft -ne $mt){$att=[PW]::AttachThreadInput($mt,$ft,$true)}; if([PW]::IsIconic($t)){[PW]::ShowWindow($t,9)}; [PW]::SetForegroundWindow($t); if($att){[PW]::AttachThreadInput($mt,$ft,$false)}; Start-Sleep -Milliseconds 80; $txt=[System.Windows.Forms.Clipboard]::GetText(); if($txt){[PW]::T($txt)}`;
+  return `$t=[IntPtr]${hwnd}; $fg=[PW]::GetForegroundWindow(); $ft=[PW]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $mt=[PW]::GetCurrentThreadId(); $att=$false; if($ft -ne $mt){[void][PW]::AttachThreadInput($mt,$ft,$true);$att=$true}; if([PW]::IsIconic($t)){[void][PW]::ShowWindow($t,9)}; [void][PW]::SetForegroundWindow($t); if($att){[void][PW]::AttachThreadInput($mt,$ft,$false)}; Start-Sleep -Milliseconds 150; $txt=[System.Windows.Forms.Clipboard]::GetText(); if($txt){[PW]::T($txt)}`;
 }
 
 // Fallback: cold-start PowerShell for captureTarget (used when persistent process isn't ready)
 const GET_HWND_ARGS = [
   '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
-  `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;using System.Diagnostics;public class WinCapE{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern int GetClassName(IntPtr h,StringBuilder s,int n);[DllImport("user32.dll")]public static extern int GetWindowThreadProcessId(IntPtr h,out int pid);}'; $h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder(256); [WinCapE]::GetClassName($h,$sb,256)|Out-Null; $pid=0; [WinCapE]::GetWindowThreadProcessId($h,[ref]$pid)|Out-Null; $pname=try{[System.Diagnostics.Process]::GetProcessById($pid).ProcessName}catch{'unknown'}; "$h|$($sb.ToString())|$pname"`,
+  `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;using System.Diagnostics;public class WinCapE{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern int GetClassName(IntPtr h,StringBuilder s,int n);[DllImport("user32.dll")]public static extern int GetWindowThreadProcessId(IntPtr h,out int pid);}'; $h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder(256); [WinCapE]::GetClassName($h,$sb,256)|Out-Null; $wpid=0; [WinCapE]::GetWindowThreadProcessId($h,[ref]$wpid)|Out-Null; $pname=try{[System.Diagnostics.Process]::GetProcessById($wpid).ProcessName}catch{'unknown'}; "$h|$($sb.ToString())|$pname"`,
 ];
 
 export class PasteService {
@@ -45,6 +45,9 @@ export class PasteService {
   private commandQueue: Array<{ cmd: string; resolve: (output: string) => void; reject: (err: Error) => void }> = [];
   private currentCommand: { resolve: (output: string) => void; reject: (err: Error) => void } | null = null;
   private outputBuffer = '';
+  private destroyed = false;
+  private spawnAttempts = 0;
+  private static readonly MAX_SPAWN_ATTEMPTS = 3;
 
   constructor() {
     if (process.platform === 'win32') {
@@ -53,7 +56,11 @@ export class PasteService {
   }
 
   private spawnPersistentProcess(): void {
-    const ps = spawn('powershell', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden'], {
+    const ps = spawn('powershell', [
+      '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden',
+      '-Command',
+      '& { while ($true) { $line = [Console]::ReadLine(); if ($line -eq $null) { break }; try { Invoke-Expression $line } catch { Write-Error $_ } } }',
+    ], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -68,6 +75,7 @@ export class PasteService {
       console.log('[Dictator] Persistent PowerShell exited with code:', code);
       this.psProcess = null;
       this.psReady = false;
+      this.outputBuffer = '';
       const exitErr = new Error('PowerShell process exited');
       // Reject current command
       if (this.currentCommand) {
@@ -79,6 +87,13 @@ export class PasteService {
         queued.reject(exitErr);
       }
       this.commandQueue = [];
+      // Auto-respawn unless app is shutting down or max attempts reached
+      if (!this.destroyed && this.spawnAttempts < PasteService.MAX_SPAWN_ATTEMPTS) {
+        console.log('[Dictator] Respawning persistent PowerShell in 1s (attempt %d/%d)...', this.spawnAttempts + 1, PasteService.MAX_SPAWN_ATTEMPTS);
+        setTimeout(() => {
+          if (!this.destroyed && !this.psProcess) this.spawnPersistentProcess();
+        }, 1000);
+      }
     });
 
     ps.stdout?.on('data', (data: Buffer) => {
@@ -93,30 +108,32 @@ export class PasteService {
     });
 
     this.psProcess = ps;
+    this.spawnAttempts++;
 
     // Send init script to compile Add-Type definitions
     ps.stdin?.write(INIT_SCRIPT + '\n');
   }
 
   private processOutput(): void {
-    const markerIdx = this.outputBuffer.indexOf(MARKER);
-    if (markerIdx === -1) return;
+    let markerIdx: number;
+    while ((markerIdx = this.outputBuffer.indexOf(MARKER)) !== -1) {
+      const output = this.outputBuffer.substring(0, markerIdx).trim();
+      this.outputBuffer = this.outputBuffer.substring(markerIdx + MARKER.length).replace(/^\r?\n/, '');
 
-    const output = this.outputBuffer.substring(0, markerIdx).trim();
-    this.outputBuffer = this.outputBuffer.substring(markerIdx + MARKER.length).replace(/^\r?\n/, '');
+      if (!this.psReady) {
+        // First marker = init complete
+        this.psReady = true;
+        this.spawnAttempts = 0;
+        console.log('[Dictator] Persistent PowerShell ready (Add-Type compiled)');
+        this.drainQueue();
+        continue;
+      }
 
-    if (!this.psReady) {
-      // First marker = init complete
-      this.psReady = true;
-      console.log('[Dictator] Persistent PowerShell ready (Add-Type compiled)');
-      this.drainQueue();
-      return;
-    }
-
-    if (this.currentCommand) {
-      this.currentCommand.resolve(output);
-      this.currentCommand = null;
-      this.drainQueue();
+      if (this.currentCommand) {
+        this.currentCommand.resolve(output);
+        this.currentCommand = null;
+        this.drainQueue();
+      }
     }
   }
 
@@ -143,11 +160,16 @@ export class PasteService {
       }
 
       let settled = false;
+      const wrappedResolve = (output: string) => { if (settled) return; settled = true; clearTimeout(timer); resolve(output); };
+      const wrappedReject = (err: Error) => { if (settled) return; settled = true; clearTimeout(timer); reject(err); };
+
+      const entry = { cmd, resolve: wrappedResolve, reject: wrappedReject };
+
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
-        // Remove from queue or clear current — use token-based matching
-        if (this.currentCommand && this.currentCommand === entry) {
+        // Match by resolve reference — execImmediate stores the same function objects
+        if (this.currentCommand && this.currentCommand.resolve === wrappedResolve) {
           this.currentCommand = null;
           this.drainQueue();
         } else {
@@ -156,11 +178,6 @@ export class PasteService {
         }
         reject(new Error('PowerShell command timed out'));
       }, timeout);
-
-      const wrappedResolve = (output: string) => { if (settled) return; settled = true; clearTimeout(timer); resolve(output); };
-      const wrappedReject = (err: Error) => { if (settled) return; settled = true; clearTimeout(timer); reject(err); };
-
-      const entry = { cmd, resolve: wrappedResolve, reject: wrappedReject };
 
       if (this.psReady && !this.currentCommand) {
         this.execImmediate(entry.cmd, entry.resolve, entry.reject);
@@ -257,6 +274,7 @@ export class PasteService {
 
   /** Gracefully shut down the persistent PowerShell process. Call on app quit. */
   destroy(): void {
+    this.destroyed = true;
     if (this.psProcess) {
       try {
         this.psProcess.stdin?.end('exit\n');

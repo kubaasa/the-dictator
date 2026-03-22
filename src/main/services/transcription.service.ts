@@ -40,10 +40,6 @@ export class TranscriptionService {
   private transcriptionCount = 0;
   private static readonly PIPELINE_RESET_INTERVAL = 8;
 
-  // Resolved ONNX execution device: 'dml' (DirectML GPU) or 'cpu'.
-  // Detected on first pipeline load, cached for subsequent loads.
-  private resolvedDevice: string | null = null;
-
   constructor(private store: Store<AppSettings>) {
     env.cacheDir = MODELS_CACHE_DIR;
   }
@@ -65,7 +61,7 @@ export class TranscriptionService {
     console.log('[Dictator] Preloading local model in background…');
     const t0 = Date.now();
     await this.loadFromCache(modelId);
-    console.log('[Dictator] Model preloaded in %dms (device=%s)', Date.now() - t0, this.resolvedDevice);
+    console.log('[Dictator] Model preloaded in %dms', Date.now() - t0);
   }
 
   private getModelId(): string {
@@ -118,12 +114,6 @@ export class TranscriptionService {
     return { modelId: MODEL_MAP[bestSize], fallback: true };
   }
 
-  /** Pick the best ONNX device: DirectML on Windows (GPU), otherwise CPU. */
-  private getPreferredDevice(): string {
-    if (this.resolvedDevice) return this.resolvedDevice;
-    return process.platform === 'win32' ? 'dml' : 'cpu';
-  }
-
   async downloadModel(onProgress: (pct: number) => void): Promise<void> {
     const modelId = this.getModelId();
 
@@ -147,11 +137,11 @@ export class TranscriptionService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     global.fetch = (input: any, init?: any) => originalFetch(input, { ...init, signal });
 
-    const device = this.getPreferredDevice();
     try {
+    // Download with CPU first — reliable, and caches model files for DML reuse.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.pipe = await pipeline('automatic-speech-recognition', modelId, {
-      device: device as any,
+      device: 'cpu' as any,
       progress_callback: (info: { status: string; file?: string; loaded?: number; total?: number }) => {
         if (info.status === 'progress' && info.file != null) {
           fileBytes.set(info.file, {
@@ -174,36 +164,13 @@ export class TranscriptionService {
         }
       },
     });
-    this.resolvedDevice = device;
+    this.resolvedDevice = 'cpu';
     this.loadedModelId = modelId;
-    } catch (err) {
-      // DirectML session creation can fail on unsupported GPU — retry with CPU.
-      // Files are already cached from the first attempt, so no re-download happens.
-      if (device === 'dml') {
-        console.warn('[Dictator] DirectML failed during download, falling back to CPU:', err);
-        this.resolvedDevice = 'cpu';
-        this.pipe = await pipeline('automatic-speech-recognition', modelId, {
-          device: 'cpu' as any,
-          progress_callback: (info: { status: string; file?: string; loaded?: number; total?: number }) => {
-            if (info.status === 'progress' && info.file != null) {
-              fileBytes.set(info.file, { loaded: info.loaded ?? 0, total: info.total ?? 0 });
-              const largeFiles = [...fileBytes.values()].filter((f) => f.total > LARGE_FILE_THRESHOLD);
-              if (largeFiles.length === 0) return;
-              const totalBytes = largeFiles.reduce((s, f) => s + f.total, 0);
-              const loadedBytes = largeFiles.reduce((s, f) => s + f.loaded, 0);
-              const pct = Math.min(Math.round((loadedBytes / totalBytes) * 100), 99);
-              if (pct > hwm) { hwm = pct; onProgress(pct); }
-            }
-          },
-        });
-        this.loadedModelId = modelId;
-      } else {
-        throw err;
-      }
     } finally {
       global.fetch = originalFetch;
       this.cancelController = null;
     }
+
   }
 
   cancelDownload(): void {
@@ -390,24 +357,9 @@ export class TranscriptionService {
 
     const modelId = overrideModelId ?? this.getModelId();
     this.loadingPromise = (async () => {
-      const device = this.getPreferredDevice();
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        this.pipe = await pipeline('automatic-speech-recognition', modelId, { device: device as any });
-        this.resolvedDevice = device;
-      } catch (err) {
-        // DirectML can fail on unsupported GPU hardware — fall back to native CPU
-        if (device === 'dml') {
-          console.warn('[Dictator] DirectML not available, falling back to CPU:', err);
-          this.resolvedDevice = 'cpu';
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          this.pipe = await pipeline('automatic-speech-recognition', modelId, { device: 'cpu' as any });
-        } else {
-          throw err;
-        }
-      }
+      this.pipe = await pipeline('automatic-speech-recognition', modelId);
       this.loadedModelId = modelId;
-      console.log('[Dictator] Pipeline loaded (device=%s, model=%s)', this.resolvedDevice, modelId);
+      console.log('[Dictator] Pipeline loaded (model=%s)', modelId);
     })();
 
     try {
