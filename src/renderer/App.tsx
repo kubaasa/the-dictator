@@ -10,7 +10,7 @@ import { WidgetPage } from './components/WidgetPage';
 import { MicrophoneSelector } from './components/MicrophoneSelector';
 import { ScanLines, NoiseOverlay, Vignette, RecIndicator } from './components/RecEffects';
 import { ToastContainer, useToast } from './components/Toast';
-import { FirstRunModal } from './components/FirstRunModal';
+import { OnboardingWizard } from './components/OnboardingWizard';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
@@ -54,10 +54,14 @@ export function App() {
   const audioRecorder = useAudioRecorder(micSelector.selectedDeviceId);
   const { toasts, removeToast } = useToast();
   const [showFirstRun, setShowFirstRun] = useState(false);
+  const [isFirstRun, setIsFirstRun] = useState(false);
 
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
-      if (!s.general?.firstRunComplete) setShowFirstRun(true);
+      if (!s.general?.firstRunComplete) {
+        setIsFirstRun(true);
+        setShowFirstRun(true);
+      }
     });
   }, []);
 
@@ -74,7 +78,7 @@ export function App() {
       <Vignette />
 
       {/* Sidebar — full height */}
-      <Sidebar activeView={activeView} onNavigate={setActiveView} />
+      <Sidebar activeView={activeView} onNavigate={setActiveView} onSetupGuide={() => setShowFirstRun(true)} />
 
       {/* Right column: header + content */}
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
@@ -112,7 +116,7 @@ export function App() {
         </div>
       </div>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      {showFirstRun && <FirstRunModal onComplete={() => { setShowFirstRun(false); setActiveView('modes'); }} />}
+      {showFirstRun && <OnboardingWizard onComplete={(micId) => { if (micId) micSelector.setSelectedDeviceId(micId); setShowFirstRun(false); setActiveView('modes'); }} onClose={isFirstRun ? undefined : () => setShowFirstRun(false)} />}
     </div>
     </ErrorBoundary>
   );

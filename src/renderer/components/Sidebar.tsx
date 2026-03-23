@@ -8,6 +8,7 @@ export type { View };
 interface SidebarProps {
   activeView: View;
   onNavigate: (view: View) => void;
+  onSetupGuide?: () => void;
 }
 
 interface NavItem {
@@ -65,7 +66,7 @@ const navItems: NavItem[] = [
   },
 ];
 
-export function Sidebar({ activeView, onNavigate }: SidebarProps) {
+export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -94,23 +95,40 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Toggle button */}
-      <button
-        onClick={() => setCollapsed((c) => !c)}
-        className="flex items-center justify-center px-3 py-2 w-full text-neutral-600 hover:text-neutral-300 transition-colors border-l-2 border-transparent"
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        <svg
-          className={`h-4 w-4 shrink-0 transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={1.5}
-          stroke="currentColor"
+      {/* Bottom actions — icon-only with tooltip */}
+      <div className="flex items-center justify-center gap-1 px-2 py-2">
+        {/* Setup Guide */}
+        {onSetupGuide && (
+          <button
+            onClick={onSetupGuide}
+            title="Setup Guide"
+            aria-label="Setup Guide"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+          >
+            <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
+            </svg>
+          </button>
+        )}
+
+        {/* Collapse/Expand toggle */}
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-        </svg>
-        {!collapsed && <span className="ml-3 font-mono text-[11px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">Collapse</span>}
-      </button>
+          <svg
+            className={`h-4 w-4 shrink-0 transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+          </svg>
+        </button>
+      </div>
 
       {/* App name + timecode */}
       {!collapsed && (
