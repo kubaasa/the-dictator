@@ -4,6 +4,26 @@ import type { AppSettings } from '../../shared/types';
 import Store from 'electron-store';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { getApiKey } from './secure-storage';
+
+/** Retry on transient network/server errors (5xx, timeout). Auth errors (401/403) are never retried. */
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 1000): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const status = (err as { status?: number }).status;
+      if (status === 401 || status === 403) throw err;
+      if (attempt < maxAttempts) {
+        console.warn('[Dictator] Retry attempt %d/%d after error:', attempt, maxAttempts, err instanceof Error ? err.message : err);
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastError;
+}
 
 const MODEL_MAP: Record<string, string> = {
   tiny: 'onnx-community/whisper-tiny',
@@ -112,6 +132,11 @@ export class TranscriptionService {
     return { modelId: MODEL_MAP[bestSize], fallback: true };
   }
 
+  // TODO: Downloaded ONNX model files are not verified against checksums.
+  // HuggingFace doesn't expose simple per-file checksums in its API, so proper
+  // integrity verification would require parsing the repo's LFS metadata.
+  // For now, @huggingface/transformers handles partial download cleanup on abort,
+  // but corrupted-in-transit files could cause silent transcription failures.
   async downloadModel(onProgress: (pct: number) => void): Promise<void> {
     const modelId = this.getModelId();
 
@@ -126,14 +151,18 @@ export class TranscriptionService {
     let hwm = -1;
     const fileBytes = new Map<string, { loaded: number; total: number }>();
 
-    // Monkey-patch global.fetch to inject AbortSignal — the only way to stop
-    // the library's internal HTTP requests since it calls fetch() directly without
-    // exposing any cancellation API.
+    // Scoped fetch override: inject AbortSignal ONLY into HuggingFace model download
+    // requests. Other fetch calls (Groq API, Ollama, etc.) pass through untouched.
+    // This prevents cancelling unrelated requests when the user cancels a model download.
     this.cancelController = new AbortController();
     const { signal } = this.cancelController;
     const originalFetch = global.fetch;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    global.fetch = (input: any, init?: any) => originalFetch(input, { ...init, signal });
+    global.fetch = (input: any, init?: any) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as { url?: string })?.url ?? '';
+      const isHfRequest = url.includes('huggingface.co') || url.includes('hf.co');
+      return originalFetch(input, { ...init, ...(isHfRequest ? { signal } : {}) });
+    };
 
     try {
     // Download with CPU first — reliable, and caches model files for DML reuse.
@@ -173,6 +202,10 @@ export class TranscriptionService {
 
   cancelDownload(): void {
     this.cancelController?.abort();
+    // Reset internal state so a stale partial pipeline isn't used for transcription.
+    // @huggingface/transformers handles partial file cleanup on disk automatically.
+    this.pipe = null;
+    this.loadedModelId = null;
   }
 
   getModelsCacheDir(): string {
@@ -206,7 +239,7 @@ export class TranscriptionService {
 
   /** Returns a cached Groq client (OpenAI-compatible SDK with Groq base URL). */
   private getGroqClient(): OpenAI {
-    const apiKey = (this.store.get('transcription.groqApiKey') as string) ?? '';
+    const apiKey = getApiKey(this.store, 'transcription.groqApiKey');
     if (!apiKey) throw new Error('Groq API key is not set. Go to Modes and enter your key.');
     if (!this.groqClient || this.groqClientKey !== apiKey) {
       this.groqClient = new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' });
@@ -216,36 +249,40 @@ export class TranscriptionService {
   }
 
   private async transcribeGroqFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
-    const client = this.getGroqClient();
-    const language = (this.store.get('transcription.language') as string) ?? 'auto';
+    return withRetry(async () => {
+      const client = this.getGroqClient();
+      const language = (this.store.get('transcription.language') as string) ?? 'auto';
 
-    const float32 = ipcBufferToFloat32(audioBuffer);
-    const wavBuffer = encodeWavFast(float32, sampleRate);
-    const file = await toFile(wavBuffer, 'audio.wav', { type: 'audio/wav' });
+      const float32 = ipcBufferToFloat32(audioBuffer);
+      const wavBuffer = encodeWavFast(float32, sampleRate);
+      const file = await toFile(wavBuffer, 'audio.wav', { type: 'audio/wav' });
 
-    const response = await client.audio.transcriptions.create({
-      model: 'whisper-large-v3',
-      file,
-      ...(language !== 'auto' && { language }),
+      const response = await client.audio.transcriptions.create({
+        model: 'whisper-large-v3',
+        file,
+        ...(language !== 'auto' && { language }),
+      });
+
+      return response.text.trim();
     });
-
-    return response.text.trim();
   }
 
   private async transcribeGroqFromCompressed(compressedAudio: ArrayBuffer): Promise<string> {
-    const client = this.getGroqClient();
-    const language = (this.store.get('transcription.language') as string) ?? 'auto';
+    return withRetry(async () => {
+      const client = this.getGroqClient();
+      const language = (this.store.get('transcription.language') as string) ?? 'auto';
 
-    const buf = Buffer.isBuffer(compressedAudio) ? compressedAudio : Buffer.from(compressedAudio);
-    const file = await toFile(buf, 'audio.webm', { type: 'audio/webm' });
+      const buf = Buffer.isBuffer(compressedAudio) ? compressedAudio : Buffer.from(compressedAudio);
+      const file = await toFile(buf, 'audio.webm', { type: 'audio/webm' });
 
-    const response = await client.audio.transcriptions.create({
-      model: 'whisper-large-v3',
-      file,
-      ...(language !== 'auto' && { language }),
+      const response = await client.audio.transcriptions.create({
+        model: 'whisper-large-v3',
+        file,
+        ...(language !== 'auto' && { language }),
+      });
+
+      return response.text.trim();
     });
-
-    return response.text.trim();
   }
 
   private async transcribeLocalFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
@@ -280,7 +317,7 @@ export class TranscriptionService {
     // Normal speech: ~2-4 tokens/s, 8 tokens/s is a safe margin.
     // Normal transcriptions hit EOS well before this limit (zero impact).
     // Hallucinations: cut from up to 448 tokens down to a reasonable cap (saves 1-5s).
-    options.max_new_tokens = Math.max(50, Math.ceil(durationSeconds * 8));
+    options.max_new_tokens = Math.min(4096, Math.max(50, Math.ceil(durationSeconds * 8)));
 
     const result = await this.pipe(audio, options);
     const text = ((result as { text: string }).text ?? '').trim();

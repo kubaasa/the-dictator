@@ -24,6 +24,12 @@ const MODIFIER_CODES = new Set([
   'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight',
 ]);
 
+// Known system shortcuts that may conflict with app hotkeys
+const SYSTEM_SHORTCUTS = new Set([
+  'Ctrl+C', 'Ctrl+V', 'Ctrl+Z', 'Ctrl+S', 'Ctrl+A', 'Ctrl+X',
+  'Alt+F4', 'Alt+Tab',
+]);
+
 const KEY_DISPLAY_SYMBOLS: Record<string, string> = {
   Space: 'Space', Escape: 'Esc', Enter: '↵', Tab: 'Tab', Backspace: '⌫',
   Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
@@ -252,6 +258,22 @@ export function ShortcutsPage() {
     setError('');
   }, [shortcuts, saveShortcuts]);
 
+  /** Returns a warning string if the shortcut conflicts with a system shortcut or another configured shortcut. */
+  const getShortcutWarning = useCallback((key: ShortcutKey): string | null => {
+    const combo = shortcuts[key];
+    if (!combo) return null;
+    if (SYSTEM_SHORTCUTS.has(combo)) {
+      return `"${combo}" is a common system shortcut and may not work as expected`;
+    }
+    const duplicate = Object.entries(shortcuts).find(
+      ([k, v]) => k !== key && v === combo,
+    );
+    if (duplicate) {
+      return `"${combo}" is also used by "${duplicate[0]}" — this will cause conflicts`;
+    }
+    return null;
+  }, [shortcuts]);
+
   const isInactive = (key: ShortcutKey): boolean => {
     if (hotkeyMode === 'toggle') return key === 'pushToTalk';
     if (hotkeyMode === 'push-to-talk') return key === 'toggleRecording' || key === 'cancelRecording';
@@ -261,57 +283,63 @@ export function ShortcutsPage() {
   const renderShortcutRow = (config: ShortcutConfig) => {
     const inactive = isInactive(config.key);
     const isListening = !inactive && listeningFor === config.key;
+    const warning = !inactive ? getShortcutWarning(config.key) : null;
     return (
-      <div
-        key={config.key}
-        className={`flex items-center justify-between rounded-lg border px-5 py-4 transition-opacity ${
-          inactive
-            ? 'border-neutral-800/50 bg-[#0f0f0f] opacity-35 pointer-events-none select-none'
-            : 'border-neutral-800 bg-[#141414]'
-        }`}
-      >
-        <div className="flex flex-col gap-0.5">
-          <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">{config.label}</span>
-          <span className="text-xs text-neutral-500">{config.description}</span>
-        </div>
+      <div key={config.key} className="flex flex-col gap-1">
+        <div
+          className={`flex items-center justify-between rounded-lg border px-5 py-4 transition-opacity ${
+            inactive
+              ? 'border-neutral-800/50 bg-[#0f0f0f] opacity-35 pointer-events-none select-none'
+              : 'border-neutral-800 bg-[#141414]'
+          }`}
+        >
+          <div className="flex flex-col gap-0.5">
+            <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">{config.label}</span>
+            <span className="text-xs text-neutral-500">{config.description}</span>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => resetShortcut(config.key)}
-            className={`p-1 rounded transition-colors ${
-              inactive
-                ? 'text-neutral-700 pointer-events-none'
-                : 'text-white hover:text-neutral-400'
-            }`}
-            title="Reset to default"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="5" y1="4" x2="5" y2="20" />
-              <polyline points="11 8 7 12 11 16" />
-              <path d="M7 12h10a3 3 0 0 0 0-6h-2" />
-            </svg>
-          </button>
-          <div
-            ref={isListening ? inputRef : undefined}
-            tabIndex={inactive ? -1 : 0}
-            onClick={() => !inactive && startListening(config.key)}
-            className={`min-w-[200px] rounded-md border px-4 py-2 flex items-center justify-center text-sm font-mono transition-colors ${
-              isListening
-                ? 'cursor-pointer border-red-600 bg-red-600/10 text-red-400'
-                : inactive
-                  ? 'cursor-default border-neutral-800 bg-neutral-900 text-neutral-600'
-                  : 'cursor-pointer border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600'
-            }`}
-            style={shakingKey === config.key ? { animation: 'sc-shake 0.3s ease-in-out' } : undefined}
-          >
-            {isListening
-              ? (pendingKeys
-                  ? <ShortcutDisplay combo={pendingKeys} />
-                  : config.key === 'pushToTalk' ? 'MODIFIER + KEY...' : config.key === 'cancelRecording' ? 'PRESS ANY KEY...' : 'AWAITING INPUT...')
-              : <ShortcutDisplay combo={shortcuts[config.key]} />
-            }
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => resetShortcut(config.key)}
+              className={`p-1 rounded transition-colors ${
+                inactive
+                  ? 'text-neutral-700 pointer-events-none'
+                  : 'text-white hover:text-neutral-400'
+              }`}
+              title="Reset to default"
+              aria-label={`Reset ${config.label} shortcut to default`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="4" x2="5" y2="20" />
+                <polyline points="11 8 7 12 11 16" />
+                <path d="M7 12h10a3 3 0 0 0 0-6h-2" />
+              </svg>
+            </button>
+            <div
+              ref={isListening ? inputRef : undefined}
+              tabIndex={inactive ? -1 : 0}
+              onClick={() => !inactive && startListening(config.key)}
+              className={`min-w-[200px] rounded-md border px-4 py-2 flex items-center justify-center text-sm font-mono transition-colors ${
+                isListening
+                  ? 'cursor-pointer border-red-600 bg-red-600/10 text-red-400'
+                  : inactive
+                    ? 'cursor-default border-neutral-800 bg-neutral-900 text-neutral-600'
+                    : 'cursor-pointer border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600'
+              }`}
+              style={shakingKey === config.key ? { animation: 'sc-shake 0.3s ease-in-out' } : undefined}
+            >
+              {isListening
+                ? (pendingKeys
+                    ? <ShortcutDisplay combo={pendingKeys} />
+                    : config.key === 'pushToTalk' ? 'MODIFIER + KEY...' : config.key === 'cancelRecording' ? 'PRESS ANY KEY...' : 'AWAITING INPUT...')
+                : <ShortcutDisplay combo={shortcuts[config.key]} />
+              }
+            </div>
           </div>
         </div>
+        {warning && (
+          <p className="ml-5 text-xs text-amber-500 font-mono">{warning}</p>
+        )}
       </div>
     );
   };
@@ -372,7 +400,7 @@ export function ShortcutsPage() {
       </section>
 
       {error && (
-        <p className="text-sm text-red-400">{error}</p>
+        <p role="alert" className="text-sm text-red-400">{error}</p>
       )}
 
     </main>

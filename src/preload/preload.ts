@@ -43,7 +43,7 @@ export interface DictatorAPI {
 
   // History
   history: {
-    getAll: () => Promise<{ success: boolean; data: RecordingEntry[]; error?: string }>;
+    getAll: (limit?: number, offset?: number) => Promise<{ success: boolean; data: RecordingEntry[]; error?: string }>;
     getStats: () => Promise<{ success: boolean; data: HistoryStats | null; error?: string }>;
     delete: (id: string) => Promise<{ success: boolean; found?: boolean; audioDeleted?: boolean; audioError?: string; error?: string }>;
     search: (query: string) => Promise<{ success: boolean; data: RecordingEntry[]; error?: string }>;
@@ -66,6 +66,15 @@ export interface DictatorAPI {
   quit: () => void;
   showSettings: () => void;
   openModelsFolder: () => void;
+
+  // Updates
+  update: {
+    check: () => Promise<{ available: boolean; currentVersion: string; latestVersion?: string; downloadUrl?: string; releaseNotes?: string }>;
+    getInfo: () => Promise<{ available: boolean; currentVersion: string; latestVersion?: string; downloadUrl?: string; releaseNotes?: string }>;
+  };
+
+  // Notifications
+  onErrorNotification: (callback: (message: string) => void) => () => void;
 
   // Window controls
   minimize: () => void;
@@ -158,7 +167,7 @@ const api: DictatorAPI = {
 
   // History
   history: {
-    getAll: () => ipcRenderer.invoke(IPC.HISTORY_GET_ALL),
+    getAll: (limit?: number, offset?: number) => ipcRenderer.invoke(IPC.HISTORY_GET_ALL, limit, offset),
     getStats: () => ipcRenderer.invoke(IPC.HISTORY_GET_STATS),
     delete: (id) => ipcRenderer.invoke(IPC.HISTORY_DELETE, id),
     search: (query) => ipcRenderer.invoke(IPC.HISTORY_SEARCH, query),
@@ -181,6 +190,19 @@ const api: DictatorAPI = {
   quit: () => ipcRenderer.send(IPC.APP_QUIT),
   showSettings: () => ipcRenderer.send(IPC.APP_SHOW_SETTINGS),
   openModelsFolder: () => ipcRenderer.send(IPC.APP_OPEN_MODELS_FOLDER),
+
+  // Updates
+  update: {
+    check: () => ipcRenderer.invoke(IPC.UPDATE_CHECK),
+    getInfo: () => ipcRenderer.invoke(IPC.UPDATE_GET_INFO),
+  },
+
+  // Notifications
+  onErrorNotification: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: string) => callback(message);
+    ipcRenderer.on(IPC.NOTIFICATION_ERROR, handler);
+    return () => ipcRenderer.removeListener(IPC.NOTIFICATION_ERROR, handler);
+  },
 
   // Window controls
   minimize: () => ipcRenderer.send(IPC.WINDOW_MINIMIZE),

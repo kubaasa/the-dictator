@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, shell, clipboard, app, screen } from 'electron';
+import { ipcMain, BrowserWindow, shell, clipboard, app, screen, net } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { IPC } from '../shared/constants';
@@ -8,8 +8,19 @@ import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
 import { HotkeyService } from './services/hotkey.service';
 import { HistoryService } from './services/history.service';
+import { UpdateService } from './services/update.service';
+import { encryptSettingsKeys, decryptSettingsForRenderer, getApiKey } from './services/secure-storage';
 import Store from 'electron-store';
 import { DEFAULT_SETTINGS } from '../shared/types';
+
+/** Only allow safe characters in recording IDs to prevent path traversal. */
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+function sanitizeId(id: string): string {
+  if (!id || !SAFE_ID_RE.test(id)) {
+    throw new Error(`Invalid recording ID: "${id}"`);
+  }
+  return id;
+}
 
 export function getOverlaySize(widget: WidgetType): [number, number] {
   if (widget === 'maxi') return [520, 170];
@@ -30,7 +41,8 @@ export function clampToVisibleArea(x: number, y: number, w: number, h: number): 
   };
 }
 
-const TRANSCRIPTION_TIMEOUT_MS = 30_000;
+const TRANSCRIPTION_TIMEOUT_MIN_MS = 30_000;
+const TRANSCRIPTION_TIMEOUT_MAX_MS = 120_000;
 const AI_TIMEOUT_MS = 30_000;
 
 export function registerIpcHandlers(
@@ -43,9 +55,13 @@ export function registerIpcHandlers(
   getOverlayWindow: () => BrowserWindow | null,
   historyService: HistoryService,
   getCurrentState: () => RecordingState,
+  updateService: UpdateService,
 ): void {
   const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
+
+  // Guard: prevent concurrent transcriptions from spamming the expensive pipeline
+  let transcriptionInProgress = false;
 
   // Deduplicated idle-transition timeout — prevents stale setTimeout callbacks
   // from resetting state after a new recording has already started
@@ -96,16 +112,53 @@ export function registerIpcHandlers(
       store.set('dictation', migrated);
     }
 
-    return store.store;
+    return decryptSettingsForRenderer(store.store);
   });
 
   ipcMain.handle(IPC.SETTINGS_SET, (_event, settings: Partial<AppSettings>) => {
+    // Runtime validation: only allow known top-level keys from AppSettings
+    const ALLOWED_KEYS = new Set<string>([
+      'transcription', 'ai', 'hotkey', 'dictation', 'vocabulary', 'widget', 'general',
+    ]);
+
+    for (const key of Object.keys(settings)) {
+      if (!ALLOWED_KEYS.has(key)) {
+        throw new Error(`Unknown settings key: "${key}"`);
+      }
+    }
+
+    // Basic type validation for each known section
+    if (settings.transcription !== undefined && (typeof settings.transcription !== 'object' || settings.transcription === null)) {
+      throw new Error('Invalid value for "transcription": expected object');
+    }
+    if (settings.ai !== undefined && (typeof settings.ai !== 'object' || settings.ai === null)) {
+      throw new Error('Invalid value for "ai": expected object');
+    }
+    if (settings.hotkey !== undefined && (typeof settings.hotkey !== 'object' || settings.hotkey === null)) {
+      throw new Error('Invalid value for "hotkey": expected object');
+    }
+    if (settings.dictation !== undefined && (typeof settings.dictation !== 'object' || settings.dictation === null)) {
+      throw new Error('Invalid value for "dictation": expected object');
+    }
+    if (settings.vocabulary !== undefined && !Array.isArray(settings.vocabulary)) {
+      throw new Error('Invalid value for "vocabulary": expected array');
+    }
+    if (settings.widget !== undefined && (typeof settings.widget !== 'object' || settings.widget === null)) {
+      throw new Error('Invalid value for "widget": expected object');
+    }
+    if (settings.general !== undefined && (typeof settings.general !== 'object' || settings.general === null)) {
+      throw new Error('Invalid value for "general": expected object');
+    }
+
+    // Encrypt API keys before persisting to disk
+    encryptSettingsKeys(settings);
     for (const [key, value] of Object.entries(settings)) {
       store.set(key as keyof AppSettings, value);
     }
-    // Notify all renderer windows about settings change
+    // Notify all renderer windows about settings change (with decrypted keys for display)
+    const decrypted = decryptSettingsForRenderer(store.store);
     for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send(IPC.SETTINGS_ON_CHANGE, store.store);
+      win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
     }
 
     // Update hotkey service if shortcuts or mode changed
@@ -138,7 +191,7 @@ export function registerIpcHandlers(
       }
     }
 
-    return store.store;
+    return decrypted;
   });
 
   // Transcription readiness check (before recording starts)
@@ -146,8 +199,12 @@ export function registerIpcHandlers(
     const engine = (store.get('transcription.engine') as string) ?? 'local';
     let readyError: string | undefined;
     if (engine === 'cloud') {
-      const groqKey = (store.get('transcription.groqApiKey') as string) ?? '';
-      if (!groqKey) readyError = 'Groq API key is not set. Go to Modes and enter your key.';
+      if (!net.isOnline()) {
+        readyError = 'No internet connection. Switch to local engine or check your connection.';
+      } else {
+        const groqKey = getApiKey(store, 'transcription.groqApiKey');
+        if (!groqKey) readyError = 'Groq API key is not set. Go to Modes and enter your key.';
+      }
     } else {
       if (!transcriptionService.isModelDownloaded()) {
         readyError = 'Model not downloaded. Go to Modes and do it.';
@@ -168,6 +225,12 @@ export function registerIpcHandlers(
   // Transcription — receives raw audio buffer + sampleRate + recordingId from renderer.
   // compressedAudio: optional WebM/Opus blob from MediaRecorder (used for API upload — 8x smaller than WAV).
   ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, async (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer) => {
+    if (transcriptionInProgress) {
+      event.sender.send(IPC.TRANSCRIPTION_ERROR, 'Transcription already in progress');
+      return;
+    }
+    transcriptionInProgress = true;
+    try {
     // Silence detection: skip transcription if audio is below speech threshold.
     // Prevents Whisper hallucinations like [muzyka], [music], [cisza] on silence.
     const samples = new Float32Array(audioBuffer);
@@ -181,6 +244,13 @@ export function registerIpcHandlers(
     // Warmup AI connection in parallel with transcription (best-effort, fire-and-forget)
     aiService.warmup().catch((err) => { console.warn('[Dictator] AI warmup failed:', err); });
     try {
+      // Adaptive timeout: max(30s, audioDuration * 3), capped at 120s
+      const audioDurationSec = samples.length / sampleRate;
+      const adaptiveTimeout = Math.min(
+        TRANSCRIPTION_TIMEOUT_MAX_MS,
+        Math.max(TRANSCRIPTION_TIMEOUT_MIN_MS, audioDurationSec * 3000),
+      );
+
       let timeoutId: ReturnType<typeof setTimeout>;
       const rawText = await Promise.race([
         transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate, compressedAudio).then((result) => {
@@ -188,7 +258,7 @@ export function registerIpcHandlers(
           return result;
         }),
         new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error('Transcription timed out after 30 seconds')), TRANSCRIPTION_TIMEOUT_MS);
+          timeoutId = setTimeout(() => reject(new Error(`Transcription timed out after ${Math.round(adaptiveTimeout / 1000)}s`)), adaptiveTimeout);
         }),
       ]);
 
@@ -215,12 +285,16 @@ export function registerIpcHandlers(
       } catch (aiErr) {
         console.warn('[Dictator] AI processing failed, using raw text:', aiErr);
         text = rawText;
+        const aiMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(IPC.NOTIFICATION_ERROR, `AI processing failed: ${aiMsg}. Using raw transcription.`);
+        }
       }
 
       broadcastState('done');
       scheduleIdle(1500);
       const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
-      console.log('[Dictator] Transcription done. autoPaste=%s, text="%s"', autoPaste, text);
+      console.log('[Dictator] Transcription done. autoPaste=%s, chars=%d', autoPaste, text.length);
 
       // Always write to clipboard so the user can always Ctrl+V manually
       clipboard.writeText(text);
@@ -228,15 +302,22 @@ export function registerIpcHandlers(
 
       const appName = pasteService.getAppName() ?? undefined;
       if (autoPaste && pasteService.hasTarget()) {
-        await pasteService.simulatePaste();
-        // Re-write after paste so transcribed text stays in clipboard for manual use
-        clipboard.writeText(text);
+        try {
+          await pasteService.simulatePaste();
+          // Re-write after paste so transcribed text stays in clipboard for manual use
+          clipboard.writeText(text);
+        } catch (pasteErr) {
+          console.warn('[Dictator] Paste failed:', pasteErr);
+          for (const win of BrowserWindow.getAllWindows()) {
+            win.webContents.send(IPC.NOTIFICATION_ERROR, 'Auto-paste failed — text is in your clipboard, use Ctrl+V.');
+          }
+        }
       } else if (autoPaste) {
         console.log('[Dictator] No paste target captured — text is in clipboard, use Ctrl+V to paste manually');
       }
 
-      // Save to history
-      const entryId = recordingId ?? Date.now().toString();
+      // Save to history — sanitize ID to prevent path traversal in downstream audio save
+      const entryId = sanitizeId(recordingId ?? Date.now().toString());
       const durationSeconds = samples.length / sampleRate;
       const countWordsInline = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
       const wordCount = countWordsInline(text);
@@ -262,14 +343,21 @@ export function registerIpcHandlers(
       broadcastState('error');
       scheduleIdle(1500);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, msg);
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(IPC.NOTIFICATION_ERROR, `Transcription failed: ${msg}`);
+      }
+    }
+    } finally {
+      transcriptionInProgress = false;
     }
   });
 
   // Save audio file sent from renderer (WebM blob)
   ipcMain.handle(IPC.AUDIO_SAVE, async (_event, id: string, audioBuffer: ArrayBuffer) => {
-    const filePath = path.join(recordingsDir, `${id}.webm`);
+    const safeId = sanitizeId(id);
+    const filePath = path.join(recordingsDir, `${safeId}.webm`);
     await fs.promises.writeFile(filePath, Buffer.from(audioBuffer));
-    historyService.updateAudioPath(id, filePath);
+    historyService.updateAudioPath(safeId, filePath);
     return filePath;
   });
 
@@ -284,9 +372,9 @@ export function registerIpcHandlers(
     }
   });
 
-  ipcMain.handle(IPC.HISTORY_GET_ALL, () => {
+  ipcMain.handle(IPC.HISTORY_GET_ALL, (_event, limit?: number, offset?: number) => {
     try {
-      const data = historyService.getAll();
+      const data = historyService.getAll(limit ?? 50, offset ?? 0);
       return { success: true, data };
     } catch (err) {
       console.error('[IPC] HISTORY_GET_ALL failed:', err);
@@ -446,4 +534,8 @@ export function registerIpcHandlers(
   });
 
   ipcMain.on(IPC.WIDGET_DRAG_END, stopDrag);
+
+  // Update check
+  ipcMain.handle(IPC.UPDATE_CHECK, () => updateService.checkForUpdates());
+  ipcMain.handle(IPC.UPDATE_GET_INFO, () => updateService.getUpdateInfo());
 }

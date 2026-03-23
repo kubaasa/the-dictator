@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, screen, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
@@ -7,6 +7,8 @@ import { TrayManager } from './tray';
 import { HotkeyService } from './services/hotkey.service';
 import { TranscriptionService } from './services/transcription.service';
 import { HistoryService } from './services/history.service';
+import { UpdateService } from './services/update.service';
+import { migrateApiKeys } from './services/secure-storage';
 import { registerIpcHandlers, getOverlaySize, clampToVisibleArea } from './ipc-handlers';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
@@ -30,7 +32,7 @@ app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
 // Must be called before app 'ready'
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'recording', privileges: { bypassCSP: true, stream: true, supportFetchAPI: true } },
+  { scheme: 'recording', privileges: { stream: true, supportFetchAPI: true } },
 ]);
 
 const store = new Store<AppSettings>({ defaults: DEFAULT_SETTINGS });
@@ -44,6 +46,7 @@ const trayManager = new TrayManager();
 const transcriptionService = new TranscriptionService(store);
 const pasteService = new PasteService();
 const aiService = new AIService(store);
+const updateService = new UpdateService();
 
 // Hotkey sends toggle to the main renderer window (which owns getUserMedia)
 function sendToggleToRenderer(): void {
@@ -285,6 +288,19 @@ function setupWindowControlIpc(): void {
 }
 
 app.on('ready', () => {
+  // CSP headers — only in production (strict CSP breaks Vite dev server HMR)
+  if (app.isPackaged) {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' recording:; img-src 'self' data:",
+          ],
+        },
+      });
+    });
+  }
   // Serve local audio files via recording:// with proper Range request support.
   // The HTML5 audio element requires Range responses (HTTP 206) for buffering/seeking.
   // net.fetch('file://') doesn't handle Range headers, so we do it manually.
@@ -337,9 +353,16 @@ app.on('ready', () => {
   const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
   historyService = new HistoryService(path.join(app.getPath('userData'), 'history.db'));
+  historyService.setRecordingsDir(recordingsDir);
+
+  // Encrypt any existing plain-text API keys (one-time migration)
+  migrateApiKeys(store);
 
   trayManager.create(mainWindow);
-  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService, () => currentState);
+  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService, () => currentState, updateService);
+
+  // Start periodic update checks
+  updateService.start();
   setupRecordingIpc();
   setupWindowControlIpc();
 
@@ -351,19 +374,31 @@ app.on('ready', () => {
     onShowWindow: showOrHideMainWindow,
   });
 
-  // When a monitor is disconnected or resolution changes, re-clamp the overlay widget
-  const reclampOverlay = () => {
+  // When a monitor is disconnected or resolution changes, re-clamp the overlay widget.
+  // On display-removed: center on primary display (old position is meaningless).
+  // On display-metrics-changed: clamp to nearest visible area (same display, just resized).
+  const reclampOverlay = (center: boolean) => {
     if (!overlayWindow || overlayWindow.isDestroyed()) return;
     const { x, y, width, height } = overlayWindow.getBounds();
-    const clamped = clampToVisibleArea(x, y, width, height);
-    if (clamped.x !== x || clamped.y !== y) {
-      overlayWindow.setPosition(clamped.x, clamped.y);
-      store.set('widget.x', clamped.x);
-      store.set('widget.y', clamped.y);
+
+    if (center) {
+      const primary = screen.getPrimaryDisplay().workArea;
+      const cx = Math.round(primary.x + (primary.width - width) / 2);
+      const cy = Math.round(primary.y + (primary.height - height) / 2);
+      overlayWindow.setPosition(cx, cy);
+      store.set('widget.x', cx);
+      store.set('widget.y', cy);
+    } else {
+      const clamped = clampToVisibleArea(x, y, width, height);
+      if (clamped.x !== x || clamped.y !== y) {
+        overlayWindow.setPosition(clamped.x, clamped.y);
+        store.set('widget.x', clamped.x);
+        store.set('widget.y', clamped.y);
+      }
     }
   };
-  screen.on('display-removed', reclampOverlay);
-  screen.on('display-metrics-changed', reclampOverlay);
+  screen.on('display-removed', () => reclampOverlay(true));
+  screen.on('display-metrics-changed', () => reclampOverlay(false));
 
   // Preload local transcription model in background (eliminates 2-3s delay on first use)
   transcriptionService.preloadModel().catch((err) => {
@@ -390,4 +425,5 @@ app.on('before-quit', () => {
   trayManager.destroy();
   historyService?.close();
   pasteService.destroy();
+  updateService.stop();
 });

@@ -1,4 +1,4 @@
-import { useState, Component, type ReactNode, type ErrorInfo } from 'react';
+import { useState, useEffect, Component, type ReactNode, type ErrorInfo } from 'react';
 import { OverlayWindow } from './components/OverlayWindow';
 import { Sidebar } from './components/Sidebar';
 import type { View as ActiveView } from './components/Sidebar';
@@ -9,6 +9,8 @@ import { ShortcutsPage } from './components/ShortcutsPage';
 import { WidgetPage } from './components/WidgetPage';
 import { MicrophoneSelector } from './components/MicrophoneSelector';
 import { ScanLines, NoiseOverlay, Vignette, RecIndicator } from './components/RecEffects';
+import { ToastContainer, useToast } from './components/Toast';
+import { FirstRunModal } from './components/FirstRunModal';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
@@ -50,6 +52,14 @@ export function App() {
   const [activeView, setActiveView] = useState<ActiveView>('home');
   const micSelector = useMicrophoneSelector();
   const audioRecorder = useAudioRecorder(micSelector.selectedDeviceId);
+  const { toasts, removeToast } = useToast();
+  const [showFirstRun, setShowFirstRun] = useState(false);
+
+  useEffect(() => {
+    window.dictator.getSettings().then((s) => {
+      if (!s.general?.firstRunComplete) setShowFirstRun(true);
+    });
+  }, []);
 
   if (isOverlay) {
     return <ErrorBoundary><OverlayWindow state={recordingState} /></ErrorBoundary>;
@@ -76,14 +86,16 @@ export function App() {
               <button
                 onClick={() => window.dictator.minimize()}
                 className="flex h-7 w-7 items-center justify-center rounded font-mono text-sm text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
-                title="Minimalizuj"
+                title="Minimize"
+                aria-label="Minimize window"
               >
                 &#8211;
               </button>
               <button
                 onClick={() => window.dictator.closeWindow()}
                 className="flex h-7 w-7 items-center justify-center rounded font-mono text-sm text-neutral-500 transition-colors hover:bg-red-900/60 hover:text-red-300"
-                title="Zamknij"
+                title="Close"
+                aria-label="Close window"
               >
                 &#x2715;
               </button>
@@ -99,6 +111,8 @@ export function App() {
           {activeView === 'widget' && <WidgetPage />}
         </div>
       </div>
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+      {showFirstRun && <FirstRunModal onComplete={() => setShowFirstRun(false)} />}
     </div>
     </ErrorBoundary>
   );

@@ -2,6 +2,41 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Store from 'electron-store';
 import type { AppSettings } from '../../shared/types';
+import { getApiKey } from './secure-storage';
+
+/** Per-method timeout for AI streaming — clean cancellation if a stream hangs. */
+const AI_METHOD_TIMEOUT_MS = 25_000;
+
+/** Retry on transient network/server errors (5xx, timeout). Auth errors (401/403) are never retried. */
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 1000): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const status = (err as { status?: number }).status;
+      if (status === 401 || status === 403) throw err;
+      if (attempt < maxAttempts) {
+        console.warn('[Dictator] AI retry attempt %d/%d after error:', attempt, maxAttempts, err instanceof Error ? err.message : err);
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
+  }
+  throw lastError;
+}
+
+/** Only allow localhost URLs for Ollama to prevent SSRF attacks. */
+function validateOllamaUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') {
+      return url;
+    }
+  } catch { /* invalid URL falls through */ }
+  throw new Error(`Ollama URL must be localhost. Got: "${url}"`);
+}
 
 export class AIService {
   private openaiClient: OpenAI | null = null;
@@ -41,7 +76,7 @@ export class AIService {
           break;
         }
         case 'ollama': {
-          const baseUrl = (this.store.get('ai.ollamaUrl') as string) ?? 'http://localhost:11434';
+          const baseUrl = validateOllamaUrl((this.store.get('ai.ollamaUrl') as string) ?? 'http://localhost:11434');
           await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(5000) });
           break;
         }
@@ -78,7 +113,7 @@ export class AIService {
   }
 
   private getOpenAIClient(): OpenAI {
-    const apiKey = (this.store.get('ai.openaiApiKey') as string) ?? '';
+    const apiKey = getApiKey(this.store, 'ai.openaiApiKey');
     if (!apiKey) throw new Error('OpenAI API key for AI processing is not set.');
     if (!this.openaiClient || this.openaiClientKey !== apiKey) {
       this.openaiClient = new OpenAI({ apiKey });
@@ -88,7 +123,7 @@ export class AIService {
   }
 
   private getAnthropicClient(): Anthropic {
-    const apiKey = (this.store.get('ai.anthropicApiKey') as string) ?? '';
+    const apiKey = getApiKey(this.store, 'ai.anthropicApiKey');
     if (!apiKey) throw new Error('Anthropic API key for AI processing is not set.');
     if (!this.anthropicClient || this.anthropicClientKey !== apiKey) {
       this.anthropicClient = new Anthropic({ apiKey });
@@ -98,109 +133,130 @@ export class AIService {
   }
 
   private async processOpenAI(text: string, systemPrompt: string): Promise<string> {
-    const client = this.getOpenAIClient();
-    const model = (this.store.get('ai.openaiModel') as string) ?? 'gpt-4.1-nano';
-    const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
+    return withRetry(async () => {
+      const client = this.getOpenAIClient();
+      const model = (this.store.get('ai.openaiModel') as string) ?? 'gpt-4.1-nano';
+      const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
 
-    const stream = await client.chat.completions.create({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: text },
-      ],
-      temperature,
-      stream: true,
+      const abortController = new AbortController();
+      const timeout = setTimeout(() => abortController.abort(), AI_METHOD_TIMEOUT_MS);
+
+      try {
+        const stream = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: text },
+          ],
+          temperature,
+          stream: true,
+        }, { signal: abortController.signal as AbortSignal });
+
+        const chunks: string[] = [];
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content;
+          if (delta) chunks.push(delta);
+        }
+        return chunks.join('').trim() || text;
+      } finally {
+        clearTimeout(timeout);
+      }
     });
-
-    const chunks: string[] = [];
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta?.content;
-      if (delta) chunks.push(delta);
-    }
-    return chunks.join('').trim() || text;
   }
 
   private async processAnthropic(text: string, systemPrompt: string): Promise<string> {
-    const client = this.getAnthropicClient();
-    const model = (this.store.get('ai.anthropicModel') as string) ?? 'claude-haiku-4-5-20251001';
-    const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
+    return withRetry(async () => {
+      const client = this.getAnthropicClient();
+      const model = (this.store.get('ai.anthropicModel') as string) ?? 'claude-haiku-4-5-20251001';
+      const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
 
-    const stream = client.messages.stream({
-      model,
-      max_tokens: 4096,
-      temperature,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: text }],
-    });
+      const abortController = new AbortController();
+      const timeout = setTimeout(() => abortController.abort(), AI_METHOD_TIMEOUT_MS);
 
-    const chunks: string[] = [];
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        chunks.push(event.delta.text);
+      try {
+        const stream = client.messages.stream({
+          model,
+          max_tokens: 4096,
+          temperature,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: text }],
+        }, { signal: abortController.signal as AbortSignal });
+
+        const chunks: string[] = [];
+        for await (const event of stream) {
+          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            chunks.push(event.delta.text);
+          }
+        }
+        return chunks.join('').trim() || text;
+      } finally {
+        clearTimeout(timeout);
       }
-    }
-    return chunks.join('').trim() || text;
+    });
   }
 
   private async processOllama(text: string, systemPrompt: string): Promise<string> {
-    const baseUrl = (this.store.get('ai.ollamaUrl') as string) ?? 'http://localhost:11434';
-    const model = (this.store.get('ai.ollamaModel') as string) ?? 'llama3';
-    const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
+    return withRetry(async () => {
+      const baseUrl = validateOllamaUrl((this.store.get('ai.ollamaUrl') as string) ?? 'http://localhost:11434');
+      const model = (this.store.get('ai.ollamaModel') as string) ?? 'llama3';
+      const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
 
-    const res = await fetch(`${baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        stream: true,
-        options: { temperature },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: text },
-        ],
-      }),
-    });
+      const res = await fetch(`${baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(AI_METHOD_TIMEOUT_MS),
+        body: JSON.stringify({
+          model,
+          stream: true,
+          options: { temperature },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: text },
+          ],
+        }),
+      });
 
-    if (!res.ok) throw new Error(`Ollama error: ${res.status} ${res.statusText}`);
+      if (!res.ok) throw new Error(`Ollama error: ${res.status} ${res.statusText}`);
 
-    // Ollama streams NDJSON — one JSON object per line
-    const chunks: string[] = [];
-    const reader = res.body?.getReader();
-    if (!reader) throw new Error('Ollama response has no body');
+      // Ollama streams NDJSON — one JSON object per line
+      const chunks: string[] = [];
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('Ollama response has no body');
 
-    const decoder = new TextDecoder();
-    let buffer = '';
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      const decoder = new TextDecoder();
+      let buffer = '';
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const json = JSON.parse(line);
+            if (json.error) throw new Error(`Ollama: ${json.error}`);
+            if (json.message?.content) chunks.push(json.message.content);
+          } catch (e) {
+            if (e instanceof SyntaxError) continue; // skip malformed lines
+            throw e;
+          }
+        }
+      }
+      // Process remaining buffer
+      if (buffer.trim()) {
         try {
-          const json = JSON.parse(line);
+          const json = JSON.parse(buffer);
           if (json.error) throw new Error(`Ollama: ${json.error}`);
           if (json.message?.content) chunks.push(json.message.content);
         } catch (e) {
-          if (e instanceof SyntaxError) continue; // skip malformed lines
-          throw e;
+          if (!(e instanceof SyntaxError)) throw e;
         }
       }
-    }
-    // Process remaining buffer
-    if (buffer.trim()) {
-      try {
-        const json = JSON.parse(buffer);
-        if (json.error) throw new Error(`Ollama: ${json.error}`);
-        if (json.message?.content) chunks.push(json.message.content);
-      } catch (e) {
-        if (!(e instanceof SyntaxError)) throw e;
-      }
-    }
 
-    return chunks.join('').trim() || text;
+      return chunks.join('').trim() || text;
+    });
   }
 
   async getOpenAIModels(): Promise<{ value: string; label: string }[]> {

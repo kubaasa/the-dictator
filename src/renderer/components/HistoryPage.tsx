@@ -332,6 +332,7 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
 }
 
 const LOAD_TIMEOUT_MS = 10_000;
+const PAGE_SIZE = 50;
 
 export function HistoryPage() {
   const [recordings, setRecordings] = useState<RecordingEntry[]>([]);
@@ -342,6 +343,8 @@ export function HistoryPage() {
   const [loadTimedOut, setLoadTimedOut] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<{ id: string; msg: string } | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchQueryRef = useRef('');
@@ -381,11 +384,12 @@ export function HistoryPage() {
         }
       }
 
-      const result = await window.dictator.history.getAll();
+      const result = await window.dictator.history.getAll(PAGE_SIZE, 0);
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
 
       if (result.success) {
         setRecordings(result.data);
+        setHasMore(result.data.length >= PAGE_SIZE);
         setLoadError('');
       } else {
         setLoadError(result.error ?? 'Unknown error');
@@ -400,6 +404,22 @@ export function HistoryPage() {
       setIsLoading(false);
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+    try {
+      const result = await window.dictator.history.getAll(PAGE_SIZE, recordings.length);
+      if (result.success) {
+        setRecordings((prev) => [...prev, ...result.data]);
+        setHasMore(result.data.length >= PAGE_SIZE);
+      }
+    } catch (err) {
+      console.error('[HistoryPage] Failed to load more recordings:', err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, hasMore, recordings.length]);
 
   // Initial load
   useEffect(() => {
@@ -584,27 +604,40 @@ export function HistoryPage() {
             </div>
           </section>
         ) : (
-          groups.map(({ label, entries }) => (
-            <section key={label}>
-              <h2 className="font-mono text-sm font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-3">
-                {label}
-              </h2>
-              <div className="rounded-xl border border-neutral-800 bg-[#141414] overflow-hidden">
-                {entries.map((entry, idx) => (
-                  <RecordingItem
-                    key={entry.id}
-                    entry={entry}
-                    isExpanded={expandedId === entry.id}
-                    onToggle={() => handleToggle(entry.id)}
-                    onDelete={handleDelete}
-                    deleteError={deleteError?.id === entry.id ? deleteError.msg : null}
-                    isDeleting={deletingId === entry.id}
-                    isLast={idx === entries.length - 1}
-                  />
-                ))}
+          <>
+            {groups.map(({ label, entries }) => (
+              <section key={label}>
+                <h2 className="font-mono text-sm font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-3">
+                  {label}
+                </h2>
+                <div className="rounded-xl border border-neutral-800 bg-[#141414] overflow-hidden">
+                  {entries.map((entry, idx) => (
+                    <RecordingItem
+                      key={entry.id}
+                      entry={entry}
+                      isExpanded={expandedId === entry.id}
+                      onToggle={() => handleToggle(entry.id)}
+                      onDelete={handleDelete}
+                      deleteError={deleteError?.id === entry.id ? deleteError.msg : null}
+                      isDeleting={deletingId === entry.id}
+                      isLast={idx === entries.length - 1}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+            {hasMore && !searchQuery && (
+              <div className="flex justify-center pb-4">
+                <button
+                  onClick={loadMore}
+                  disabled={isLoadingMore}
+                  className="rounded-lg border border-neutral-700 px-6 py-2 font-mono text-sm font-semibold uppercase tracking-[0.25em] text-neutral-500 hover:text-neutral-300 hover:border-neutral-500 transition-colors disabled:opacity-50 disabled:cursor-wait cursor-pointer"
+                >
+                  {isLoadingMore ? 'Loading...' : 'Load More'}
+                </button>
               </div>
-            </section>
-          ))
+            )}
+          </>
         )}
 
       </div>

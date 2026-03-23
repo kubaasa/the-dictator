@@ -28,6 +28,9 @@ const INIT_SCRIPT = [
 const CAPTURE_CMD = `$h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder(256); [WinCapE]::GetClassName($h,$sb,256)|Out-Null; $wpid=0; [WinCapE]::GetWindowThreadProcessId($h,[ref]$wpid)|Out-Null; $pname=try{[System.Diagnostics.Process]::GetProcessById($wpid).ProcessName}catch{'unknown'}; Write-Output "$h|$($sb.ToString())|$pname"`;
 
 function buildPasteCmd(hwnd: string): string {
+  if (!/^\d+$/.test(hwnd)) {
+    throw new Error(`Invalid hwnd: expected digits only, got "${hwnd}"`);
+  }
   return `$t=[IntPtr]${hwnd}; $fg=[PW]::GetForegroundWindow(); $ft=[PW]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $mt=[PW]::GetCurrentThreadId(); $att=$false; if($ft -ne $mt){[void][PW]::AttachThreadInput($mt,$ft,$true);$att=$true}; if([PW]::IsIconic($t)){[void][PW]::ShowWindow($t,9)}; [void][PW]::SetForegroundWindow($t); if($att){[void][PW]::AttachThreadInput($mt,$ft,$false)}; Start-Sleep -Milliseconds 150; $txt=[System.Windows.Forms.Clipboard]::GetText(); if($txt){[PW]::T($txt)}`;
 }
 
@@ -214,7 +217,7 @@ export class PasteService {
 
       this.targetHwnd = hwnd;
       this.targetAppName = processName;
-      console.log('[Dictator] Captured paste target HWND: %s (class: %s, process: %s)', hwnd, windowClass, processName);
+      console.log('[Dictator] Captured paste target (class: %s, process: %s)', windowClass, processName);
     };
 
     // Use persistent process if ready, otherwise fall back to cold-start
@@ -266,7 +269,7 @@ export class PasteService {
         ];
         await execFileAsync('powershell', args, { timeout: 10000, windowsHide: true });
       }
-      console.log('[Dictator] Auto-typed to HWND:', hwnd);
+      console.log('[Dictator] Auto-typed successfully');
     } catch (err) {
       console.warn('[Dictator] simulatePaste failed:', err instanceof Error ? err.message : err);
     }

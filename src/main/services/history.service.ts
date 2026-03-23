@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
+import path from 'node:path';
 import type { RecordingEntry, HistoryStats } from '../../shared/types';
 
 const MAX_QUERY_LENGTH = 500;
@@ -18,6 +19,7 @@ export interface ClearAllResult {
 
 export class HistoryService {
   private db: Database.Database;
+  private recordingsDir: string | null = null;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
@@ -123,17 +125,23 @@ export class HistoryService {
     let audioError: string | undefined;
 
     if (row.audio_path) {
-      try {
-        fs.unlinkSync(row.audio_path);
-        audioDeleted = true;
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'ENOENT') {
+      // Only delete files inside the recordings directory to prevent arbitrary file deletion
+      if (this.isPathInsideRecordingsDir(row.audio_path)) {
+        try {
+          fs.unlinkSync(row.audio_path);
           audioDeleted = true;
-        } else {
-          audioError = `Failed to delete audio file: ${code ?? String(err)}`;
-          console.warn('[HistoryService]', audioError);
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException).code;
+          if (code === 'ENOENT') {
+            audioDeleted = true;
+          } else {
+            audioError = `Failed to delete audio file: ${code ?? String(err)}`;
+            console.warn('[HistoryService]', audioError);
+          }
         }
+      } else {
+        audioError = 'Audio path outside recordings directory — skipped deletion';
+        console.warn('[HistoryService]', audioError, row.audio_path);
       }
     }
 
@@ -148,9 +156,11 @@ export class HistoryService {
       throw new Error(`Search query too long (max ${MAX_QUERY_LENGTH} characters)`);
     }
     console.debug('[HistoryService] Searching:', trimmed);
+    // Escape LIKE wildcards so user input like "100%" is treated literally
+    const escaped = trimmed.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
     const rows = this.db.prepare(
-      'SELECT * FROM recordings WHERE text LIKE ? ORDER BY date DESC LIMIT ?'
-    ).all(`%${trimmed}%`, DEFAULT_LIMIT) as Record<string, unknown>[];
+      "SELECT * FROM recordings WHERE text LIKE ? ESCAPE '\\' ORDER BY date DESC LIMIT ?"
+    ).all(`%${escaped}%`, DEFAULT_LIMIT) as Record<string, unknown>[];
     return rows.map(this.rowToEntry);
   }
 
@@ -164,6 +174,11 @@ export class HistoryService {
 
       let audioErrors = 0;
       for (const row of rows) {
+        if (!this.isPathInsideRecordingsDir(row.audio_path)) {
+          audioErrors++;
+          console.warn('[HistoryService] Skipping deletion — path outside recordings dir:', row.audio_path);
+          continue;
+        }
         try {
           fs.unlinkSync(row.audio_path);
         } catch (err) {
@@ -182,9 +197,24 @@ export class HistoryService {
     return deleteAll();
   }
 
+  /** Set the trusted recordings directory for path validation. */
+  setRecordingsDir(dir: string): void {
+    this.recordingsDir = path.resolve(dir);
+  }
+
+  /** Validate that a file path is inside the recordings directory to prevent arbitrary file access. */
+  private isPathInsideRecordingsDir(filePath: string): boolean {
+    if (!this.recordingsDir) return false;
+    const resolved = path.resolve(filePath);
+    return resolved.startsWith(this.recordingsDir + path.sep) || resolved === this.recordingsDir;
+  }
+
   updateAudioPath(id: string, audioPath: string): void {
     if (!id || typeof id !== 'string') throw new Error('Invalid recording ID');
     if (!audioPath || typeof audioPath !== 'string') throw new Error('Invalid audio path');
+    if (!this.isPathInsideRecordingsDir(audioPath)) {
+      throw new Error('Audio path must be inside the recordings directory');
+    }
     this.db.prepare('UPDATE recordings SET audio_path = ? WHERE id = ?').run(audioPath, id);
   }
 

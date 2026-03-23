@@ -155,6 +155,7 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
           <button
             onClick={isRecording ? stopRecording : startRecording}
             disabled={recordingState === 'transcribing'}
+            aria-label={isRecording ? 'Stop recording' : recordingState === 'transcribing' ? 'Transcribing in progress' : 'Start recording'}
             className={`btn-noise relative flex h-28 w-28 items-center justify-center rounded-full border-2 bg-zinc-950 ${
               isRecording ? 'animate-rec-glitch' : ''
             } ${recordingState === 'transcribing' ? 'cursor-not-allowed' : 'hover:bg-zinc-900/80'}`}
@@ -213,7 +214,7 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
       {(result || error) && (
         <div className="mx-auto w-full max-w-lg px-6">
           {error ? (
-            <p className="rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-400 animate-fade-in">
+            <p role="alert" className="rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-400 animate-fade-in">
               {error}
             </p>
           ) : (

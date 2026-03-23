@@ -77,6 +77,8 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
             key={item.id}
             onClick={() => onNavigate(item.id)}
             title={collapsed ? item.label : undefined}
+            aria-label={item.label}
+            aria-current={isActive ? 'page' : undefined}
             className={`flex flex-row items-center gap-3 px-3 py-2 w-full transition-colors ${
               isActive
                 ? 'border-l-2 border-red-600 bg-red-600/5 text-neutral-100'

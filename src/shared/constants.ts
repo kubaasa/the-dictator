@@ -63,6 +63,13 @@ export const IPC = {
   // Widget drag
   WIDGET_DRAG_START: 'widget:drag-start',
   WIDGET_DRAG_END: 'widget:drag-end',
+
+  // Updates
+  UPDATE_CHECK: 'update:check',
+  UPDATE_GET_INFO: 'update:get-info',
+
+  // Notifications (main → renderer)
+  NOTIFICATION_ERROR: 'notification:error',
 } as const;
 
 export const WHISPER_MODEL_DESCRIPTIONS: Record<string, string> = {

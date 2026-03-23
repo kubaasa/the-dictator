@@ -55,8 +55,6 @@ const config: ForgeConfig = {
       'node_modules/uiohook-napi/**',
       'node_modules/better-sqlite3/**',
       'node_modules/onnxruntime-node/**',
-      'node_modules/sharp/**',
-      'node_modules/@img/**',
     ],
     name: 'The Dictator',
     icon: 'assets/icon',
@@ -77,6 +75,16 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
       setupIcon: path.resolve('assets/icon.ico'),
+      // Code signing: reads certificate from environment variables.
+      // Set WINDOWS_CERTIFICATE_FILE (path to .pfx) and WINDOWS_CERTIFICATE_PASSWORD
+      // to sign the installer. Without these, the build works but Windows SmartScreen
+      // will show "Unknown publisher".
+      ...(process.env.WINDOWS_CERTIFICATE_FILE
+        ? {
+            certificateFile: process.env.WINDOWS_CERTIFICATE_FILE,
+            certificatePassword: process.env.WINDOWS_CERTIFICATE_PASSWORD ?? '',
+          }
+        : {}),
     }),
     new MakerZIP({}, ['darwin']),
   ],

@@ -26,10 +26,9 @@ const AI_PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
 
 function maskKey(key: string): string {
   if (!key) return '';
-  if (key.length <= 8) return '●'.repeat(key.length);
+  if (key.length <= 4) return '●'.repeat(key.length);
   const prefix = key.slice(0, 4);
-  const suffix = key.slice(-4);
-  return `${prefix}${'●'.repeat(Math.min(key.length - 8, 16))}${suffix}`;
+  return `${prefix}${'●'.repeat(4)} (${key.length} chars)`;
 }
 
 function ApiKeyInput({
@@ -540,7 +539,7 @@ export function ModesPage(props: ModelStatus) {
               )}
 
               {error && (
-                <p className="mt-2 rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-2 text-xs text-red-400">
+                <p role="alert" className="mt-2 rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-2 text-xs text-red-400">
                   {error}
                 </p>
               )}
