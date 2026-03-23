@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TimecodeDisplay } from './RecEffects';
+import type { WidgetType } from '../../shared/types';
 
 type View = 'home' | 'history' | 'modes' | 'shortcuts' | 'widget';
 
@@ -41,8 +42,8 @@ const navItems: NavItem[] = [
     label: 'Shortcuts',
     icon: (
       <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h12A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 15h1.5m3 0h4.5M7.5 9l2.25 2.25L7.5 13.5m4.5-1.5h4.5" />
       </svg>
     ),
   },
@@ -51,7 +52,8 @@ const navItems: NavItem[] = [
     label: 'Widget',
     icon: (
       <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 8.25V6a2.25 2.25 0 0 1 2.25-2.25h1.5M3 15.75V18a2.25 2.25 0 0 0 2.25 2.25h1.5M15.75 3.75h1.5A2.25 2.25 0 0 1 19.5 6v2.25M15.75 20.25h1.5A2.25 2.25 0 0 0 19.5 18v-2.25" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 8.25h6v6h-6v-6Z" />
       </svg>
     ),
   },
@@ -68,6 +70,17 @@ const navItems: NavItem[] = [
 
 export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [activeWidget, setActiveWidget] = useState<WidgetType>('voicebar');
+
+  useEffect(() => {
+    window.dictator.getSettings().then((s) => {
+      if (s.widget) setActiveWidget(s.widget.activeWidget);
+    });
+    const unsub = window.dictator.onSettingsChange((s) => {
+      if (s.widget) setActiveWidget(s.widget.activeWidget);
+    });
+    return unsub;
+  }, []);
 
   return (
     <aside className={`flex flex-col gap-1 border-r border-neutral-800/50 py-3 transition-all duration-300 overflow-hidden ${collapsed ? 'w-14' : 'w-1/5'}`}>
@@ -77,7 +90,7 @@ export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) 
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            title={collapsed ? item.label : undefined}
+            title={collapsed ? (item.id === 'widget' ? `Widget — ${activeWidget === 'voicebar' ? 'Mini' : 'Maxi'} active` : item.label) : undefined}
             aria-label={item.label}
             aria-current={isActive ? 'page' : undefined}
             className={`flex flex-row items-center gap-3 px-3 py-2 w-full transition-colors ${
@@ -87,7 +100,22 @@ export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) 
             }`}
           >
             <span className={isActive ? 'text-red-500' : 'text-neutral-600'}>{item.icon}</span>
-            {!collapsed && <span className="font-mono text-[13px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">{item.label}</span>}
+            {!collapsed && (
+              <span className="flex items-center gap-2 font-mono text-[13px] font-semibold tracking-[0.25em] uppercase whitespace-nowrap">
+                {item.label}
+                {item.id === 'widget' && (
+                  <span className="flex items-center gap-1.5 ml-auto">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+                    </span>
+                    <span className="font-mono text-[10px] font-normal tracking-[0.15em] text-green-500/70">
+                      {activeWidget === 'voicebar' ? 'Mini' : 'Maxi'}
+                    </span>
+                  </span>
+                )}
+              </span>
+            )}
           </button>
         );
       })}

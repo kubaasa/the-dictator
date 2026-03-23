@@ -75,6 +75,7 @@ export interface AppSettings {
     minimizeToTray: boolean;
     overlayPosition: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'center';
     firstRunComplete: boolean;
+    widgetTooltipShown: boolean;
   };
 }
 
@@ -160,5 +161,6 @@ Respond with ONLY the reformatted message wrapped in the required tags.`,
     minimizeToTray: true,
     overlayPosition: 'top-right',
     firstRunComplete: false,
+    widgetTooltipShown: false,
   },
 };
