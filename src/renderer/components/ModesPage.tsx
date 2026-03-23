@@ -4,6 +4,7 @@ import type { AIProviderType, TranscriptionEngine, AppSettings } from '../../sha
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import { WHISPER_MODEL_DESCRIPTIONS, AI_MODEL_DESCRIPTIONS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
 import { ApiKeyInput } from './ApiKeyInput';
+import { useToast } from './Toast';
 
 const MODEL_OPTIONS = [
   { value: 'tiny', label: 'Tiny' },
@@ -26,13 +27,13 @@ const AI_PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
 
 export function ModesPage(props: ModelStatus) {
   const { downloaded, downloadedModels, downloading, progress, error, download, cancel, recheck } = props;
+  const { addToast } = useToast();
 
   // Transcription state
   const [engine, setEngine] = useState<TranscriptionEngine>('cloud');
   const [modelSize, setModelSize] = useState('base');
   const [language, setLanguage] = useState('en');
   const [groqApiKey, setGroqApiKey] = useState('');
-  const [groqKeySaved, setGroqKeySaved] = useState(false);
   const [groqValidation, setGroqValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
   const [groqValidationError, setGroqValidationError] = useState('');
 
@@ -47,7 +48,6 @@ export function ModesPage(props: ModelStatus) {
   const [aiAnthropicModel, setAiAnthropicModel] = useState('claude-haiku-4-5-20251001');
   const [aiOllamaUrl, setAiOllamaUrl] = useState('http://localhost:11434');
   const [aiOllamaModel, setAiOllamaModel] = useState('llama3');
-  const [aiKeySaved, setAiKeySaved] = useState(false);
 
   // Output settings (read-only for pipeline bar)
   const [autoPaste, setAutoPaste] = useState(DEFAULT_SETTINGS.dictation.autoPaste);
@@ -143,8 +143,7 @@ export function ModesPage(props: ModelStatus) {
         await window.dictator.setSettings({
           transcription: { ...current.transcription, groqApiKey: key },
         });
-        setGroqKeySaved(true);
-        setTimeout(() => setGroqKeySaved(false), 2000);
+        addToast('success', 'Groq API key verified and saved');
       } else {
         setGroqValidation('invalid');
         setGroqValidationError(result.error ?? 'Invalid API key');
@@ -242,8 +241,7 @@ export function ModesPage(props: ModelStatus) {
         ai: { ...current.ai, ...updates },
       });
       if (aiProvider === 'openai') fetchOpenAIModels();
-      setAiKeySaved(true);
-      setTimeout(() => setAiKeySaved(false), 2000);
+      addToast('success', 'AI configuration saved');
     } catch (err) {
       console.error('[ModesPage] Failed to save AI key:', err);
     }
@@ -413,7 +411,6 @@ export function ModesPage(props: ModelStatus) {
                   value={groqApiKey}
                   onChange={handleGroqKeyChange}
                   onSave={handleGroqKeyVerify}
-                  saved={groqKeySaved}
                   buttonLabel={
                     groqValidation === 'validating' ? 'Verifying...'
                     : groqValidation === 'valid' ? 'Verified'
@@ -716,7 +713,6 @@ export function ModesPage(props: ModelStatus) {
                       value={aiProvider === 'openai' ? aiOpenaiKey : aiAnthropicKey}
                       onChange={(v) => aiProvider === 'openai' ? setAiOpenaiKey(v) : setAiAnthropicKey(v)}
                       onSave={handleAiKeySave}
-                      saved={aiKeySaved}
                     />
                   </div>
                 )}
@@ -727,7 +723,7 @@ export function ModesPage(props: ModelStatus) {
                     onClick={handleAiKeySave}
                     className="self-start rounded-lg bg-neutral-700 px-4 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider text-neutral-200 transition-colors hover:bg-neutral-600 cursor-pointer"
                   >
-                    {aiKeySaved ? 'Saved' : 'Save'}
+                    Save
                   </button>
                 )}
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import { RecIndicator } from './RecEffects';
+import { useToast } from './Toast';
 import type { RecordingState } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import type { useAudioRecorder } from '../hooks/useAudioRecorder';
@@ -34,6 +35,7 @@ const EMPTY_STATS: StatsDisplay = { totalWords: '—', totalTimeDisplay: '—', 
 export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePageProps) {
   const { isRecording, error: recorderError, errorType, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
   const { result, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
+  const { addToast } = useToast();
   const error = recorderError || transcriptionError;
 
   const [toggleShortcut, setToggleShortcut] = useState(DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
@@ -250,7 +252,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
               />
               <div className="flex justify-end gap-2">
                 <button
-                  onClick={() => navigator.clipboard.writeText(result)}
+                  onClick={() => { navigator.clipboard.writeText(result); addToast('success', 'Copied to clipboard'); }}
                   className="rounded-lg border border-neutral-700 px-4 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-200"
                 >
                   Copy

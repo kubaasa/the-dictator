@@ -11,7 +11,6 @@ interface ApiKeyInputProps {
   value: string;
   onChange: (v: string) => void;
   onSave: () => void;
-  saved: boolean;
   buttonLabel?: string;
   buttonDisabled?: boolean;
   placeholder?: string;
@@ -21,7 +20,6 @@ export function ApiKeyInput({
   value,
   onChange,
   onSave,
-  saved,
   buttonLabel,
   buttonDisabled = false,
   placeholder: customPlaceholder,
@@ -36,7 +34,7 @@ export function ApiKeyInput({
     ? (customPlaceholder ?? '[NO SIGNAL] paste access key...')
     : '';
 
-  const label = buttonLabel ?? (saved ? 'Saved' : 'Save');
+  const label = buttonLabel ?? 'Save';
 
   // Focus the input after it appears in DOM (when switching from masked → input)
   useEffect(() => {
