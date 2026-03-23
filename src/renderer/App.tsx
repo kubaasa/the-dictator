@@ -112,7 +112,7 @@ export function App() {
         </div>
       </div>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      {showFirstRun && <FirstRunModal onComplete={() => setShowFirstRun(false)} />}
+      {showFirstRun && <FirstRunModal onComplete={() => { setShowFirstRun(false); setActiveView('modes'); }} />}
     </div>
     </ErrorBoundary>
   );

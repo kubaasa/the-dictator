@@ -106,7 +106,7 @@ const hotkeyService = new HotkeyService(
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1200,
-    height: 800,
+    height: 840,
     resizable: false,
     frame: false,
     show: false,
@@ -132,7 +132,11 @@ function createMainWindow(): BrowserWindow {
   win.webContents.setBackgroundThrottling(false);
 
   win.once('ready-to-show', () => {
-    // App starts hidden in tray — don't show the window
+    const firstRun = !(store.get('general.firstRunComplete') as boolean);
+    if (firstRun) {
+      win.show();
+      win.focus();
+    }
   });
 
   win.on('close', (e) => {

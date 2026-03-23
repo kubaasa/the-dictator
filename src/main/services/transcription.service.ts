@@ -62,6 +62,20 @@ export class TranscriptionService {
     env.cacheDir = MODELS_CACHE_DIR;
   }
 
+  /** Validate a Groq API key by calling the lightweight /models endpoint. */
+  static async validateGroqApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+    try {
+      const client = new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' });
+      await client.models.list({ timeout: 5000 });
+      return { valid: true };
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 401) return { valid: false, error: 'Invalid API key. Check that you copied it correctly.' };
+      if (status === 403) return { valid: false, error: 'API key does not have permission. Generate a new one.' };
+      return { valid: false, error: err instanceof Error ? err.message : 'Validation failed' };
+    }
+  }
+
   /** Preload model into memory on app startup (background, non-blocking). */
   async preloadModel(): Promise<void> {
     const engine = (this.store.get('transcription.engine') as string) ?? 'local';

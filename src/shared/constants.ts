@@ -64,6 +64,12 @@ export const IPC = {
   WIDGET_DRAG_START: 'widget:drag-start',
   WIDGET_DRAG_END: 'widget:drag-end',
 
+  // Groq
+  GROQ_VALIDATE_KEY: 'groq:validate-key',
+
+  // Shell
+  SHELL_OPEN_EXTERNAL: 'shell:open-external',
+
   // Updates
   UPDATE_CHECK: 'update:check',
   UPDATE_GET_INFO: 'update:get-info',

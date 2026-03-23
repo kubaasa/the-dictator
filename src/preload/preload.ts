@@ -57,6 +57,14 @@ export interface DictatorAPI {
     getOpenAIModels: () => Promise<{ success: boolean; models: { value: string; label: string }[]; error?: string }>;
   };
 
+  // Groq
+  groq: {
+    validateKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>;
+  };
+
+  // Shell
+  openExternal: (url: string) => void;
+
   // Audio
   audio: {
     save: (id: string, buffer: ArrayBuffer) => Promise<string>;
@@ -181,10 +189,18 @@ const api: DictatorAPI = {
     getOpenAIModels: () => ipcRenderer.invoke(IPC.AI_GET_OPENAI_MODELS),
   },
 
+  // Groq
+  groq: {
+    validateKey: (apiKey) => ipcRenderer.invoke(IPC.GROQ_VALIDATE_KEY, apiKey),
+  },
+
   // Audio
   audio: {
     save: (id, buffer) => ipcRenderer.invoke(IPC.AUDIO_SAVE, id, buffer),
   },
+
+  // Shell
+  openExternal: (url) => ipcRenderer.send(IPC.SHELL_OPEN_EXTERNAL, url),
 
   // App
   quit: () => ipcRenderer.send(IPC.APP_QUIT),

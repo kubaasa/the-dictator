@@ -538,4 +538,21 @@ export function registerIpcHandlers(
   // Update check
   ipcMain.handle(IPC.UPDATE_CHECK, () => updateService.checkForUpdates());
   ipcMain.handle(IPC.UPDATE_GET_INFO, () => updateService.getUpdateInfo());
+
+  // Groq key validation
+  ipcMain.handle(IPC.GROQ_VALIDATE_KEY, async (_event, apiKey: string) => {
+    if (!apiKey || typeof apiKey !== 'string') return { valid: false, error: 'No API key provided' };
+    return TranscriptionService.validateGroqApiKey(apiKey);
+  });
+
+  // Open external URL (whitelisted domains only)
+  ipcMain.on(IPC.SHELL_OPEN_EXTERNAL, (_event, url: string) => {
+    const allowed = ['console.groq.com', 'groq.com'];
+    try {
+      const hostname = new URL(url).hostname;
+      if (allowed.some((d) => hostname === d || hostname.endsWith('.' + d))) {
+        shell.openExternal(url);
+      }
+    } catch { /* ignore invalid URLs */ }
+  });
 }
