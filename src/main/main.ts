@@ -103,10 +103,35 @@ const hotkeyService = new HotkeyService(
   },
 );
 
+const BASE_WIDTH = 1200;
+const BASE_HEIGHT = 840;
+const WINDOW_MARGIN = 40;
+
+function calcWindowBounds(): { width: number; height: number; x: number; y: number } {
+  const { workArea } = screen.getPrimaryDisplay();
+  const maxW = workArea.width - WINDOW_MARGIN * 2;
+  const maxH = workArea.height - WINDOW_MARGIN * 2;
+
+  let w = BASE_WIDTH;
+  let h = BASE_HEIGHT;
+
+  if (w > maxW || h > maxH) {
+    const scale = Math.min(maxW / BASE_WIDTH, maxH / BASE_HEIGHT);
+    w = Math.round(BASE_WIDTH * scale);
+    h = Math.round(BASE_HEIGHT * scale);
+  }
+
+  const x = Math.round(workArea.x + (workArea.width - w) / 2);
+  const y = Math.round(workArea.y + (workArea.height - h) / 2);
+
+  return { width: w, height: h, x, y };
+}
+
 function createMainWindow(): BrowserWindow {
+  const bounds = calcWindowBounds();
+
   const win = new BrowserWindow({
-    width: 1200,
-    height: 840,
+    ...bounds,
     resizable: false,
     frame: false,
     show: false,
@@ -413,8 +438,14 @@ app.on('ready', () => {
       }
     }
   };
-  screen.on('display-removed', () => reclampOverlay(true));
-  screen.on('display-metrics-changed', () => reclampOverlay(false));
+  const reclampMainWindow = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const bounds = calcWindowBounds();
+    mainWindow.setBounds(bounds);
+  };
+
+  screen.on('display-removed', () => { reclampOverlay(true); reclampMainWindow(); });
+  screen.on('display-metrics-changed', () => { reclampOverlay(false); reclampMainWindow(); });
 
   // Preload local transcription model in background (eliminates 2-3s delay on first use)
   transcriptionService.preloadModel().catch((err) => {
