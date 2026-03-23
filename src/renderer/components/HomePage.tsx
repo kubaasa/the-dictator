@@ -88,6 +88,8 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
   }, [result, refreshStats]);
 
   const { totalWords, totalTimeDisplay, totalRecordings, avgWpm } = stats;
+  const isEmpty = totalRecordings === '—';
+  const showEmptyState = isEmpty && !isRecording && recordingState !== 'transcribing' && !result && !error;
 
   const statCards = [
     {
@@ -148,8 +150,20 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
         ))}
       </div>
 
+      {/* Empty state callout */}
+      {showEmptyState && (
+        <div className="flex flex-col items-center gap-2 mt-4 animate-fade-in">
+          <p className="font-mono text-sm tracking-[0.2em] uppercase text-neutral-500">
+            [ make your first recording ]
+          </p>
+          <svg className="h-5 w-5 text-red-600/60 animate-bounce" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3" />
+          </svg>
+        </div>
+      )}
+
       {/* Recording section */}
-      <div className="flex flex-col items-center gap-5 mt-10">
+      <div className={`flex flex-col items-center gap-5 ${showEmptyState ? 'mt-4' : 'mt-10'}`}>
         {/* REC indicator — above the button */}
         <div className="h-6 flex items-center">
           <RecIndicator isRecording={isRecording} recordingStartTime={recordingStartTime} />
@@ -161,7 +175,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
             disabled={recordingState === 'transcribing'}
             aria-label={isRecording ? 'Stop recording' : recordingState === 'transcribing' ? 'Transcribing in progress' : 'Start recording'}
             className={`btn-noise relative flex h-28 w-28 items-center justify-center rounded-full border-2 bg-zinc-950 ${
-              isRecording ? 'animate-rec-glitch' : ''
+              isRecording ? 'animate-rec-glitch' : showEmptyState ? 'animate-first-run-glow' : ''
             } ${recordingState === 'transcribing' ? 'cursor-not-allowed' : 'hover:bg-zinc-900/80'}`}
             style={{
               borderColor: recordingState === 'transcribing' ? '#27272a' : '#DC2626',

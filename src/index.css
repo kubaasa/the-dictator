@@ -207,6 +207,20 @@ body,
   box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.25);
 }
 
+/* First-run pulsing red glow on record button */
+@keyframes first-run-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(220, 38, 38, 0.2), 0 0 40px rgba(220, 38, 38, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(220, 38, 38, 0.45), 0 0 60px rgba(220, 38, 38, 0.2);
+  }
+}
+
+.animate-first-run-glow {
+  animation: first-run-glow 2s ease-in-out infinite;
+}
+
 .btn-noise {
   position: relative;
 }
