@@ -77,6 +77,7 @@ function classifyMicError(err: unknown): string {
 interface UseAudioRecorderReturn {
   isRecording: boolean;
   error: string;
+  errorType: string;
   lastDurationSeconds: number;
   recordingStartTime: number | null;
   startRecording: () => Promise<void>;
@@ -87,6 +88,7 @@ interface UseAudioRecorderReturn {
 export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState('');
+  const [errorType, setErrorType] = useState('');
   const [lastDurationSeconds, setLastDurationSeconds] = useState(0);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const isRecordingRef = useRef(false);
@@ -179,15 +181,17 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       // Show overlay immediately with loading animation (before slow getUserMedia)
       window.dictator.initRecording();
 
-      const { ready, error: readyError } = await window.dictator.checkTranscriptionReady();
+      const { ready, error: readyError, errorType: readyErrorType } = await window.dictator.checkTranscriptionReady();
       if (sessionIdRef.current !== thisSession) return; // session superseded
       if (!ready) {
         isSettingUpRef.current = false;
         pendingStopRef.current = false;
         setError(readyError ?? 'Transcription not ready');
+        setErrorType(readyErrorType ?? '');
         return;
       }
       setError('');
+      setErrorType('');
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -291,6 +295,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
       const message = classifyMicError(err);
       setError(message);
+      setErrorType('');
       // Broadcast error state + message to overlay (shows error for 2.5s, then idle)
       window.dictator.reportMicError(message);
     }
@@ -472,7 +477,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     };
   }, []);
 
-  const clearError = useCallback(() => setError(''), []);
+  const clearError = useCallback(() => { setError(''); setErrorType(''); }, []);
 
-  return { isRecording, error, lastDurationSeconds, recordingStartTime, startRecording, stopRecording, clearError };
+  return { isRecording, error, errorType, lastDurationSeconds, recordingStartTime, startRecording, stopRecording, clearError };
 }

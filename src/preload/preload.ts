@@ -12,7 +12,7 @@ export interface DictatorAPI {
   onRecordingStateChanged: (callback: (state: RecordingState) => void) => () => void;
 
   // Transcription
-  checkTranscriptionReady: () => Promise<{ ready: boolean; error?: string }>;
+  checkTranscriptionReady: () => Promise<{ ready: boolean; error?: string; errorType?: string }>;
   transcribeBuffer: (audioBuffer: ArrayBuffer, sampleRate: number, id?: string, compressedAudio?: ArrayBuffer) => Promise<void>;
   onTranscriptionResult: (callback: (result: TranscriptionResult) => void) => () => void;
   onTranscriptionError: (callback: (message: string) => void) => () => void;

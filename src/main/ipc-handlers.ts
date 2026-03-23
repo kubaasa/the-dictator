@@ -198,16 +198,22 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.TRANSCRIPTION_CHECK_READY, () => {
     const engine = (store.get('transcription.engine') as string) ?? 'local';
     let readyError: string | undefined;
+    let errorType: 'missing-api-key' | 'model-not-downloaded' | 'no-internet' | undefined;
     if (engine === 'cloud') {
       if (!net.isOnline()) {
         readyError = 'No internet connection. Switch to local engine or check your connection.';
+        errorType = 'no-internet';
       } else {
         const groqKey = getApiKey(store, 'transcription.groqApiKey');
-        if (!groqKey) readyError = 'Groq API key is not set. Go to Modes and enter your key.';
+        if (!groqKey) {
+          readyError = 'Groq API key is not configured.';
+          errorType = 'missing-api-key';
+        }
       }
     } else {
       if (!transcriptionService.isModelDownloaded()) {
-        readyError = 'Model not downloaded. Go to Modes and do it.';
+        readyError = 'Transcription model is not downloaded.';
+        errorType = 'model-not-downloaded';
       }
     }
     if (readyError) {
@@ -217,7 +223,7 @@ export function registerIpcHandlers(
       const overlay = getOverlayWindow();
       if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, readyError);
       scheduleIdle(2500);
-      return { ready: false, error: readyError };
+      return { ready: false, error: readyError, errorType };
     }
     return { ready: true };
   });

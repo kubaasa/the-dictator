@@ -4,11 +4,13 @@ import { RecIndicator } from './RecEffects';
 import type { RecordingState } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import type { useAudioRecorder } from '../hooks/useAudioRecorder';
+import type { View } from './Sidebar';
 
 
 interface HomePageProps {
   recordingState: RecordingState;
   audioRecorder: ReturnType<typeof useAudioRecorder>;
+  onNavigate: (view: View) => void;
 }
 
 interface StatsDisplay {
@@ -29,8 +31,8 @@ function formatTime(totalSeconds: number): string {
 
 const EMPTY_STATS: StatsDisplay = { totalWords: '—', totalTimeDisplay: '—', totalRecordings: '—', avgWpm: '—' };
 
-export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
-  const { isRecording, error: recorderError, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
+export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePageProps) {
+  const { isRecording, error: recorderError, errorType, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
   const { result, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
   const error = recorderError || transcriptionError;
 
@@ -214,14 +216,29 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
       {(result || error) && (
         <div className="mx-auto w-full max-w-lg px-6">
           {error ? (
-            <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 animate-fade-in">
-              <p className="flex-1 text-sm text-red-400">{error}</p>
-              <button
-                onClick={() => { clearError(); startRecording(); }}
-                className="shrink-0 rounded-lg border border-red-800 px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-red-400 transition-colors hover:border-red-600 hover:text-red-300 hover:bg-red-950"
-              >
-                Retry
-              </button>
+            <div role="alert" className="flex flex-col gap-2 rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 animate-fade-in">
+              <div className="flex items-start gap-3">
+                <p className="flex-1 text-sm text-red-400">
+                  {error}
+                  {(errorType === 'missing-api-key' || errorType === 'model-not-downloaded') && (
+                    <>
+                      {' '}
+                      <button
+                        onClick={() => { clearError(); onNavigate('modes'); }}
+                        className="inline text-red-300 underline underline-offset-2 hover:text-red-200 transition-colors"
+                      >
+                        Go to Processing &rarr;
+                      </button>
+                    </>
+                  )}
+                </p>
+                <button
+                  onClick={() => { clearError(); startRecording(); }}
+                  className="shrink-0 rounded-lg border border-red-800 px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-red-400 transition-colors hover:border-red-600 hover:text-red-300 hover:bg-red-950"
+                >
+                  Retry
+                </button>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col gap-3 animate-fade-in">

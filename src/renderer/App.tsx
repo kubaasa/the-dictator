@@ -9,7 +9,7 @@ import { ShortcutsPage } from './components/ShortcutsPage';
 import { WidgetPage } from './components/WidgetPage';
 import { MicrophoneSelector } from './components/MicrophoneSelector';
 import { ScanLines, NoiseOverlay, Vignette, RecIndicator } from './components/RecEffects';
-import { ToastContainer, useToast } from './components/Toast';
+import { ToastProvider } from './components/Toast';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
@@ -52,7 +52,6 @@ export function App() {
   const [activeView, setActiveView] = useState<ActiveView>('home');
   const micSelector = useMicrophoneSelector();
   const audioRecorder = useAudioRecorder(micSelector.selectedDeviceId);
-  const { toasts, removeToast } = useToast();
   const [showFirstRun, setShowFirstRun] = useState(false);
   const [isFirstRun, setIsFirstRun] = useState(false);
 
@@ -71,6 +70,7 @@ export function App() {
 
   return (
     <ErrorBoundary>
+    <ToastProvider>
     <div className="flex h-screen text-neutral-200 select-none font-sans bg-[#0A0A0A]">
       {/* Global [REC] effects */}
       <ScanLines />
@@ -108,16 +108,16 @@ export function App() {
         </header>
 
         <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-          {activeView === 'home' && <HomePage recordingState={recordingState} audioRecorder={audioRecorder} />}
+          {activeView === 'home' && <HomePage recordingState={recordingState} audioRecorder={audioRecorder} onNavigate={setActiveView} />}
           {activeView === 'history' && <HistoryPage />}
           {activeView === 'modes' && <ModesPage {...modelStatus} />}
           {activeView === 'shortcuts' && <ShortcutsPage />}
           {activeView === 'widget' && <WidgetPage />}
         </div>
       </div>
-      <ToastContainer toasts={toasts} removeToast={removeToast} />
       {showFirstRun && <OnboardingWizard onComplete={(micId) => { if (micId) micSelector.setSelectedDeviceId(micId); setShowFirstRun(false); setActiveView('modes'); }} onClose={isFirstRun ? undefined : () => setShowFirstRun(false)} />}
     </div>
+    </ToastProvider>
     </ErrorBoundary>
   );
 }
