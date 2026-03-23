@@ -33,6 +33,8 @@ export function ModesPage(props: ModelStatus) {
   const [language, setLanguage] = useState('en');
   const [groqApiKey, setGroqApiKey] = useState('');
   const [groqKeySaved, setGroqKeySaved] = useState(false);
+  const [groqValidation, setGroqValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
+  const [groqValidationError, setGroqValidationError] = useState('');
 
   // AI + Dictation state
   const [aiPostProcessing, setAiPostProcessing] = useState(DEFAULT_SETTINGS.dictation.aiPostProcessing);
@@ -60,6 +62,7 @@ export function ModesPage(props: ModelStatus) {
     setModelSize(s.transcription.localModelSize);
     setLanguage(s.transcription.language);
     setGroqApiKey(s.transcription.groqApiKey);
+    setGroqValidation(s.transcription.groqApiKey ? 'valid' : 'idle');
     setAiPostProcessing(s.dictation.aiPostProcessing);
     setCustomPrompt(s.dictation.customPrompt);
     setAutoPaste(s.dictation.autoPaste);
@@ -119,16 +122,38 @@ export function ModesPage(props: ModelStatus) {
     }
   };
 
-  const handleGroqKeySave = async () => {
+  const handleGroqKeyChange = (value: string) => {
+    setGroqApiKey(value);
+    if (groqValidation === 'valid' || groqValidation === 'invalid') {
+      setGroqValidation('idle');
+      setGroqValidationError('');
+    }
+  };
+
+  const handleGroqKeyVerify = async () => {
+    const key = groqApiKey.trim();
+    if (!key) return;
+    setGroqValidation('validating');
+    setGroqValidationError('');
     try {
-      const current = await window.dictator.getSettings();
-      await window.dictator.setSettings({
-        transcription: { ...current.transcription, groqApiKey: groqApiKey },
-      });
-      setGroqKeySaved(true);
-      setTimeout(() => setGroqKeySaved(false), 2000);
-    } catch (err) {
-      console.error('[ModesPage] Failed to save Groq key:', err);
+      const result = await window.dictator.groq.validateKey(key);
+      if (result.valid) {
+        setGroqValidation('valid');
+        const current = await window.dictator.getSettings();
+        await window.dictator.setSettings({
+          transcription: { ...current.transcription, groqApiKey: key },
+        });
+        setGroqKeySaved(true);
+        setTimeout(() => setGroqKeySaved(false), 2000);
+      } else {
+        setGroqValidation('invalid');
+        setGroqValidationError(result.error ?? 'Invalid API key');
+        setGroqApiKey('');
+      }
+    } catch {
+      setGroqValidation('invalid');
+      setGroqValidationError('Validation failed. Check your internet connection.');
+      setGroqApiKey('');
     }
   };
 
@@ -386,10 +411,37 @@ export function ModesPage(props: ModelStatus) {
                 </p>
                 <ApiKeyInput
                   value={groqApiKey}
-                  onChange={setGroqApiKey}
-                  onSave={handleGroqKeySave}
+                  onChange={handleGroqKeyChange}
+                  onSave={handleGroqKeyVerify}
                   saved={groqKeySaved}
+                  buttonLabel={
+                    groqValidation === 'validating' ? 'Verifying...'
+                    : groqValidation === 'valid' ? 'Verified'
+                    : 'Verify'
+                  }
+                  buttonDisabled={groqValidation === 'validating' || !groqApiKey.trim()}
                 />
+                {groqValidation === 'validating' && (
+                  <p className="mt-2 font-mono text-xs text-neutral-500 animate-pulse">
+                    Checking API key...
+                  </p>
+                )}
+                {groqValidation === 'valid' && (
+                  <p className="mt-2 flex items-center gap-1.5 font-mono text-xs text-green-500">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                    API key is valid — saved
+                  </p>
+                )}
+                {groqValidation === 'invalid' && (
+                  <p className="mt-2 flex items-center gap-1.5 font-mono text-xs text-red-400">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                    {groqValidationError}
+                  </p>
+                )}
               </div>
             )}
 
