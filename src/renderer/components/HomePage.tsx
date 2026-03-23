@@ -214,9 +214,15 @@ export function HomePage({ recordingState, audioRecorder }: HomePageProps) {
       {(result || error) && (
         <div className="mx-auto w-full max-w-lg px-6">
           {error ? (
-            <p role="alert" className="rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-400 animate-fade-in">
-              {error}
-            </p>
+            <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 animate-fade-in">
+              <p className="flex-1 text-sm text-red-400">{error}</p>
+              <button
+                onClick={() => { clearError(); startRecording(); }}
+                className="shrink-0 rounded-lg border border-red-800 px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-red-400 transition-colors hover:border-red-600 hover:text-red-300 hover:bg-red-950"
+              >
+                Retry
+              </button>
+            </div>
           ) : (
             <div className="flex flex-col gap-3 animate-fade-in">
               <textarea

@@ -54,6 +54,26 @@ class RecorderProcessor extends AudioWorkletProcessor {
 registerProcessor('recorder-processor', RecorderProcessor);
 `;
 
+/** Map getUserMedia DOMException names to user-friendly recovery messages. */
+function classifyMicError(err: unknown): string {
+  if (err instanceof DOMException) {
+    switch (err.name) {
+      case 'NotFoundError':
+        return 'No microphone detected. Connect a microphone and try again.';
+      case 'NotAllowedError':
+        return 'Microphone access denied. Allow access in Windows Settings > Privacy > Microphone.';
+      case 'NotReadableError':
+        return 'Microphone is in use by another application. Close the other app and try again.';
+      case 'AbortError':
+        return 'Microphone access was interrupted. Try again.';
+      case 'OverconstrainedError':
+        return 'Selected microphone is unavailable. Check device in settings and try again.';
+    }
+  }
+  if (err instanceof Error) return err.message;
+  return 'Failed to access microphone. Check your audio device and try again.';
+}
+
 interface UseAudioRecorderReturn {
   isRecording: boolean;
   error: string;
@@ -267,8 +287,12 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       pendingStopRef.current = false;
       isRecordingRef.current = false;
       setIsRecording(false);
-      setError(err instanceof Error ? err.message : 'Failed to access microphone');
-      window.dictator.stopRecording();
+      setRecordingStartTime(null);
+
+      const message = classifyMicError(err);
+      setError(message);
+      // Broadcast error state + message to overlay (shows error for 2.5s, then idle)
+      window.dictator.reportMicError(message);
     }
   }, [deviceId, getOrCreateAudioContext]);
 

@@ -260,6 +260,18 @@ function setupRecordingIpc(): void {
     hotkeyService.notifyRecordingStopped();
   });
 
+  // Mic error reported by renderer — broadcast error state + forward message to overlay
+  ipcMain.on(IPC.RECORDING_MIC_ERROR, (_event, errorMessage: string) => {
+    broadcastState('error');
+    hotkeyService.notifyRecordingStopped();
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send(IPC.TRANSCRIPTION_ERROR, errorMessage);
+    }
+    setTimeout(() => {
+      if (currentState === 'error') broadcastState('idle');
+    }, 2500);
+  });
+
   ipcMain.on(IPC.VOICE_ACTIVITY, (_, level: number) => {
     overlayWindow?.webContents.send(IPC.VOICE_ACTIVITY, level);
   });

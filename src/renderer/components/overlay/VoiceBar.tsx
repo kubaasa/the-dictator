@@ -4,6 +4,7 @@ import type { RecordingState } from '../../../shared/types';
 interface VoiceBarProps {
   voiceLevel: number;
   state: RecordingState;
+  errorMessage?: string;
   onToggleRecording?: () => void;
 }
 
@@ -97,7 +98,7 @@ const KEYFRAMES = `
 }
 `;
 
-export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps) {
+export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }: VoiceBarProps) {
   const barWidth = 3;
   const gap      = 3;
 
@@ -408,22 +409,37 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              // Match the width of 6 bars + 5 gaps so the pill keeps its normal shape
+              gap: 5,
+              padding: '0 4px',
               minWidth: BAR_COUNT * barWidth + (BAR_COUNT - 1) * gap,
+              opacity: isExpanded ? 1 : 0,
+              transition: 'opacity 200ms ease-out',
             }}>
               <svg
-                width={18}
-                height={18}
+                width={14}
+                height={14}
                 viewBox="0 0 24 24"
-                style={{
-                  opacity: isExpanded ? 1 : 0,
-                  transition: 'opacity 200ms ease-out',
-                  flexShrink: 0,
-                }}
+                style={{ flexShrink: 0 }}
               >
                 <line x1="6" y1="6" x2="18" y2="18" stroke={ERROR_COLOR} strokeWidth={2.5} strokeLinecap="round" />
                 <line x1="18" y1="6" x2="6" y2="18" stroke={ERROR_COLOR} strokeWidth={2.5} strokeLinecap="round" />
               </svg>
+              {errorMessage && (
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 9,
+                  fontWeight: 600,
+                  letterSpacing: '0.04em',
+                  color: ERROR_COLOR,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: 180,
+                  textTransform: 'uppercase',
+                }}>
+                  {errorMessage.split('.')[0]}
+                </span>
+              )}
             </div>
           ) : (
             isTranscribing ? (

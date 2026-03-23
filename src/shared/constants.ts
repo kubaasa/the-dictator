@@ -3,6 +3,7 @@ export const IPC = {
   RECORDING_INIT: 'recording:init',
   RECORDING_START: 'recording:start',
   RECORDING_STOP: 'recording:stop',
+  RECORDING_MIC_ERROR: 'recording:mic-error',
   RECORDING_STATE_CHANGED: 'recording:state-changed',
 
   // Settings

@@ -54,6 +54,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
     <VoiceBar
       voiceLevel={voiceLevel}
       state={state}
+      errorMessage={error}
       onToggleRecording={() => window.dictator.requestToggleRecording()}
     />
   );
