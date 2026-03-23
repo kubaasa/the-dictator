@@ -18,7 +18,7 @@ export class TrayManager {
     this.mainWindow = mainWindow;
 
     const iconPath = getAssetPath('icon.png');
-    const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+    const icon = nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32 });
     this.tray = new Tray(icon);
     this.tray.setToolTip('The Dictator');
     this.updateMenu();
