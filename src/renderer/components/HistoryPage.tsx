@@ -185,10 +185,10 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
         style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">
-        <div className="mx-5 mb-4 rounded-lg border border-neutral-800 bg-[#0f0f0f] overflow-hidden">
+        <div className="bg-[#0f0f0f]/60 pb-1">
           {/* Custom audio player */}
           {entry.audioPath && (
-            <div className="p-4 border-b border-neutral-800">
+            <div className="px-5 py-3">
               <audio
                 ref={audioRef}
                 preload="metadata"
@@ -248,7 +248,7 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
           )}
 
           {/* Transcription text */}
-          <div className="p-4 border-b border-neutral-800">
+          <div className="mx-5 border-t border-neutral-800/30 py-3">
             <p className="text-sm text-neutral-200 leading-relaxed max-h-48 overflow-y-auto select-text whitespace-pre-wrap">
               {entry.text}
             </p>
@@ -256,13 +256,13 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
 
           {/* Delete error */}
           {deleteError && (
-            <div className="px-4 py-1.5 text-sm text-red-400 bg-red-950/30" role="alert">
+            <div className="mx-5 px-0 py-1.5 text-sm text-red-400" role="alert">
               {deleteError}
             </div>
           )}
 
           {/* Actions */}
-          <div className="flex items-center gap-2 px-4 py-2">
+          <div className="flex items-center gap-2 mx-5 border-t border-neutral-800/30 py-2">
             {confirmingDelete ? (
               <div className="flex items-center gap-2 w-full justify-center">
                 <span className="font-mono text-sm text-neutral-400">Delete this recording?</span>
