@@ -12,7 +12,7 @@ const BAR_COUNT = 6;
 const BASE_COLOR = 'rgba(255,255,255,0.88)';
 const ERROR_COLOR = '#F87171';
 const MIN_BAR_H = 2;
-const MAX_BAR_H = 30;
+const MAX_BAR_H = 24;
 
 // LERP smoothing factors — tuned for 6 bars (more responsive than MAXI's 40-bar defaults)
 const LERP_ATTACK  = 0.75;
@@ -78,11 +78,9 @@ const KEYFRAMES = `
   from { transform: scaleY(var(--from-scale, 0.15)); }
   to   { transform: scaleY(0.05); }
 }
-@keyframes vb-processing-glitch {
-  0%, 92%, 100% { transform: translate(0, 0); opacity: 1; }
-  93%           { transform: translate(-1px, 1px); opacity: 0.8; }
-  95%           { transform: translate(1px, -1px); opacity: 0.6; }
-  97%           { transform: translate(1px, 0); opacity: 0.9; }
+@keyframes vb-wave {
+  0%, 100% { transform: scaleY(0.15); }
+  50%      { transform: scaleY(0.85); }
 }
 @keyframes vb-error-shake {
   0%   { transform: translateX(0); }
@@ -108,20 +106,6 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
   const isDone         = state === 'done';
   const isError        = state === 'error';
   const isIdle         = !isInitializing && !isRecording && !isTranscribing && !isDone && !isError;
-
-  // ─── Processing dots cycling animation ─────────────────────────────────────
-  const [processingDots, setProcessingDots] = useState('.');
-
-  useEffect(() => {
-    if (!isTranscribing) {
-      setProcessingDots('.');
-      return;
-    }
-    const id = setInterval(() => {
-      setProcessingDots(prev => prev.length >= 3 ? '.' : prev + '.');
-    }, 500);
-    return () => clearInterval(id);
-  }, [isTranscribing]);
 
   const [isProximate, setIsProximate] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -306,7 +290,7 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
   const isExpanded = isProximate || isInitializing || isRecording || isTranscribing || isError;
 
   const collapsedH = 12;
-  const expandedH  = MAX_BAR_H + gap * 4;
+  const expandedH  = MAX_BAR_H + gap * 6;
 
   const pillHeight = isExpanded ? expandedH : collapsedH;
 
@@ -442,40 +426,27 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
               )}
             </div>
           ) : (
-            isTranscribing ? (
-              <span style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 12,
-                fontWeight: 900,
-                letterSpacing: '0.05em',
-                color: '#DC2626',
-                userSelect: 'none',
-                whiteSpace: 'pre',
-                animation: 'vb-processing-glitch 4s linear infinite',
-                display: 'inline-flex',
-                justifyContent: 'center',
-                width: BAR_COUNT * barWidth + (BAR_COUNT - 1) * gap,
-              }}>
-                {'['}
-                {[0, 1, 2].map(i => (
-                  <span key={i} style={{ opacity: i < processingDots.length ? 1 : 0, transition: 'none' }}>.</span>
-                ))}
-                {']'}
-              </span>
-            ) : (
-              BARS.map((bar, i) => {
+            BARS.map((bar, i) => {
                 const { idleScale } = bar;
 
                 let transform: string | undefined;
                 let animation = 'none';
                 let transition = 'transform 0.3s ease-out, opacity 200ms ease-out';
                 let barOpacity: number;
+                let barColor = BASE_COLOR;
 
                 if (isInitializing) {
                   transform = `scaleY(${IDLE_SCALES[i]})`;
                   animation = `vb-init 1s ease-in-out ${INIT_DELAYS[i]}s infinite`;
                   transition = 'none';
                   barOpacity = 0.92;
+
+                } else if (isTranscribing) {
+                  transform = `scaleY(0.15)`;
+                  animation = `vb-wave 0.4s ease-in-out ${(i * 0.04).toFixed(2)}s infinite`;
+                  transition = 'none';
+                  barOpacity = 0.92;
+                  barColor = '#DC2626';
 
                 } else if (isIdle) {
                   transform = `scaleY(${idleScale})`;
@@ -505,7 +476,7 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
                       width: barWidth,
                       height: MAX_BAR_H,
                       borderRadius: barWidth / 2,
-                      background: BASE_COLOR,
+                      background: barColor,
                       transformOrigin: 'center',
                       flexShrink: 0,
                       transform,
@@ -518,7 +489,6 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
                   />
                 );
               })
-            )
           )}
         </div>
       </div>
