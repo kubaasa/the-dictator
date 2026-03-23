@@ -59,6 +59,8 @@ const config: ForgeConfig = {
       'node_modules/@img/**',
     ],
     name: 'The Dictator',
+    icon: 'assets/icon',
+    extraResource: ['assets/icon.png'],
   },
   rebuildConfig: {
     onlyModules: ['better-sqlite3', 'uiohook-napi'],
@@ -73,7 +75,9 @@ const config: ForgeConfig = {
     },
   },
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      setupIcon: path.resolve('assets/icon.ico'),
+    }),
     new MakerZIP({}, ['darwin']),
   ],
   plugins: [

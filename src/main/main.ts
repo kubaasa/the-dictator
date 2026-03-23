@@ -13,6 +13,13 @@ import { AIService } from './services/ai.service';
 import { DEFAULT_SETTINGS, type AppSettings, type RecordingState } from '../shared/types';
 import { IPC } from '../shared/constants';
 
+/** Resolve asset path — dev: project root, prod: extraResource in resources/ */
+function getAssetPath(filename: string): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, filename)
+    : path.join(app.getAppPath(), 'assets', filename);
+}
+
 if (started) {
   app.quit();
 }
@@ -102,6 +109,7 @@ function createMainWindow(): BrowserWindow {
     show: false,
     autoHideMenuBar: true,
     title: 'The Dictator',
+    icon: getAssetPath('icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
