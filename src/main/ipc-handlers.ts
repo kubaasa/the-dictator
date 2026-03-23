@@ -378,6 +378,16 @@ export function registerIpcHandlers(
     }
   });
 
+  ipcMain.handle(IPC.HISTORY_GET_COUNT, () => {
+    try {
+      const count = historyService.getCount();
+      return { success: true, count };
+    } catch (err) {
+      console.error('[IPC] HISTORY_GET_COUNT failed:', err);
+      return { success: false, count: 0, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   ipcMain.handle(IPC.HISTORY_GET_ALL, (_event, limit?: number, offset?: number) => {
     try {
       const data = historyService.getAll(limit ?? 50, offset ?? 0);

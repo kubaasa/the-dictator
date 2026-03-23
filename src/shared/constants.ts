@@ -39,6 +39,7 @@ export const IPC = {
 
   // History
   HISTORY_GET_ALL: 'history:get-all',
+  HISTORY_GET_COUNT: 'history:get-count',
   HISTORY_GET_STATS: 'history:get-stats',
   HISTORY_DELETE: 'history:delete',
   HISTORY_SEARCH: 'history:search',

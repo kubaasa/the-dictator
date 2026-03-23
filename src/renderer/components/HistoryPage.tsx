@@ -326,6 +326,7 @@ export function HistoryPage() {
   const [deleteError, setDeleteError] = useState<{ id: string; msg: string } | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchQueryRef = useRef('');
@@ -375,6 +376,12 @@ export function HistoryPage() {
       } else {
         setLoadError(result.error ?? 'Unknown error');
       }
+
+      // Fetch real total count from DB
+      try {
+        const countResult = await window.dictator.history.getCount();
+        if (countResult.success) setTotalCount(countResult.count);
+      } catch { /* non-critical */ }
 
     } catch (err) {
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
@@ -453,6 +460,7 @@ export function HistoryPage() {
       const result = await window.dictator.history.delete(id);
       if (result.success) {
         setRecordings((prev) => prev.filter((r) => r.id !== id));
+        setTotalCount((prev) => (prev !== null ? prev - 1 : prev));
         setExpandedId((prev) => (prev === id ? null : prev));
         if (result.audioError) {
           console.warn('[HistoryPage] Audio cleanup warning:', result.audioError);
@@ -470,8 +478,8 @@ export function HistoryPage() {
 
   const groups = groupByDate(recordings);
 
-  // Count for search results
-  const filteredCount = recordings.length;
+  // When searching: show loaded result count; otherwise: show real total from DB
+  const displayCount = searchQuery.trim() ? recordings.length : (totalCount ?? recordings.length);
 
   return (
     <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
@@ -501,7 +509,7 @@ export function HistoryPage() {
             </div>
             {!isLoading && (
               <p className="mt-2 font-mono text-sm text-neutral-600">
-                {filteredCount} recording{filteredCount !== 1 ? 's' : ''}
+                {displayCount} recording{displayCount !== 1 ? 's' : ''}
               </p>
             )}
           </div>

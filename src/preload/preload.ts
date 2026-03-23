@@ -45,6 +45,7 @@ export interface DictatorAPI {
   // History
   history: {
     getAll: (limit?: number, offset?: number) => Promise<{ success: boolean; data: RecordingEntry[]; error?: string }>;
+    getCount: () => Promise<{ success: boolean; count: number; error?: string }>;
     getStats: () => Promise<{ success: boolean; data: HistoryStats | null; error?: string }>;
     delete: (id: string) => Promise<{ success: boolean; found?: boolean; audioDeleted?: boolean; audioError?: string; error?: string }>;
     search: (query: string) => Promise<{ success: boolean; data: RecordingEntry[]; error?: string }>;
@@ -178,6 +179,7 @@ const api: DictatorAPI = {
   // History
   history: {
     getAll: (limit?: number, offset?: number) => ipcRenderer.invoke(IPC.HISTORY_GET_ALL, limit, offset),
+    getCount: () => ipcRenderer.invoke(IPC.HISTORY_GET_COUNT),
     getStats: () => ipcRenderer.invoke(IPC.HISTORY_GET_STATS),
     delete: (id) => ipcRenderer.invoke(IPC.HISTORY_DELETE, id),
     search: (query) => ipcRenderer.invoke(IPC.HISTORY_SEARCH, query),

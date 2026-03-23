@@ -72,6 +72,12 @@ export class HistoryService {
     );
   }
 
+  /** Total number of recordings in the database. */
+  getCount(): number {
+    const row = this.db.prepare('SELECT COUNT(*) as cnt FROM recordings').get() as { cnt: number };
+    return row.cnt;
+  }
+
   /** Aggregate stats across ALL recordings (no limit). */
   getStats(): HistoryStats {
     const row = this.db.prepare(`
