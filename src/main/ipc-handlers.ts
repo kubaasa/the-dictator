@@ -145,10 +145,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.TRANSCRIPTION_CHECK_READY, () => {
     const engine = (store.get('transcription.engine') as string) ?? 'local';
     let readyError: string | undefined;
-    if (engine === 'api') {
-      const apiKey = (store.get('transcription.openaiApiKey') as string) ?? '';
-      if (!apiKey) readyError = 'OpenAI API key is not set. Go to Modes and enter your key.';
-    } else if (engine === 'groq') {
+    if (engine === 'cloud') {
       const groqKey = (store.get('transcription.groqApiKey') as string) ?? '';
       if (!groqKey) readyError = 'Groq API key is not set. Go to Modes and enter your key.';
     } else {

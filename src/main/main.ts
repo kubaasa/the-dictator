@@ -27,6 +27,12 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const store = new Store<AppSettings>({ defaults: DEFAULT_SETTINGS });
+
+// Migrate legacy engine values ('api' | 'groq') → 'cloud'
+const legacyEngine = store.get('transcription.engine') as string;
+if (legacyEngine === 'api' || legacyEngine === 'groq') {
+  store.set('transcription.engine', 'cloud');
+}
 const trayManager = new TrayManager();
 const transcriptionService = new TranscriptionService(store);
 const pasteService = new PasteService();

@@ -20,8 +20,7 @@ export class AIService {
     const aiEnabled = (this.store.get('dictation.aiPostProcessing') as boolean) ?? true;
     if (!aiEnabled) return;
 
-    const provider = (this.store.get('ai.provider') as string) ?? 'none';
-    if (provider === 'none') return;
+    const provider = (this.store.get('ai.provider') as string) ?? 'openai';
 
     try {
       switch (provider) {
@@ -56,8 +55,7 @@ export class AIService {
     const aiEnabled = (this.store.get('dictation.aiPostProcessing') as boolean) ?? true;
     if (!aiEnabled) return rawText;
 
-    const provider = (this.store.get('ai.provider') as string) ?? 'none';
-    if (provider === 'none') return rawText;
+    const provider = (this.store.get('ai.provider') as string) ?? 'openai';
 
     const basePrompt = (this.store.get('dictation.customPrompt') as string) ?? '';
     if (!basePrompt) return rawText;
@@ -225,8 +223,7 @@ export class AIService {
   }
 
   async testPrompt(text: string, systemPrompt: string): Promise<string> {
-    const provider = (this.store.get('ai.provider') as string) ?? 'none';
-    if (provider === 'none') throw new Error('No AI provider configured.');
+    const provider = (this.store.get('ai.provider') as string) ?? 'openai';
     if (!systemPrompt) throw new Error('System prompt is empty.');
 
     const language = (this.store.get('transcription.language') as string) ?? 'en';

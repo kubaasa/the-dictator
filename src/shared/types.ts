@@ -26,9 +26,9 @@ export interface HistoryStats {
   avgWpm: number;
 }
 
-export type TranscriptionEngine = 'local' | 'api' | 'groq';
+export type TranscriptionEngine = 'local' | 'cloud';
 export type WidgetType = 'voicebar' | 'maxi';
-export type AIProviderType = 'openai' | 'anthropic' | 'ollama' | 'none';
+export type AIProviderType = 'openai' | 'anthropic' | 'ollama';
 export type RecordingState = 'idle' | 'initializing' | 'recording' | 'transcribing' | 'processing' | 'done' | 'error';
 export type HotkeyMode = 'toggle' | 'push-to-talk';
 
@@ -37,7 +37,6 @@ export interface AppSettings {
     engine: TranscriptionEngine;
     localModelSize: string;
     language: string;
-    openaiApiKey: string;
     groqApiKey: string;
   };
   ai: {
@@ -80,14 +79,13 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   transcription: {
-    engine: 'api',
+    engine: 'cloud',
     localModelSize: 'base',
     language: 'en',
-    openaiApiKey: '',
     groqApiKey: '',
   },
   ai: {
-    provider: 'none',
+    provider: 'openai',
     openaiApiKey: '',
     openaiModel: 'gpt-4.1-nano',
     anthropicApiKey: '',

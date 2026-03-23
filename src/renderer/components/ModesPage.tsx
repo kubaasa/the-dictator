@@ -19,7 +19,6 @@ const LANGUAGE_OPTIONS = [
 ];
 
 const AI_PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
-  { value: 'none', label: 'None (no AI)' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
 ];
@@ -92,18 +91,16 @@ export function ModesPage(props: ModelStatus) {
   const { downloaded, downloadedModels, downloading, progress, error, download, cancel, recheck } = props;
 
   // Transcription state
-  const [engine, setEngine] = useState<TranscriptionEngine>('api');
+  const [engine, setEngine] = useState<TranscriptionEngine>('cloud');
   const [modelSize, setModelSize] = useState('base');
   const [language, setLanguage] = useState('en');
-  const [apiKey, setApiKey] = useState('');
-  const [apiKeySaved, setApiKeySaved] = useState(false);
   const [groqApiKey, setGroqApiKey] = useState('');
   const [groqKeySaved, setGroqKeySaved] = useState(false);
 
   // AI + Dictation state
   const [aiPostProcessing, setAiPostProcessing] = useState(DEFAULT_SETTINGS.dictation.aiPostProcessing);
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_SETTINGS.dictation.customPrompt);
-  const [aiProvider, setAiProvider] = useState<AIProviderType>('none');
+  const [aiProvider, setAiProvider] = useState<AIProviderType>('openai');
   const [aiOpenaiKey, setAiOpenaiKey] = useState('');
   const [aiOpenaiModel, setAiOpenaiModel] = useState('gpt-4.1-nano');
   const [openaiModels, setOpenaiModels] = useState(OPENAI_MODELS);
@@ -125,7 +122,6 @@ export function ModesPage(props: ModelStatus) {
     setEngine(s.transcription.engine);
     setModelSize(s.transcription.localModelSize);
     setLanguage(s.transcription.language);
-    setApiKey(s.transcription.openaiApiKey);
     setGroqApiKey(s.transcription.groqApiKey);
     setAiPostProcessing(s.dictation.aiPostProcessing);
     setCustomPrompt(s.dictation.customPrompt);
@@ -183,19 +179,6 @@ export function ModesPage(props: ModelStatus) {
       });
     } catch (err) {
       console.error('[ModesPage] Failed to save engine:', err);
-    }
-  };
-
-  const handleApiKeySave = async () => {
-    try {
-      const current = await window.dictator.getSettings();
-      await window.dictator.setSettings({
-        transcription: { ...current.transcription, openaiApiKey: apiKey },
-      });
-      setApiKeySaved(true);
-      setTimeout(() => setApiKeySaved(false), 2000);
-    } catch (err) {
-      console.error('[ModesPage] Failed to save API key:', err);
     }
   };
 
@@ -304,7 +287,6 @@ export function ModesPage(props: ModelStatus) {
     }
   };
 
-  const isAiEnabled = aiProvider !== 'none';
   const isAiConfigured =
     aiProvider === 'openai' ? !!aiOpenaiKey :
     aiProvider === 'anthropic' ? !!aiAnthropicKey :
@@ -317,7 +299,7 @@ export function ModesPage(props: ModelStatus) {
   const currentAiModel = aiProvider === 'openai' ? aiOpenaiModel : aiProvider === 'anthropic' ? aiAnthropicModel : '';
 
   // ── Pipeline status bar helpers ──
-  const transcriptionSummary = engine === 'groq' ? 'Groq API' : engine === 'api' ? 'Whisper API' : `Local (${modelSize.charAt(0).toUpperCase() + modelSize.slice(1)})`;
+  const transcriptionSummary = engine === 'cloud' ? 'Cloud' : `Local (${modelSize.charAt(0).toUpperCase() + modelSize.slice(1)})`;
   const languageLabel = LANGUAGE_OPTIONS.find(o => o.value === language)?.value.toUpperCase() ?? 'EN';
 
   const aiModelLabel = aiProvider === 'openai'
@@ -326,19 +308,17 @@ export function ModesPage(props: ModelStatus) {
       ? ANTHROPIC_MODELS.find(m => m.value === aiAnthropicModel)?.label ?? aiAnthropicModel
       : aiProvider === 'ollama' ? aiOllamaModel : '';
 
+  const providerLabel = aiProvider === 'openai' ? 'OpenAI' : aiProvider === 'anthropic' ? 'Anthropic' : 'Ollama';
   const aiSummary = !aiPostProcessing
     ? 'OFF'
-    : aiProvider === 'none'
-      ? 'No provider'
-      : !isAiConfigured
-        ? `${aiProvider === 'openai' ? 'OpenAI' : aiProvider === 'anthropic' ? 'Anthropic' : 'Ollama'} / No key`
-        : `${aiProvider === 'openai' ? 'OpenAI' : aiProvider === 'anthropic' ? 'Anthropic' : 'Ollama'} / ${aiModelLabel}`;
+    : !isAiConfigured
+      ? `${providerLabel} / No key`
+      : `${providerLabel} / ${aiModelLabel}`;
 
   const transcriptionStatus: 'ready' | 'warning' | 'off' =
-    engine === 'groq' ? (groqApiKey ? 'ready' : 'warning') :
-    engine === 'api' ? (apiKey ? 'ready' : 'warning') : (downloaded ? 'ready' : 'warning');
+    engine === 'cloud' ? (groqApiKey ? 'ready' : 'warning') : (downloaded ? 'ready' : 'warning');
   const aiStatus: 'ready' | 'warning' | 'off' =
-    !aiPostProcessing ? 'off' : (isAiEnabled && isAiConfigured) ? 'ready' : 'warning';
+    !aiPostProcessing ? 'off' : isAiConfigured ? 'ready' : 'warning';
   const outputStatus: 'ready' | 'warning' | 'off' = 'ready';
 
   const statusColor = (s: 'ready' | 'warning' | 'off') =>
@@ -399,26 +379,60 @@ export function ModesPage(props: ModelStatus) {
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
                 Engine
               </span>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 {([
-                  { value: 'local' as TranscriptionEngine, label: 'Local' },
-                  { value: 'api' as TranscriptionEngine, label: 'OpenAI API' },
-                  { value: 'groq' as TranscriptionEngine, label: 'Groq' },
+                  { value: 'local' as TranscriptionEngine, label: 'Local', desc: 'Runs Whisper on your device via ONNX. Free, fully offline.',
+                    icon: <svg className="h-9 w-9" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h9a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 15.75 4.5h-9A2.25 2.25 0 0 0 4.5 6.75v10.5A2.25 2.25 0 0 0 6.75 19.5Z" /></svg> },
+                  { value: 'cloud' as TranscriptionEngine, label: 'Cloud', desc: 'Whisper large-v3 on Groq hardware. Fast, requires API key.',
+                    icon: <svg className="h-9 w-9" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" /></svg> },
                 ]).map((opt) => (
                   <button
                     key={opt.value}
                     onClick={() => handleEngineChange(opt.value)}
-                    className={`rounded-lg border px-5 py-2 font-mono text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-200 cursor-pointer ${
+                    className={`rounded-lg border px-4 py-5 flex flex-col items-center justify-center gap-2 transition-all duration-200 cursor-pointer ${
                       engine === opt.value
-                        ? 'border-red-600/50 bg-red-600/10 text-red-400'
-                        : 'border-neutral-700 bg-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300'
+                        ? 'border-red-600/50 bg-red-600/10'
+                        : 'border-neutral-700 bg-neutral-800 hover:border-neutral-600'
                     }`}
                   >
-                    {opt.label}
+                    <span className={engine === opt.value ? 'text-red-400' : 'text-neutral-500'}>
+                      {opt.icon}
+                    </span>
+                    <span className={`font-mono text-xs font-semibold uppercase tracking-[0.15em] ${
+                      engine === opt.value ? 'text-red-400' : 'text-neutral-400'
+                    }`}>
+                      {opt.label}
+                    </span>
+                    <span className="text-[11px] text-neutral-600 leading-snug text-center">
+                      {opt.desc}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
+
+            {/* Groq API Key — shown when Cloud engine selected */}
+            {engine === 'cloud' && (
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
+                    Groq API Key
+                  </span>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-orange-600/10 text-orange-400 border border-orange-600/20">
+                    Whisper v3
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-600 mb-3">
+                  Groq runs Whisper large-v3 on dedicated hardware — up to 10x faster than local inference.
+                </p>
+                <ApiKeyInput
+                  value={groqApiKey}
+                  onChange={setGroqApiKey}
+                  onSave={handleGroqKeySave}
+                  saved={groqKeySaved}
+                />
+              </div>
+            )}
 
             {/* Language pills */}
             <div>
@@ -442,7 +456,8 @@ export function ModesPage(props: ModelStatus) {
               </div>
             </div>
 
-            {/* Whisper model cards */}
+            {/* Whisper model cards — only relevant for local engine */}
+            {engine === 'local' && (
             <div>
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
                 Whisper Model
@@ -530,51 +545,6 @@ export function ModesPage(props: ModelStatus) {
                 </p>
               )}
             </div>
-
-            {/* OpenAI API Key — Transcription */}
-            {engine === 'api' && (
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
-                    OpenAI API Key
-                  </span>
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-blue-600/10 text-blue-400 border border-blue-600/20">
-                    Whisper
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-600 mb-3">
-                  Used for Whisper speech-to-text. Not the same as AI processing key.
-                </p>
-                <ApiKeyInput
-                  value={apiKey}
-                  onChange={setApiKey}
-                  onSave={handleApiKeySave}
-                  saved={apiKeySaved}
-                />
-              </div>
-            )}
-
-            {/* Groq API Key — Transcription */}
-            {engine === 'groq' && (
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
-                    Groq API Key
-                  </span>
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-orange-600/10 text-orange-400 border border-orange-600/20">
-                    Whisper v3
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-600 mb-3">
-                  Groq runs Whisper large-v3 on dedicated hardware — up to 10x faster than local inference.
-                </p>
-                <ApiKeyInput
-                  value={groqApiKey}
-                  onChange={setGroqApiKey}
-                  onSave={handleGroqKeySave}
-                  saved={groqKeySaved}
-                />
-              </div>
             )}
 
           </div>
@@ -612,7 +582,7 @@ export function ModesPage(props: ModelStatus) {
             </div>
 
             {/* [IDLE] banner */}
-            {aiPostProcessing && (!isAiEnabled || !isAiConfigured) && (
+            {aiPostProcessing && !isAiConfigured && (
               <div className="flex items-center gap-3 rounded-lg border border-green-800/40 bg-green-950/20 px-4 py-3">
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="relative flex h-2 w-2">
@@ -622,9 +592,7 @@ export function ModesPage(props: ModelStatus) {
                   <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-green-500">[IDLE]</span>
                 </div>
                 <span className="text-xs text-green-400/70">
-                  {!isAiEnabled
-                    ? 'AI processing enabled but no provider selected — choose one below.'
-                    : 'Provider selected — enter your API key below and click Save to activate.'}
+                  Provider selected — enter your API key below and click Save to activate.
                 </span>
               </div>
             )}
