@@ -143,13 +143,13 @@ export function WidgetPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-neutral-800">
-                  <th className="px-4 py-3 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
+                  <th className="px-4 py-3 text-sm font-semibold text-neutral-200 bg-neutral-800/30">
                     Feature
                   </th>
-                  <th className="px-4 py-3 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-center text-neutral-500">
+                  <th className="px-4 py-3 text-sm font-semibold text-neutral-200 text-center bg-neutral-800/30">
                     Mini
                   </th>
-                  <th className="px-4 py-3 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-center text-neutral-500">
+                  <th className="px-4 py-3 text-sm font-semibold text-neutral-200 text-center bg-neutral-800/30">
                     Maxi
                   </th>
                 </tr>
@@ -160,7 +160,7 @@ export function WidgetPage() {
                     key={row.feature}
                     className={i < COMPARISON.length - 1 ? 'border-b border-neutral-800/50' : ''}
                   >
-                    <td className="px-4 py-3 font-mono text-sm text-neutral-300">
+                    <td className="px-4 py-3 text-sm font-semibold text-neutral-200 bg-neutral-800/30">
                       {row.feature}
                     </td>
                     <td className="px-4 py-3 text-center">
