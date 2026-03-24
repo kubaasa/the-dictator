@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, screen, session } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, protocol, screen, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
@@ -137,7 +137,15 @@ function createMainWindow(): BrowserWindow {
     show: false,
     autoHideMenuBar: true,
     title: 'The Dictator',
-    icon: getAssetPath('icon.png'),
+    icon: (() => {
+      const raw = nativeImage.createFromPath(getAssetPath('icon.png'));
+      const { width, height } = raw.getSize();
+      // Crop 20% from each side to focus on the central logo, skip transparent corners + shadow
+      const margin = Math.floor(width * 0.2);
+      return raw
+        .crop({ x: margin, y: margin, width: width - margin * 2, height: height - margin * 2 })
+        .resize({ width: 256, height: 256 });
+    })(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

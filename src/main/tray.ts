@@ -18,7 +18,13 @@ export class TrayManager {
     this.mainWindow = mainWindow;
 
     const iconPath = getAssetPath('icon.png');
-    const icon = nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32 });
+    const rawIcon = nativeImage.createFromPath(iconPath);
+    const { width, height } = rawIcon.getSize();
+    // Crop center to remove transparent rounded-corner padding
+    const margin = Math.floor(width * 0.1);
+    const icon = rawIcon
+      .crop({ x: margin, y: margin, width: width - margin * 2, height: height - margin * 2 })
+      .resize({ width: 32, height: 32 });
     this.tray = new Tray(icon);
     this.tray.setToolTip('The Dictator');
     this.updateMenu();
@@ -54,11 +60,6 @@ export class TrayManager {
     if (!this.tray) return;
 
     const contextMenu = Menu.buildFromTemplate([
-      {
-        label: `Status: ${this.state}`,
-        enabled: false,
-      },
-      { type: 'separator' },
       {
         label: 'Show Settings',
         click: () => {
