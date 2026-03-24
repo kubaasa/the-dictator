@@ -41,6 +41,9 @@ export function MicrophoneSelector({
     <div ref={containerRef} className="relative no-drag">
       <button
         onClick={toggleDropdown}
+        aria-label={`Select microphone: ${selectedLabel}`}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
         className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
         title={selectedLabel}
       >
@@ -62,13 +65,15 @@ export function MicrophoneSelector({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-max min-w-[280px] max-w-[440px] overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 shadow-lg">
+        <div role="listbox" aria-label="Available microphones" className="absolute right-0 top-full z-50 mt-1 w-max min-w-[280px] max-w-[440px] overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 shadow-lg">
           {devices.length === 0 ? (
             <p className="px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-600">No microphones found</p>
           ) : (
             devices.map((device) => (
               <button
                 key={device.deviceId}
+                role="option"
+                aria-selected={device.deviceId === selectedDeviceId}
                 onClick={() => {
                   setSelectedDeviceId(device.deviceId);
                   closeDropdown();

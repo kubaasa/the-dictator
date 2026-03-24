@@ -301,6 +301,8 @@ export function ShortcutsPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => resetShortcut(config.key)}
+              disabled={inactive}
+              tabIndex={inactive ? -1 : 0}
               className={`p-1 rounded transition-colors ${
                 inactive
                   ? 'text-neutral-700 pointer-events-none'
@@ -318,7 +320,11 @@ export function ShortcutsPage() {
             <div
               ref={isListening ? inputRef : undefined}
               tabIndex={inactive ? -1 : 0}
+              aria-disabled={inactive}
               onClick={() => !inactive && startListening(config.key)}
+              onKeyDown={(e) => { if (!inactive && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); startListening(config.key); } }}
+              role="button"
+              aria-label={`Change ${config.label} shortcut`}
               className={`min-w-[200px] rounded-md border px-4 py-2 flex items-center justify-center text-sm font-mono transition-colors ${
                 isListening
                   ? 'cursor-pointer border-red-600 bg-red-600/10 text-red-400'

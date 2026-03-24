@@ -83,7 +83,7 @@ export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) 
   }, []);
 
   return (
-    <aside className={`flex flex-col gap-1 border-r border-neutral-800/50 py-3 transition-all duration-300 overflow-hidden ${collapsed ? 'w-14' : 'w-1/5'}`}>
+    <aside role="navigation" aria-label="Main navigation" className={`flex flex-col gap-1 border-r border-neutral-800/50 py-3 transition-all duration-300 overflow-hidden ${collapsed ? 'w-14' : 'w-1/5'}`}>
       {navItems.map((item) => {
         const isActive = item.id === activeView;
         return (

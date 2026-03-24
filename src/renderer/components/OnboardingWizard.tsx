@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { TranscriptionEngine } from '../../shared/types';
 import { ApiKeyInput } from './ApiKeyInput';
 import appIcon from '../../../assets/icon.png';
@@ -275,6 +275,7 @@ function StepConfig({
             <span>
               Open{' '}
               <button
+                autoFocus
                 onClick={() => window.dictator.openExternal('https://console.groq.com/keys')}
                 className="text-red-400 underline underline-offset-2 hover:text-red-300 cursor-pointer"
               >
@@ -770,9 +771,53 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
     setAudioDetected(false);
   }, []);
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Auto-focus dialog on mount
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
+
+  // Focus trap: Tab cycles within the modal
+  const handleKeyDown = (e: ReactKeyboardEvent) => {
+    if (e.key === 'Escape' && onClose) {
+      onClose();
+      return;
+    }
+    if (e.key !== 'Tab' || !dialogRef.current) return;
+
+    const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+      'button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-lg rounded-2xl border border-neutral-800 bg-[#141414] p-8 shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Setup guide"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className="relative w-full max-w-lg rounded-2xl border border-neutral-800 bg-[#141414] p-8 shadow-2xl outline-none"
+      >
         {/* Close button (only when opened from sidebar, not on first run) */}
         {onClose && (
           <button

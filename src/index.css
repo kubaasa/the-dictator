@@ -94,6 +94,25 @@ body,
   -webkit-app-region: no-drag;
 }
 
+/* Global focus-visible ring for keyboard navigation */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgba(220, 38, 38, 0.5);
+  outline-offset: 2px;
+}
+
+/* Skip focus ring on mouse clicks */
+button:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible),
+[tabindex]:focus:not(:focus-visible) {
+  outline: none;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
