@@ -39,6 +39,18 @@ const MODEL_MAP: Record<string, string> = {
   'distil-large-v3': 'distil-whisper/distil-large-v3',
 };
 
+// Large models (medium+) have fp32 encoders >2GB split into .onnx + .onnx_data files
+// which fail to load. fp16 quantization keeps them in a single file with negligible accuracy loss.
+const NEEDS_QUANTIZATION = new Set(['medium', 'large', 'large-v3', 'large-v3-turbo']);
+const QUANTIZED_DTYPE = { encoder_model: 'fp16', decoder_model_merged: 'fp16' };
+
+function getDtypeForModel(modelId: string): Record<string, string> | undefined {
+  for (const [size, id] of Object.entries(MODEL_MAP)) {
+    if (id === modelId && NEEDS_QUANTIZATION.has(size)) return QUANTIZED_DTYPE;
+  }
+  return undefined;
+}
+
 env.allowLocalModels = false;
 
 // Explicitly pin the cache dir so both download and detection always use the same path.
@@ -149,8 +161,7 @@ export class TranscriptionService {
   // TODO: Downloaded ONNX model files are not verified against checksums.
   // HuggingFace doesn't expose simple per-file checksums in its API, so proper
   // integrity verification would require parsing the repo's LFS metadata.
-  // For now, @huggingface/transformers handles partial download cleanup on abort,
-  // but corrupted-in-transit files could cause silent transcription failures.
+  // Corrupted-in-transit files could cause silent transcription failures.
   async downloadModel(onProgress: (pct: number) => void): Promise<void> {
     const modelId = this.getModelId();
 
@@ -180,9 +191,11 @@ export class TranscriptionService {
 
     try {
     // Download with CPU first — reliable, and caches model files for DML reuse.
+    const dtype = getDtypeForModel(modelId);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.pipe = await pipeline('automatic-speech-recognition', modelId, {
       device: 'cpu' as any,
+      ...(dtype && { dtype }),
       progress_callback: (info: { status: string; file?: string; loaded?: number; total?: number }) => {
         if (info.status === 'progress' && info.file != null) {
           fileBytes.set(info.file, {
@@ -207,6 +220,17 @@ export class TranscriptionService {
     });
     this.resolvedDevice = 'cpu';
     this.loadedModelId = modelId;
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        const modelDir = path.join(MODELS_CACHE_DIR, modelId);
+        try {
+          fs.rmSync(modelDir, { recursive: true, force: true });
+          console.log('[Dictator] Cleaned up partial download: %s', modelId);
+        } catch (cleanupErr) {
+          console.warn('[Dictator] Failed to clean up partial download:', cleanupErr);
+        }
+      }
+      throw err;
     } finally {
       global.fetch = originalFetch;
       this.cancelController = null;
@@ -217,7 +241,7 @@ export class TranscriptionService {
   cancelDownload(): void {
     this.cancelController?.abort();
     // Reset internal state so a stale partial pipeline isn't used for transcription.
-    // @huggingface/transformers handles partial file cleanup on disk automatically.
+    // Partial file cleanup happens in downloadModel() catch block on AbortError.
     this.pipe = null;
     this.loadedModelId = null;
   }
@@ -358,8 +382,11 @@ export class TranscriptionService {
     }
 
     const modelId = overrideModelId ?? this.getModelId();
+    const dtype = getDtypeForModel(modelId);
     this.loadingPromise = (async () => {
-      this.pipe = await pipeline('automatic-speech-recognition', modelId);
+      this.pipe = await pipeline('automatic-speech-recognition', modelId, {
+        ...(dtype && { dtype }),
+      });
       this.loadedModelId = modelId;
       console.log('[Dictator] Pipeline loaded (model=%s)', modelId);
     })();
