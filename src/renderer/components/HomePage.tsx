@@ -40,6 +40,11 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
 
   const [toggleShortcut, setToggleShortcut] = useState(DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
 
+  // Show toast for mic-related errors (OverconstrainedError, NotFoundError, etc.)
+  useEffect(() => {
+    if (recorderError) addToast('error', recorderError);
+  }, [recorderError]);
+
   useEffect(() => {
     // Clear stale recorder errors from previous attempts (e.g., "Model not downloaded")
     // when user returns to Home after fixing the issue in Modes
@@ -232,29 +237,18 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
       {(result || error) && (
         <div className="mx-auto w-full max-w-lg px-6">
           {error ? (
-            <div role="alert" className="flex flex-col gap-2 rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 animate-fade-in">
-              <div className="flex items-start gap-3">
-                <p className="flex-1 text-sm text-red-400">
-                  {error}
-                  {(errorType === 'missing-api-key' || errorType === 'model-not-downloaded') && (
-                    <>
-                      {' '}
-                      <button
-                        onClick={() => { clearError(); onNavigate('modes'); }}
-                        className="inline text-red-300 underline underline-offset-2 hover:text-red-200 transition-colors"
-                      >
-                        Go to Processing &rarr;
-                      </button>
-                    </>
-                  )}
-                </p>
+            <div role="alert" className="flex flex-col items-center gap-2 rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 text-center animate-fade-in">
+              <p className="text-sm text-red-400">
+                {error}
+              </p>
+              {(errorType === 'missing-api-key' || errorType === 'model-not-downloaded') && (
                 <button
-                  onClick={() => { clearError(); startRecording(); }}
-                  className="shrink-0 rounded-lg border border-red-800 px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-red-400 transition-colors hover:border-red-600 hover:text-red-300 hover:bg-red-950"
+                  onClick={() => { clearError(); onNavigate('modes'); }}
+                  className="text-sm text-red-300 underline underline-offset-2 hover:text-red-200 transition-colors"
                 >
-                  Retry
+                  Go to Processing
                 </button>
-              </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-3 animate-fade-in">

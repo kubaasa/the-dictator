@@ -7,6 +7,7 @@ interface MaxiWidgetProps {
   shortcuts: AppSettings['hotkey']['shortcuts'];
   hotkeyMode: HotkeyMode;
   errorMessage?: string;
+  audioDeviceId?: string;
 }
 
 const BAR_COUNT  = 60;
@@ -119,7 +120,7 @@ const KEYFRAMES = `
 
 type AnimPhase = 'idle' | 'entering' | 'active' | 'exiting';
 
-export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMessage }: MaxiWidgetProps) {
+export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMessage, audioDeviceId }: MaxiWidgetProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
   const prevIsActiveRef = useRef(false);
@@ -221,7 +222,10 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
     let samplesPerBar = 0;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const audioConstraints: MediaTrackConstraints = audioDeviceId
+        ? { deviceId: { exact: audioDeviceId } }
+        : {};
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { ...audioConstraints }, video: false });
 
       // Guard: cleanup ran while we were awaiting — release stream immediately
       if (!vizActiveRef.current) {

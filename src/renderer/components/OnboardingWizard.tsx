@@ -745,6 +745,10 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
         language: 'en',
         groqApiKey: engine === 'cloud' ? groqApiKey.trim() : current.transcription.groqApiKey,
       },
+      audio: {
+        ...current.audio,
+        deviceId: selectedMicId ?? '',
+      },
       general: {
         ...current.general,
         firstRunComplete: true,

@@ -118,7 +118,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.SETTINGS_SET, (_event, settings: Partial<AppSettings>) => {
     // Runtime validation: only allow known top-level keys from AppSettings
     const ALLOWED_KEYS = new Set<string>([
-      'transcription', 'ai', 'hotkey', 'dictation', 'vocabulary', 'widget', 'general',
+      'transcription', 'ai', 'hotkey', 'dictation', 'audio', 'vocabulary', 'widget', 'general',
     ]);
 
     for (const key of Object.keys(settings)) {
@@ -148,6 +148,9 @@ export function registerIpcHandlers(
     }
     if (settings.general !== undefined && (typeof settings.general !== 'object' || settings.general === null)) {
       throw new Error('Invalid value for "general": expected object');
+    }
+    if (settings.audio !== undefined && (typeof settings.audio !== 'object' || settings.audio === null)) {
+      throw new Error('Invalid value for "audio": expected object');
     }
 
     // Encrypt API keys before persisting to disk

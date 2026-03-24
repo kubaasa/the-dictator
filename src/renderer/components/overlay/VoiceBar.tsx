@@ -6,6 +6,7 @@ interface VoiceBarProps {
   state: RecordingState;
   errorMessage?: string;
   onToggleRecording?: () => void;
+  audioDeviceId?: string;
 }
 
 const BAR_COUNT = 6;
@@ -96,7 +97,7 @@ const KEYFRAMES = `
 }
 `;
 
-export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }: VoiceBarProps) {
+export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording, audioDeviceId }: VoiceBarProps) {
   const barWidth = 3;
   const gap      = 3;
 
@@ -109,8 +110,21 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
 
   const [isProximate, setIsProximate] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [errorFlash, setErrorFlash] = useState(false);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragMouseUpRef = useRef<(() => void) | null>(null);
+  const errorFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Brief expand on error — show X for 1.5s then collapse
+  useEffect(() => {
+    if (isError) {
+      setErrorFlash(true);
+      errorFlashTimer.current = setTimeout(() => setErrorFlash(false), 1500);
+    } else {
+      setErrorFlash(false);
+    }
+    return () => { if (errorFlashTimer.current) clearTimeout(errorFlashTimer.current); };
+  }, [isError]);
 
   // Reset proximity when recording cycle completes — mouseLeave can be missed
   // on transparent Electron windows during state transitions.
@@ -206,7 +220,10 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
     let samplesPerBar = 0;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const audioConstraints: MediaTrackConstraints = audioDeviceId
+        ? { deviceId: { exact: audioDeviceId } }
+        : {};
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { ...audioConstraints }, video: false });
       if (!vizActiveRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
       streamRef.current = stream;
 
@@ -287,7 +304,7 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
     smoothedRef.current.fill(MIN_BAR_H);
   }
 
-  const isExpanded = isProximate || isInitializing || isRecording || isTranscribing || isError;
+  const isExpanded = isProximate || isInitializing || isRecording || isTranscribing || errorFlash;
 
   const collapsedH = 12;
   const expandedH  = MAX_BAR_H + gap * 6;
@@ -393,37 +410,20 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 5,
               padding: '0 4px',
               minWidth: BAR_COUNT * barWidth + (BAR_COUNT - 1) * gap,
               opacity: isExpanded ? 1 : 0,
               transition: 'opacity 200ms ease-out',
             }}>
               <svg
-                width={14}
-                height={14}
+                width={18}
+                height={18}
                 viewBox="0 0 24 24"
                 style={{ flexShrink: 0 }}
               >
                 <line x1="6" y1="6" x2="18" y2="18" stroke={ERROR_COLOR} strokeWidth={2.5} strokeLinecap="round" />
                 <line x1="18" y1="6" x2="6" y2="18" stroke={ERROR_COLOR} strokeWidth={2.5} strokeLinecap="round" />
               </svg>
-              {errorMessage && (
-                <span style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 9,
-                  fontWeight: 600,
-                  letterSpacing: '0.04em',
-                  color: ERROR_COLOR,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  maxWidth: 180,
-                  textTransform: 'uppercase',
-                }}>
-                  {errorMessage.split('.')[0]}
-                </span>
-              )}
             </div>
           ) : (
             BARS.map((bar, i) => {

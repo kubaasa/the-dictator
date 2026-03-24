@@ -64,6 +64,9 @@ export interface AppSettings {
     autoPaste: boolean;
     restoreClipboard: boolean;
   };
+  audio: {
+    deviceId: string;
+  };
   vocabulary: string[];
   widget: {
     activeWidget: WidgetType;
@@ -151,6 +154,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
 Respond with ONLY the reformatted message wrapped in the required tags.`,
     autoPaste: true,
     restoreClipboard: true,
+  },
+  audio: {
+    deviceId: '',
   },
   vocabulary: [],
   widget: {

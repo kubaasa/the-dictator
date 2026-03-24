@@ -18,8 +18,17 @@ interface UseMicrophoneSelectorReturn {
 
 export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
   const [devices, setDevices] = useState<MicDevice[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [selectedDeviceId, setSelectedDeviceIdState] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const initializedRef = useRef(false);
+
+  const setSelectedDeviceId = useCallback((id: string) => {
+    setSelectedDeviceIdState(id);
+    // Persist to electron-store so overlay widgets + next session use the same mic
+    window.dictator.getSettings().then((current) => {
+      window.dictator.setSettings({ ...current, audio: { ...current.audio, deviceId: id } });
+    });
+  }, []);
 
   const refreshDevices = useCallback(async () => {
     const allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -30,7 +39,7 @@ export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
         label: d.label || `Microphone ${i + 1}`,
       }));
     setDevices(mics);
-    setSelectedDeviceId((prev) => {
+    setSelectedDeviceIdState((prev) => {
       if (!prev || !mics.find((m) => m.deviceId === prev)) {
         return mics[0]?.deviceId ?? null;
       }
@@ -42,9 +51,18 @@ export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
   useEffect(() => {
     mountedRef.current = true;
 
-    // In Electron, mic permission is already granted — enumerateDevices returns labels
-    // without opening a stream, so no audible mic on/off at startup
-    refreshDevices().then(async () => {
+    // Load saved deviceId from electron-store, then refresh device list
+    window.dictator.getSettings().then((settings) => {
+      if (!mountedRef.current) return;
+      const savedId = settings.audio?.deviceId;
+      if (savedId) {
+        initializedRef.current = true;
+        setSelectedDeviceIdState(savedId);
+      }
+    }).then(() => {
+      if (!mountedRef.current) return;
+      return refreshDevices();
+    }).then(async () => {
       if (!mountedRef.current) return;
       // If labels are still empty (no prior permission), request lazily
       const allDevices = await navigator.mediaDevices.enumerateDevices();

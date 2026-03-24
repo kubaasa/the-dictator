@@ -18,6 +18,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
     () => DEFAULT_SETTINGS.hotkey.shortcuts,
   );
   const [hotkeyMode, setHotkeyMode] = useState<HotkeyMode>('toggle');
+  const [audioDeviceId, setAudioDeviceId] = useState('');
 
   useEffect(() => {
     window.dictator.getSettings().then((settings) => {
@@ -26,6 +27,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
         setShortcuts(settings.hotkey.shortcuts);
         setHotkeyMode(settings.hotkey.mode);
       }
+      if (settings.audio?.deviceId) setAudioDeviceId(settings.audio.deviceId);
     });
 
     const unsub = window.dictator.onSettingsChange((settings) => {
@@ -34,6 +36,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
         setShortcuts(settings.hotkey.shortcuts);
         setHotkeyMode(settings.hotkey.mode);
       }
+      setAudioDeviceId(settings.audio?.deviceId ?? '');
     });
     return unsub;
   }, []);
@@ -46,6 +49,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
         shortcuts={shortcuts}
         hotkeyMode={hotkeyMode}
         errorMessage={error}
+        audioDeviceId={audioDeviceId}
       />
     );
   }
@@ -56,6 +60,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
       state={state}
       errorMessage={error}
       onToggleRecording={() => window.dictator.requestToggleRecording()}
+      audioDeviceId={audioDeviceId}
     />
   );
 }
