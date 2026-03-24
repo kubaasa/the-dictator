@@ -101,7 +101,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
       value: totalWords,
       label: 'Total words',
       icon: (
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <svg className="h-[1em] w-[1em]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
         </svg>
       ),
@@ -110,7 +110,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
       value: totalTimeDisplay,
       label: 'Time recorded',
       icon: (
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <svg className="h-[1em] w-[1em]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
         </svg>
       ),
@@ -119,7 +119,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
       value: totalRecordings,
       label: 'Total recordings',
       icon: (
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <svg className="h-[1em] w-[1em]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
         </svg>
       ),
@@ -128,7 +128,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
       value: avgWpm,
       label: 'AVG Pace',
       icon: (
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <svg className="h-[1em] w-[1em]" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
         </svg>
       ),
@@ -138,18 +138,19 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
   return (
     <main className="flex flex-1 flex-col gap-6 pb-6 overflow-y-auto animate-fade-in">
       {/* Stats grid */}
-      <div className="mx-6 mt-6 grid grid-cols-4 gap-3">
+      <div className="mx-6 mt-6 grid grid-cols-4" style={{ gap: 'clamp(0.5rem, 1vw, 0.75rem)' }}>
         {statCards.map((stat, i) => (
           <div
             key={i}
-            className="relative rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-row items-center gap-4 hover:border-neutral-700 hover:bg-[#1A1A1A] transition-all duration-200 cursor-default overflow-hidden"
+            className="relative rounded-xl border border-neutral-800 bg-[#141414] flex flex-row items-center hover:border-neutral-700 hover:bg-[#1A1A1A] transition-all duration-200 cursor-default overflow-hidden"
+            style={{ padding: 'clamp(0.5rem, 1.2vw, 1.25rem)', gap: 'clamp(0.5rem, 1vw, 1rem)' }}
           >
             {/* Red top line */}
             <div className="absolute top-0 left-0 right-0 h-[2px] bg-red-600/20" />
-            <span className="text-red-700 shrink-0">{stat.icon}</span>
-            <div className="flex flex-col gap-1">
-              <span className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400 whitespace-nowrap">{stat.label}</span>
-              <span className="font-mono text-2xl font-bold text-white leading-none">{stat.value}</span>
+            <span className="text-red-700 shrink-0" style={{ fontSize: 'clamp(0.875rem, 1.5vw, 1.25rem)' }}>{stat.icon}</span>
+            <div className="flex flex-col min-w-0" style={{ gap: 'clamp(0.125rem, 0.3vw, 0.25rem)' }}>
+              <span className="font-mono font-semibold uppercase text-neutral-400 whitespace-nowrap" style={{ fontSize: 'clamp(0.5rem, 0.9vw, 0.75rem)', letterSpacing: 'clamp(0.05em, 0.15vw, 0.15em)' }}>{stat.label}</span>
+              <span className="font-mono font-bold text-white leading-none" style={{ fontSize: 'clamp(1rem, 2vw, 1.5rem)' }}>{stat.value}</span>
             </div>
           </div>
         ))}
