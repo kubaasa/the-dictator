@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import log from 'electron-log/renderer';
 import type { RecordingState, WidgetType, HotkeyMode, AppSettings } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import { useVoiceActivity } from '../hooks/useVoiceActivity';
@@ -28,7 +29,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
         setHotkeyMode(settings.hotkey.mode);
       }
       if (settings.audio?.deviceId) setAudioDeviceId(settings.audio.deviceId);
-    });
+    }).catch((err) => log.error('Failed to load settings in OverlayWindow:', err));
 
     const unsub = window.dictator.onSettingsChange((settings) => {
       if (settings.widget) setActiveWidget(settings.widget.activeWidget);

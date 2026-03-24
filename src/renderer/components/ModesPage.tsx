@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import log from 'electron-log/renderer';
 import type { ModelStatus } from '../hooks/useModelStatus';
 import type { AIProviderType, TranscriptionEngine, AppSettings } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
@@ -52,8 +53,12 @@ export function ModesPage(props: ModelStatus) {
   const [autoPaste, setAutoPaste] = useState(DEFAULT_SETTINGS.dictation.autoPaste);
 
   const fetchOpenAIModels = useCallback(async () => {
-    const res = await window.dictator.ai.getOpenAIModels();
-    if (res.success && res.models.length > 0) setOpenaiModels(res.models);
+    try {
+      const res = await window.dictator.ai.getOpenAIModels();
+      if (res.success && res.models.length > 0) setOpenaiModels(res.models);
+    } catch (err) {
+      log.error('Failed to fetch OpenAI models:', err);
+    }
   }, []);
 
   const syncFromSettings = useCallback((s: AppSettings) => {
@@ -78,7 +83,7 @@ export function ModesPage(props: ModelStatus) {
     window.dictator.getSettings().then((s) => {
       syncFromSettings(s);
       if (s.ai.provider === 'openai' && s.ai.openaiApiKey) fetchOpenAIModels();
-    });
+    }).catch((err) => log.error('Failed to load settings in ModesPage:', err));
 
     const unsub = window.dictator.onSettingsChange(syncFromSettings);
     return unsub;
@@ -92,7 +97,7 @@ export function ModesPage(props: ModelStatus) {
         transcription: { ...current.transcription, language: newLang },
       });
     } catch (err) {
-      console.error('[ModesPage] Failed to save language:', err);
+      log.error('[ModesPage] Failed to save language:', err);
     }
   };
 
@@ -105,7 +110,7 @@ export function ModesPage(props: ModelStatus) {
       });
       recheck();
     } catch (err) {
-      console.error('[ModesPage] Failed to save model:', err);
+      log.error('[ModesPage] Failed to save model:', err);
     }
   };
 
@@ -117,7 +122,7 @@ export function ModesPage(props: ModelStatus) {
         transcription: { ...current.transcription, engine: newEngine },
       });
     } catch (err) {
-      console.error('[ModesPage] Failed to save engine:', err);
+      log.error('[ModesPage] Failed to save engine:', err);
     }
   };
 
@@ -166,7 +171,7 @@ export function ModesPage(props: ModelStatus) {
       });
       addToast('success', 'Groq API key removed');
     } catch (err) {
-      console.error('[ModesPage] Failed to delete Groq key:', err);
+      log.error('[ModesPage] Failed to delete Groq key:', err);
     }
   };
 
@@ -179,7 +184,7 @@ export function ModesPage(props: ModelStatus) {
         dictation: { ...current.dictation, aiPostProcessing: next },
       });
     } catch (err) {
-      console.error('[ModesPage] Failed to toggle AI:', err);
+      log.error('[ModesPage] Failed to toggle AI:', err);
     }
   };
 
@@ -194,7 +199,7 @@ export function ModesPage(props: ModelStatus) {
         dictation: { ...current.dictation, customPrompt },
       });
     } catch (err) {
-      console.error('[ModesPage] Failed to save prompt:', err);
+      log.error('[ModesPage] Failed to save prompt:', err);
     }
   };
 
@@ -206,7 +211,7 @@ export function ModesPage(props: ModelStatus) {
         dictation: { ...current.dictation, customPrompt: DEFAULT_SETTINGS.dictation.customPrompt },
       });
     } catch (err) {
-      console.error('[ModesPage] Failed to reset prompt:', err);
+      log.error('[ModesPage] Failed to reset prompt:', err);
     }
   };
 
@@ -218,7 +223,7 @@ export function ModesPage(props: ModelStatus) {
         ai: { ...current.ai, provider },
       });
     } catch (err) {
-      console.error('[ModesPage] Failed to save provider:', err);
+      log.error('[ModesPage] Failed to save provider:', err);
     }
   };
 
@@ -233,7 +238,7 @@ export function ModesPage(props: ModelStatus) {
         await window.dictator.setSettings({ ai: { ...current.ai, anthropicModel: model } });
       }
     } catch (err) {
-      console.error('[ModesPage] Failed to save AI model:', err);
+      log.error('[ModesPage] Failed to save AI model:', err);
     }
   };
 
@@ -259,7 +264,7 @@ export function ModesPage(props: ModelStatus) {
       }
       addToast('success', 'AI configuration saved');
     } catch (err) {
-      console.error('[ModesPage] Failed to save AI key:', err);
+      log.error('[ModesPage] Failed to save AI key:', err);
     }
   };
 
@@ -281,7 +286,7 @@ export function ModesPage(props: ModelStatus) {
       }
       addToast('success', 'API key removed');
     } catch (err) {
-      console.error('[ModesPage] Failed to delete AI key:', err);
+      log.error('[ModesPage] Failed to delete AI key:', err);
     }
   };
 

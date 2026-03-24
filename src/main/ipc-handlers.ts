@@ -1,7 +1,10 @@
 import { ipcMain, BrowserWindow, shell, clipboard, app, screen, net } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import logger from './services/logger';
 import { IPC } from '../shared/constants';
+
+const log = logger.scope('IPC');
 import type { AppSettings, RecordingState, WidgetType, RecordingEntry, VocabularyEntry } from '../shared/types';
 import { TranscriptionService } from './services/transcription.service';
 import { PasteService } from './services/paste.service';
@@ -289,7 +292,7 @@ export function registerIpcHandlers(
 
     broadcastState('transcribing');
     // Warmup AI connection in parallel with transcription (best-effort, fire-and-forget)
-    aiService.warmup().catch((err) => { console.warn('[Dictator] AI warmup failed:', err); });
+    aiService.warmup().catch((err) => { log.warn('AI warmup failed:', err); });
     try {
       // Adaptive timeout: max(30s, audioDuration * 3), capped at 120s
       const audioDurationSec = samples.length / sampleRate;
@@ -330,7 +333,7 @@ export function registerIpcHandlers(
           }),
         ]);
       } catch (aiErr) {
-        console.warn('[Dictator] AI processing failed, using raw text:', aiErr);
+        log.warn('AI processing failed, using raw text:', aiErr);
         text = rawText;
         const aiMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
         for (const win of BrowserWindow.getAllWindows()) {
@@ -345,11 +348,11 @@ export function registerIpcHandlers(
       broadcastState('done');
       scheduleIdle(1500);
       const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
-      console.log('[Dictator] Transcription done. autoPaste=%s, chars=%d', autoPaste, text.length);
+      log.info('Transcription done. autoPaste=%s, chars=%d', autoPaste, text.length);
 
       // Always write to clipboard so the user can always Ctrl+V manually
       clipboard.writeText(text);
-      console.log('[Dictator] Text copied to clipboard');
+      log.info('Text copied to clipboard');
 
       const appName = pasteService.getAppName() ?? undefined;
       if (autoPaste && pasteService.hasTarget()) {
@@ -358,13 +361,13 @@ export function registerIpcHandlers(
           // Re-write after paste so transcribed text stays in clipboard for manual use
           clipboard.writeText(text);
         } catch (pasteErr) {
-          console.warn('[Dictator] Paste failed:', pasteErr);
+          log.warn('Paste failed:', pasteErr);
           for (const win of BrowserWindow.getAllWindows()) {
             win.webContents.send(IPC.NOTIFICATION_ERROR, 'Auto-paste failed — text is in your clipboard, use Ctrl+V.');
           }
         }
       } else if (autoPaste) {
-        console.log('[Dictator] No paste target captured — text is in clipboard, use Ctrl+V to paste manually');
+        log.info('No paste target captured — text is in clipboard');
       }
 
       // Save to history — sanitize ID to prevent path traversal in downstream audio save
@@ -385,7 +388,7 @@ export function registerIpcHandlers(
       try {
         historyService.add(entry);
       } catch (dbErr) {
-        console.error('[Dictator] Failed to save recording to history DB:', dbErr);
+        log.error('Failed to save recording to history DB:', dbErr);
       }
 
       event.sender.send(IPC.TRANSCRIPTION_RESULT, { id: entryId, text, appName, durationSeconds });
@@ -418,7 +421,7 @@ export function registerIpcHandlers(
       const data = historyService.getStats();
       return { success: true, data };
     } catch (err) {
-      console.error('[IPC] HISTORY_GET_STATS failed:', err);
+      log.error('HISTORY_GET_STATS failed:', err);
       return { success: false, data: null, error: err instanceof Error ? err.message : String(err) };
     }
   });
@@ -428,7 +431,7 @@ export function registerIpcHandlers(
       const count = historyService.getCount();
       return { success: true, count };
     } catch (err) {
-      console.error('[IPC] HISTORY_GET_COUNT failed:', err);
+      log.error('HISTORY_GET_COUNT failed:', err);
       return { success: false, count: 0, error: err instanceof Error ? err.message : String(err) };
     }
   });
@@ -438,7 +441,7 @@ export function registerIpcHandlers(
       const data = historyService.getAll(limit ?? 50, offset ?? 0);
       return { success: true, data };
     } catch (err) {
-      console.error('[IPC] HISTORY_GET_ALL failed:', err);
+      log.error('HISTORY_GET_ALL failed:', err);
       return { success: false, data: [], error: err instanceof Error ? err.message : String(err) };
     }
   });
@@ -451,7 +454,7 @@ export function registerIpcHandlers(
       const result = historyService.delete(id);
       return { success: true, ...result };
     } catch (err) {
-      console.error('[IPC] HISTORY_DELETE failed:', err);
+      log.error('HISTORY_DELETE failed:', err);
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
@@ -464,7 +467,7 @@ export function registerIpcHandlers(
       const data = historyService.search(query);
       return { success: true, data };
     } catch (err) {
-      console.error('[IPC] HISTORY_SEARCH failed:', err);
+      log.error('HISTORY_SEARCH failed:', err);
       return { success: false, data: [], error: err instanceof Error ? err.message : String(err) };
     }
   });
@@ -474,7 +477,7 @@ export function registerIpcHandlers(
       const result = historyService.clearAll();
       return { success: true, ...result };
     } catch (err) {
-      console.error('[IPC] HISTORY_CLEAR_ALL failed:', err);
+      log.error('HISTORY_CLEAR_ALL failed:', err);
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
@@ -496,13 +499,13 @@ export function registerIpcHandlers(
           historyService.add(e as RecordingEntry);
           added++;
         } catch (entryErr) {
-          console.warn('[IPC] HISTORY_MIGRATE skipped invalid entry:', entryErr);
+          log.warn('HISTORY_MIGRATE skipped invalid entry:', entryErr);
           skipped++;
         }
       }
       return { success: true, added, skipped };
     } catch (err) {
-      console.error('[IPC] HISTORY_MIGRATE failed:', err);
+      log.error('HISTORY_MIGRATE failed:', err);
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });

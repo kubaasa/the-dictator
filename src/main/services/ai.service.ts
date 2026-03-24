@@ -3,6 +3,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import Store from 'electron-store';
 import type { AppSettings, VocabularyEntry } from '../../shared/types';
 import { getApiKey } from './secure-storage';
+import logger from './logger';
+
+const log = logger.scope('AI');
 
 /** Per-method timeout for AI streaming — clean cancellation if a stream hangs. */
 const AI_METHOD_TIMEOUT_MS = 25_000;
@@ -18,7 +21,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 100
       const status = (err as { status?: number }).status;
       if (status === 401 || status === 403) throw err;
       if (attempt < maxAttempts) {
-        console.warn('[Dictator] AI retry attempt %d/%d after error:', attempt, maxAttempts, err instanceof Error ? err.message : err);
+        log.warn('Retry attempt %d/%d after error:', attempt, maxAttempts, err instanceof Error ? err.message : err);
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }

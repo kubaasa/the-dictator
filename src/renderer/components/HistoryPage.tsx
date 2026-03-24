@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import log from 'electron-log/renderer';
 import { ViewfinderCorners } from './RecEffects';
 import { CopyButton } from './CopyButton';
 import type { RecordingEntry } from '../../shared/types';
@@ -365,7 +366,7 @@ export function HistoryPage() {
     } catch (err) {
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[HistoryPage] Failed to load recordings:', msg);
+      log.error('[HistoryPage] Failed to load recordings:', msg);
       setLoadError(msg);
     } finally {
       setIsLoading(false);
@@ -382,7 +383,7 @@ export function HistoryPage() {
         setHasMore(result.data.length >= PAGE_SIZE);
       }
     } catch (err) {
-      console.error('[HistoryPage] Failed to load more recordings:', err);
+      log.error('[HistoryPage] Failed to load more recordings:', err);
     } finally {
       setIsLoadingMore(false);
     }
@@ -423,7 +424,7 @@ export function HistoryPage() {
           await loadAll();
         }
       } catch (err) {
-        console.error('[HistoryPage] Search failed:', err);
+        log.error('[HistoryPage] Search failed:', err);
       }
     }, 300);
   }, [loadAll]);
@@ -442,7 +443,7 @@ export function HistoryPage() {
         setTotalCount((prev) => (prev !== null ? prev - 1 : prev));
         setExpandedId((prev) => (prev === id ? null : prev));
         if (result.audioError) {
-          console.warn('[HistoryPage] Audio cleanup warning:', result.audioError);
+          log.warn('[HistoryPage] Audio cleanup warning:', result.audioError);
         }
       } else {
         setDeleteError({ id, msg: result.error ?? 'Failed to delete recording' });

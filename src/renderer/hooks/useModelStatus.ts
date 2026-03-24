@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import log from 'electron-log/renderer';
 
 export function useModelStatus() {
   const [downloaded, setDownloaded] = useState<boolean | null>(null);
@@ -11,12 +12,16 @@ export function useModelStatus() {
   const cleanupRef = useRef<(() => void) | null>(null);
 
   const recheck = useCallback(async () => {
-    const [status, models] = await Promise.all([
-      window.dictator.checkModelStatus(),
-      window.dictator.getDownloadedModels(),
-    ]);
-    setDownloaded(status.downloaded);
-    setDownloadedModels(models);
+    try {
+      const [status, models] = await Promise.all([
+        window.dictator.checkModelStatus(),
+        window.dictator.getDownloadedModels(),
+      ]);
+      setDownloaded(status.downloaded);
+      setDownloadedModels(models);
+    } catch (err) {
+      log.error('Failed to check model status:', err);
+    }
   }, []);
 
   useEffect(() => {

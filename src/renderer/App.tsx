@@ -1,4 +1,5 @@
 import { useState, useEffect, Component, type ReactNode, type ErrorInfo } from 'react';
+import log from 'electron-log/renderer';
 import { OverlayWindow } from './components/OverlayWindow';
 import { Sidebar } from './components/Sidebar';
 import type { View as ActiveView } from './components/Sidebar';
@@ -24,7 +25,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[ErrorBoundary]', error, info.componentStack);
+    log.error('React ErrorBoundary caught:', error, info.componentStack);
   }
 
   render() {
@@ -62,7 +63,7 @@ export function App() {
         setIsFirstRun(true);
         setShowFirstRun(true);
       }
-    });
+    }).catch((err) => log.error('Failed to load initial settings:', err));
   }, []);
 
   if (isOverlay) {

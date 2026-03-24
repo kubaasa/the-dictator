@@ -1,6 +1,9 @@
 import { spawn, execFile, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { BrowserWindow } from 'electron';
+import logger from './logger';
+
+const log = logger.scope('Paste');
 
 const execFileAsync = promisify(execFile);
 
@@ -69,13 +72,13 @@ export class PasteService {
     });
 
     ps.on('error', (err) => {
-      console.warn('[Dictator] Persistent PowerShell failed to spawn:', err.message);
+      log.warn('Persistent PowerShell failed to spawn:', err.message);
       this.psProcess = null;
       this.psReady = false;
     });
 
     ps.on('exit', (code) => {
-      console.log('[Dictator] Persistent PowerShell exited with code:', code);
+      log.info('Persistent PowerShell exited with code:', code);
       this.psProcess = null;
       this.psReady = false;
       this.outputBuffer = '';
@@ -92,7 +95,7 @@ export class PasteService {
       this.commandQueue = [];
       // Auto-respawn unless app is shutting down or max attempts reached
       if (!this.destroyed && this.spawnAttempts < PasteService.MAX_SPAWN_ATTEMPTS) {
-        console.log('[Dictator] Respawning persistent PowerShell in 1s (attempt %d/%d)...', this.spawnAttempts + 1, PasteService.MAX_SPAWN_ATTEMPTS);
+        log.info('Respawning persistent PowerShell in 1s (attempt %d/%d)...', this.spawnAttempts + 1, PasteService.MAX_SPAWN_ATTEMPTS);
         setTimeout(() => {
           if (!this.destroyed && !this.psProcess) this.spawnPersistentProcess();
         }, 1000);
@@ -107,7 +110,7 @@ export class PasteService {
     ps.stderr?.on('data', (data: Buffer) => {
       // Log but don't fail — stderr often contains warnings, not errors
       const msg = data.toString().trim();
-      if (msg) console.warn('[Dictator] PS stderr:', msg);
+      if (msg) log.warn('PS stderr:', msg);
     });
 
     this.psProcess = ps;
@@ -127,7 +130,7 @@ export class PasteService {
         // First marker = init complete
         this.psReady = true;
         this.spawnAttempts = 0;
-        console.log('[Dictator] Persistent PowerShell ready (Add-Type compiled)');
+        log.info('Persistent PowerShell ready (Add-Type compiled)');
         this.drainQueue();
         continue;
       }
@@ -207,28 +210,28 @@ export class PasteService {
       if (!hwnd || !/^\d+$/.test(hwnd) || hwnd === '0') return;
 
       if (this.isOwnWindow(hwnd)) {
-        console.log('[Dictator] Foreground is own Electron window — skipping paste target (transcription will still run)');
+        log.info('Foreground is own Electron window — skipping paste target');
         return;
       }
       if (EXCLUDED_SHELL_CLASSES.has(windowClass)) {
-        console.log('[Dictator] Shell/desktop window ("%s") — skipping paste target (transcription will still run)', windowClass);
+        log.info('Shell/desktop window ("%s") — skipping paste target', windowClass);
         return;
       }
 
       this.targetHwnd = hwnd;
       this.targetAppName = processName;
-      console.log('[Dictator] Captured paste target (class: %s, process: %s)', windowClass, processName);
+      log.info('Captured paste target (class: %s, process: %s)', windowClass, processName);
     };
 
     // Use persistent process if ready, otherwise fall back to cold-start
     if (this.psReady && this.psProcess) {
       this.exec(CAPTURE_CMD, 3000)
         .then(handleResult)
-        .catch((err) => console.warn('[Dictator] captureTarget (persistent) failed:', err.message));
+        .catch((err) => log.warn('captureTarget (persistent) failed:', err.message));
     } else {
       execFileAsync('powershell', GET_HWND_ARGS, { timeout: 3000, windowsHide: true })
         .then(({ stdout }) => handleResult(stdout))
-        .catch((err) => console.warn('[Dictator] captureTarget (fallback) failed:', err.message));
+        .catch((err) => log.warn('captureTarget (fallback) failed:', err.message));
     }
   }
 
@@ -269,9 +272,9 @@ export class PasteService {
         ];
         await execFileAsync('powershell', args, { timeout: 10000, windowsHide: true });
       }
-      console.log('[Dictator] Auto-typed successfully');
+      log.info('Auto-typed successfully');
     } catch (err) {
-      console.warn('[Dictator] simulatePaste failed:', err instanceof Error ? err.message : err);
+      log.warn('simulatePaste failed:', err instanceof Error ? err.message : err);
     }
   }
 

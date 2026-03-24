@@ -3,6 +3,10 @@ import path from 'node:path';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
+import { initSentry } from './services/sentry';
+import log from './services/logger';
+
+initSentry();
 import { TrayManager } from './tray';
 import { HotkeyService } from './services/hotkey.service';
 import { TranscriptionService } from './services/transcription.service';
@@ -14,6 +18,14 @@ import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
 import { DEFAULT_SETTINGS, type AppSettings, type RecordingState } from '../shared/types';
 import { IPC } from '../shared/constants';
+
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  log.error('Unhandled promise rejection:', reason);
+});
 
 /** Resolve asset path — dev: project root, prod: extraResource in resources/ */
 function getAssetPath(filename: string): string {
@@ -98,7 +110,7 @@ const hotkeyService = new HotkeyService(
     if (pttSafetyTimeout) clearTimeout(pttSafetyTimeout);
     pttSafetyTimeout = setTimeout(() => {
       if (currentState !== 'idle') {
-        console.warn('[Dictator] PTT safety timeout: forcing idle from state "%s"', currentState);
+        log.warn('PTT safety timeout: forcing idle from state "%s"', currentState);
         broadcastState('idle');
         hotkeyService.notifyRecordingStopped();
       }
@@ -167,6 +179,7 @@ function createMainWindow(): BrowserWindow {
 
   // Prevent Chromium from throttling JS when the window is hidden (tray mode)
   win.webContents.setBackgroundThrottling(false);
+
 
   win.once('ready-to-show', () => {
     const firstRun = !(store.get('general.firstRunComplete') as boolean);
@@ -474,7 +487,7 @@ app.on('ready', () => {
 
   // Preload local transcription model in background (eliminates 2-3s delay on first use)
   transcriptionService.preloadModel().catch((err) => {
-    console.warn('[Dictator] Model preload failed (non-critical):', err.message);
+    log.warn('Model preload failed (non-critical):', err.message);
   });
 });
 

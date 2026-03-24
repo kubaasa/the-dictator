@@ -5,6 +5,9 @@ import Store from 'electron-store';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { getApiKey } from './secure-storage';
+import logger from './logger';
+
+const log = logger.scope('Transcription');
 
 /** Retry on transient network/server errors (5xx, timeout). Auth errors (401/403) are never retried. */
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 1000): Promise<T> {
@@ -17,7 +20,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 100
       const status = (err as { status?: number }).status;
       if (status === 401 || status === 403) throw err;
       if (attempt < maxAttempts) {
-        console.warn('[Dictator] Retry attempt %d/%d after error:', attempt, maxAttempts, err instanceof Error ? err.message : err);
+        log.warn('Retry attempt %d/%d after error:', attempt, maxAttempts, err instanceof Error ? err.message : err);
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
@@ -102,10 +105,10 @@ export class TranscriptionService {
 
     if (this.pipe && this.loadedModelId === modelId) return;
 
-    console.log('[Dictator] Preloading local model in background…');
+    log.info('Preloading local model in background…');
     const t0 = Date.now();
     await this.loadFromCache(modelId);
-    console.log('[Dictator] Model preloaded in %dms', Date.now() - t0);
+    log.info('Model preloaded in %dms', Date.now() - t0);
   }
 
   private getModelId(): string {
@@ -154,7 +157,7 @@ export class TranscriptionService {
       throw new Error('No model downloaded. Visit Modes to download one.');
     }
 
-    console.warn(`[Dictator] Model "${selectedSize}" not downloaded — falling back to "${bestSize}"`);
+    log.warn('Model "%s" not downloaded — falling back to "%s"', selectedSize, bestSize);
     return { modelId: MODEL_MAP[bestSize], fallback: true };
   }
 
@@ -225,9 +228,9 @@ export class TranscriptionService {
         const modelDir = path.join(MODELS_CACHE_DIR, modelId);
         try {
           fs.rmSync(modelDir, { recursive: true, force: true });
-          console.log('[Dictator] Cleaned up partial download: %s', modelId);
+          log.info('Cleaned up partial download: %s', modelId);
         } catch (cleanupErr) {
-          console.warn('[Dictator] Failed to clean up partial download:', cleanupErr);
+          log.warn('Failed to clean up partial download:', cleanupErr);
         }
       }
       throw err;
@@ -389,7 +392,7 @@ export class TranscriptionService {
       this.pipe = null;
       this.loadedModelId = null;
       // loadFromCache() guards against concurrent loads via loadingPromise — don't null it here
-      this.loadFromCache().catch((e) => console.warn('[Dictator] Background model reload failed:', e));
+      this.loadFromCache().catch((e) => log.warn('Background model reload failed:', e));
     }
 
     return text;
@@ -410,7 +413,7 @@ export class TranscriptionService {
         ...(dtype && { dtype }),
       });
       this.loadedModelId = modelId;
-      console.log('[Dictator] Pipeline loaded (model=%s)', modelId);
+      log.info('Pipeline loaded (model=%s)', modelId);
     })();
 
     try {

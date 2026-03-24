@@ -2,6 +2,9 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { RecordingEntry, HistoryStats } from '../../shared/types';
+import logger from './logger';
+
+const log = logger.scope('History');
 
 const MAX_QUERY_LENGTH = 500;
 const DEFAULT_LIMIT = 1000;
@@ -55,7 +58,7 @@ export class HistoryService {
    */
   private ensureOpen(): void {
     if (!this.db.open) {
-      console.warn('[HistoryService] Database was closed, reopening...');
+      log.warn('Database was closed, reopening...');
       this.db = this.openDatabase();
     }
   }
@@ -75,7 +78,7 @@ export class HistoryService {
   add(entry: RecordingEntry): void {
     this.ensureOpen();
     this.validateEntry(entry);
-    console.debug('[HistoryService] Adding entry:', entry.id);
+    log.debug('Adding entry:', entry.id);
     this.db.prepare(`
       INSERT OR REPLACE INTO recordings
         (id, date, text, word_count, raw_word_count, duration_seconds, app_name, audio_path, mode)
@@ -130,7 +133,7 @@ export class HistoryService {
 
   getAll(limit = DEFAULT_LIMIT, offset = 0): RecordingEntry[] {
     this.ensureOpen();
-    console.debug('[HistoryService] getAll limit=%d offset=%d', limit, offset);
+    log.debug('getAll limit=%d offset=%d', limit, offset);
     const rows = this.db.prepare(
       'SELECT * FROM recordings ORDER BY date DESC LIMIT ? OFFSET ?'
     ).all(limit, offset) as Record<string, unknown>[];
@@ -142,7 +145,7 @@ export class HistoryService {
     if (!id || typeof id !== 'string') {
       throw new Error('Invalid recording ID');
     }
-    console.debug('[HistoryService] Deleting entry:', id);
+    log.debug('Deleting entry:', id);
 
     const row = this.db.prepare(
       'SELECT audio_path FROM recordings WHERE id = ?'
@@ -167,12 +170,12 @@ export class HistoryService {
             audioDeleted = true;
           } else {
             audioError = `Failed to delete audio file: ${code ?? String(err)}`;
-            console.warn('[HistoryService]', audioError);
+            log.warn(audioError);
           }
         }
       } else {
         audioError = 'Audio path outside recordings directory — skipped deletion';
-        console.warn('[HistoryService]', audioError, row.audio_path);
+        log.warn(audioError, row.audio_path);
       }
     }
 
@@ -187,7 +190,7 @@ export class HistoryService {
     if (trimmed.length > MAX_QUERY_LENGTH) {
       throw new Error(`Search query too long (max ${MAX_QUERY_LENGTH} characters)`);
     }
-    console.debug('[HistoryService] Searching:', trimmed);
+    log.debug('Searching:', trimmed);
     // Escape LIKE wildcards so user input like "100%" is treated literally
     const escaped = trimmed.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
     const rows = this.db.prepare(
@@ -198,7 +201,7 @@ export class HistoryService {
 
   clearAll(): ClearAllResult {
     this.ensureOpen();
-    console.debug('[HistoryService] Clearing all recordings');
+    log.debug('Clearing all recordings');
 
     const deleteAll = this.db.transaction(() => {
       const rows = this.db.prepare(
@@ -209,7 +212,7 @@ export class HistoryService {
       for (const row of rows) {
         if (!this.isPathInsideRecordingsDir(row.audio_path)) {
           audioErrors++;
-          console.warn('[HistoryService] Skipping deletion — path outside recordings dir:', row.audio_path);
+          log.warn('Skipping deletion — path outside recordings dir:', row.audio_path);
           continue;
         }
         try {
@@ -218,7 +221,7 @@ export class HistoryService {
           const code = (err as NodeJS.ErrnoException).code;
           if (code !== 'ENOENT') {
             audioErrors++;
-            console.warn('[HistoryService] Failed to delete audio:', row.audio_path, code);
+            log.warn('Failed to delete audio:', row.audio_path, code);
           }
         }
       }

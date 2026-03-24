@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import log from 'electron-log/renderer';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import { RecIndicator } from './RecEffects';
 import { useToast } from './Toast';
@@ -53,7 +54,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
 
     window.dictator.getSettings().then((s) => {
       setToggleShortcut(s.hotkey.shortcuts?.toggleRecording ?? DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
-    });
+    }).catch((err) => log.error('Failed to load settings in HomePage:', err));
     const unsub = window.dictator.onSettingsChange((s) => {
       setToggleShortcut(s.hotkey.shortcuts?.toggleRecording ?? DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
       // Settings changed (e.g., model downloaded) — clear stale error so it doesn't
@@ -80,7 +81,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
         });
       }
     } catch (err) {
-      console.error('[HomePage] Failed to load stats:', err);
+      log.error('[HomePage] Failed to load stats:', err);
     }
   }, []);
 

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import log from 'electron-log/renderer';
 
 // AudioWorklet processor — runs in a dedicated audio thread (immune to main-thread jank).
 // Accumulates 4096-sample chunks (~256ms at 16kHz) before posting to the main thread,
@@ -134,7 +135,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       const rid = transcriptionResultIdRef.current;
       pendingAudioBufferRef.current = null;
       transcriptionResultIdRef.current = null;
-      window.dictator.audio.save(rid, buf).catch((e) => console.warn('[Dictator] audio save failed:', e));
+      window.dictator.audio.save(rid, buf).catch((e) => log.warn('audio save failed:', e));
     }
   }, []);
 
@@ -222,7 +223,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         ? 'audio/webm'
         : '';
       if (!mimeType) {
-        console.warn('[Dictator] No WebM mimeType supported by MediaRecorder — compressed audio unavailable, API uploads will use WAV fallback');
+        log.warn('No WebM mimeType supported by MediaRecorder — compressed audio unavailable, API uploads will use WAV fallback');
       }
       if (mimeType) {
         mediaChunksRef.current = [];
@@ -286,7 +287,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       }
     } catch (err) {
       if (sessionIdRef.current !== thisSession) return; // stale session, ignore
-      console.error('Failed to start recording:', err);
+      log.error('Failed to start recording:', err);
       isSettingUpRef.current = false;
       pendingStopRef.current = false;
       isRecordingRef.current = false;
@@ -394,7 +395,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       // Use snapshotted id — recordingIdRef.current may have changed if a new recording started
       window.dictator.transcribeBuffer(merged.buffer, sampleRate, snapshotRecordingId, compressedAudio)
         .catch((err: unknown) => {
-          console.error('[Dictator] transcribeBuffer failed:', err);
+          log.error('transcribeBuffer failed:', err);
           // Reset recording state so UI doesn't stay stuck in transcribing/processing
           isRecordingRef.current = false;
           setIsRecording(false);

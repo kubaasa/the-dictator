@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import log from 'electron-log/renderer';
 import type { RecordingState, HotkeyMode, AppSettings } from '../../../shared/types';
 
 interface MaxiWidgetProps {
@@ -256,7 +257,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
       dataArray    = new Uint8Array(analyser.fftSize);
       samplesPerBar = Math.floor(analyser.fftSize / BAR_COUNT);
     } catch (err) {
-      console.warn('[MaxiWidget] getUserMedia failed, falling back to voiceLevel prop:', err);
+      log.warn('[MaxiWidget] getUserMedia failed, falling back to voiceLevel prop:', err);
     }
 
     // Final guard before starting RAF loop

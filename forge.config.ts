@@ -17,6 +17,8 @@ const EXTERNAL_MODULES = [
   'openai',
   '@anthropic-ai/sdk',
   'electron-store',
+  'electron-log',
+  '@sentry/electron',
 ];
 
 /**

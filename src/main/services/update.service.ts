@@ -1,5 +1,8 @@
 import { app, autoUpdater, net, Notification, nativeImage } from 'electron';
 import type { UpdateState, UpdateStatus } from '../../shared/types';
+import logger from './logger';
+
+const log = logger.scope('Update');
 
 const GITHUB_REPO = 'kubaasa/the-dictator';
 const UPDATE_SERVER = 'https://update.electronjs.org';
@@ -18,7 +21,7 @@ export class UpdateService {
 
   start(): void {
     if (!app.isPackaged) {
-      console.log('[Dictator] Auto-updater disabled in dev mode');
+      log.info('Auto-updater disabled in dev mode');
       return;
     }
 
@@ -49,7 +52,7 @@ export class UpdateService {
     });
 
     autoUpdater.on('error', (err) => {
-      console.warn('[Dictator] Auto-update error:', err.message);
+      log.warn('Auto-update error:', err.message);
       this.state = { ...this.state, status: 'error', error: err.message };
       this.notify();
     });
@@ -67,10 +70,10 @@ export class UpdateService {
   }
 
   checkForUpdates(): UpdateState {
-    console.log('[Dictator] checkForUpdates() called, isPackaged:', app.isPackaged);
+    log.info('checkForUpdates() called, isPackaged:', app.isPackaged);
     if (!app.isPackaged) {
       this.devCheckForUpdates().catch((err) => {
-        console.error('[Dictator] devCheckForUpdates unhandled error:', err);
+        log.error('devCheckForUpdates unhandled error:', err);
       });
       return this.state;
     }
@@ -94,11 +97,11 @@ export class UpdateService {
 
   /** DEV ONLY: check GitHub API directly (autoUpdater needs packaged app) */
   private async devCheckForUpdates(): Promise<void> {
-    console.log('[Dictator] Dev: checking GitHub API for updates...');
+    log.info('Dev: checking GitHub API for updates...');
     this.setState('checking');
     try {
       const url = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-      console.log('[Dictator] Dev: fetching', url);
+      log.info('Dev: fetching', url);
       const response = await net.fetch(url, {
         headers: {
           'Accept': 'application/vnd.github.v3+json',
@@ -106,17 +109,17 @@ export class UpdateService {
         },
       });
 
-      console.log('[Dictator] Dev: GitHub API response status:', response.status);
+      log.info('Dev: GitHub API response status:', response.status);
 
       if (response.status === 404) {
-        console.log('[Dictator] Dev: no releases found on GitHub');
+        log.info('Dev: no releases found on GitHub');
         this.showUpToDateNotification();
         this.setState('idle');
         return;
       }
 
       if (!response.ok) {
-        console.warn('[Dictator] Dev: GitHub API error:', response.status);
+        log.warn('Dev: GitHub API error:', response.status);
         this.setState('idle');
         return;
       }
@@ -124,7 +127,7 @@ export class UpdateService {
       const data = await response.json() as { tag_name: string; body: string };
       const latestVersion = data.tag_name.replace(/^v/, '');
       const current = app.getVersion();
-      console.log('[Dictator] Dev: current=%s, latest=%s', current, latestVersion);
+      log.info('Dev: current=%s, latest=%s', current, latestVersion);
 
       if (this.isNewer(latestVersion, current)) {
         this.state = {
@@ -136,12 +139,12 @@ export class UpdateService {
         this.notify();
         this.showNativeNotification();
       } else {
-        console.log('[Dictator] Dev: already up to date');
+        log.info('Dev: already up to date');
         this.showUpToDateNotification();
         this.setState('idle');
       }
     } catch (err) {
-      console.warn('[Dictator] Dev update check failed:', err instanceof Error ? err.message : err);
+      log.warn('Dev update check failed:', err instanceof Error ? err.message : err);
       this.state = { ...this.state, status: 'error', error: err instanceof Error ? err.message : 'Unknown error' };
       this.notify();
     }

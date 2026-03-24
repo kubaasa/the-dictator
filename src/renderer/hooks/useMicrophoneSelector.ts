@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import log from 'electron-log/renderer';
 
 export interface MicDevice {
   deviceId: string;
@@ -27,7 +28,7 @@ export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
     // Persist to electron-store so overlay widgets + next session use the same mic
     window.dictator.getSettings().then((current) => {
       window.dictator.setSettings({ ...current, audio: { ...current.audio, deviceId: id } });
-    });
+    }).catch((err) => log.error('Failed to persist device selection:', err));
   }, []);
 
   const refreshDevices = useCallback(async () => {
@@ -72,7 +73,7 @@ export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
         stream?.getTracks().forEach((t) => t.stop());
         if (mountedRef.current) refreshDevices();
       }
-    });
+    }).catch((err) => log.error('Failed to initialize microphone selector:', err));
 
     navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
     return () => {

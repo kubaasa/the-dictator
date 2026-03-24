@@ -1,6 +1,9 @@
 import { safeStorage } from 'electron';
 import Store from 'electron-store';
 import type { AppSettings } from '../../shared/types';
+import logger from './logger';
+
+const log = logger.scope('SecureStorage');
 
 const ENCRYPTED_PREFIX = 'enc:';
 
@@ -41,7 +44,7 @@ function decryptValue(value: string): string {
  */
 export function migrateApiKeys(store: Store<AppSettings>): void {
   if (!safeStorage.isEncryptionAvailable()) {
-    console.warn('[Dictator] safeStorage not available — API keys will remain in plain text');
+    log.warn('safeStorage not available — API keys will remain in plain text');
     return;
   }
 

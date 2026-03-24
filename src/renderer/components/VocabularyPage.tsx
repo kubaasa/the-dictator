@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import log from 'electron-log/renderer';
 import type { VocabularyEntry } from '../../shared/types';
 
 export function VocabularyPage() {
@@ -13,7 +14,7 @@ export function VocabularyPage() {
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
       setEntries(s.vocabulary ?? []);
-    });
+    }).catch((err) => log.error('Failed to load vocabulary:', err));
     const unsub = window.dictator.onSettingsChange((s) => {
       if (s.vocabulary) setEntries(s.vocabulary);
     });

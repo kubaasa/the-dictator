@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import log from 'electron-log/renderer';
 import type { ReactNode } from 'react';
 import type { WidgetType } from '../../shared/types';
 
@@ -59,7 +60,7 @@ export function WidgetPage() {
         setShowTooltip(true);
       }
       setLoaded(true);
-    });
+    }).catch((err) => log.error('Failed to load settings in WidgetPage:', err));
   }, []);
 
   const dismissTooltip = useCallback(async () => {

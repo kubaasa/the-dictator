@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import log from 'electron-log/renderer';
 import type { RecordingState } from '../../../shared/types';
 
 interface VoiceBarProps {
@@ -243,7 +244,7 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording, a
       dataArray = new Uint8Array(analyser.fftSize);
       samplesPerBar = Math.floor(analyser.fftSize / BAR_COUNT);
     } catch (err) {
-      console.warn('[VoiceBar] getUserMedia failed, falling back to voiceLevel prop:', err);
+      log.warn('[VoiceBar] getUserMedia failed, falling back to voiceLevel prop:', err);
     }
 
     if (!vizActiveRef.current) return;

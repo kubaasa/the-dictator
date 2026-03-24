@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import log from 'electron-log/renderer';
 import { DEFAULT_SETTINGS, type AppSettings, type HotkeyMode } from '../../shared/types';
 
 type ShortcutKey = 'toggleRecording' | 'cancelRecording' | 'pushToTalk' | 'showWindow';
@@ -153,7 +154,7 @@ export function ShortcutsPage() {
       const stored = s.hotkey?.shortcuts ?? DEFAULT_SETTINGS.hotkey.shortcuts;
       setShortcuts({ ...DEFAULT_SETTINGS.hotkey.shortcuts, ...stored });
       setHotkeyMode(s.hotkey?.mode ?? DEFAULT_SETTINGS.hotkey.mode);
-    });
+    }).catch((err) => log.error('Failed to load settings in ShortcutsPage:', err));
   }, []);
 
   const saveShortcuts = useCallback(async (newShortcuts: typeof shortcuts) => {

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import log from 'electron-log/renderer';
 import { TimecodeDisplay } from './RecEffects';
 import type { WidgetType } from '../../shared/types';
 
@@ -84,7 +85,7 @@ export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) 
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
       if (s.widget) setActiveWidget(s.widget.activeWidget);
-    });
+    }).catch((err) => log.error('Failed to load settings in Sidebar:', err));
     const unsub = window.dictator.onSettingsChange((s) => {
       if (s.widget) setActiveWidget(s.widget.activeWidget);
     });

@@ -1,5 +1,8 @@
 import { uIOhook, UiohookKey } from 'uiohook-napi';
 import type { HotkeyMode } from '../../shared/types';
+import logger from './logger';
+
+const log = logger.scope('Hotkey');
 
 // Maps readable key names (from renderer shortcut recorder) to uiohook scan codes.
 // Recorder uses e.code-based names (physical keys), so names like "BracketRight"
@@ -198,7 +201,7 @@ export class HotkeyService {
     for (const key of shortcut.split('+')) {
       const code = KEY_MAP[key.trim()];
       if (code === undefined) {
-        console.warn(`Unknown key in shortcut "${shortcut}": "${key}" — binding disabled`);
+        log.warn('Unknown key in shortcut "%s": "%s" — binding disabled', shortcut, key);
         return []; // disable entire binding if any key is unknown
       }
       codes.push(code);

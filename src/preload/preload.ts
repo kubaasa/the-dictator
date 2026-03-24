@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import 'electron-log/preload';
+import '@sentry/electron/preload';
 import { IPC } from '../shared/constants';
 import type { AppSettings, RecordingState, TranscriptionResult, RecordingEntry, HistoryStats, UpdateState } from '../shared/types';
 
