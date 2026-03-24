@@ -115,7 +115,7 @@ export function App() {
           {activeView === 'widget' && <WidgetPage />}
         </div>
       </div>
-      {showFirstRun && <OnboardingWizard onComplete={(micId) => { if (micId) micSelector.setSelectedDeviceId(micId); setShowFirstRun(false); setActiveView('modes'); }} onClose={isFirstRun ? undefined : () => setShowFirstRun(false)} />}
+      {showFirstRun && <OnboardingWizard onComplete={(micId) => { if (micId) micSelector.setSelectedDeviceId(micId); setShowFirstRun(false); setActiveView('modes'); modelStatus.recheck(); }} onClose={isFirstRun ? undefined : () => setShowFirstRun(false)} />}
     </div>
     </ToastProvider>
     </ErrorBoundary>

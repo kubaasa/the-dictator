@@ -690,7 +690,6 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
   const handleEngineChange = (newEngine: TranscriptionEngine) => {
     setEngine(newEngine);
     if (newEngine === 'local') {
-      setGroqApiKey('');
       setValidation('idle');
       setValidationError('');
     }
@@ -744,7 +743,7 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
         engine,
         localModelSize: modelSize,
         language: 'en',
-        groqApiKey: engine === 'cloud' ? groqApiKey.trim() : '',
+        groqApiKey: engine === 'cloud' ? groqApiKey.trim() : current.transcription.groqApiKey,
       },
       general: {
         ...current.general,
