@@ -28,7 +28,7 @@ export interface HistoryStats {
 
 export type TranscriptionEngine = 'local' | 'cloud';
 export type WidgetType = 'voicebar' | 'maxi';
-export type AIProviderType = 'openai' | 'anthropic' | 'ollama';
+export type AIProviderType = 'openai' | 'anthropic';
 export type RecordingState = 'idle' | 'initializing' | 'recording' | 'transcribing' | 'processing' | 'done' | 'error';
 export type HotkeyMode = 'toggle' | 'push-to-talk';
 
@@ -45,8 +45,6 @@ export interface AppSettings {
     openaiModel: string;
     anthropicApiKey: string;
     anthropicModel: string;
-    ollamaUrl: string;
-    ollamaModel: string;
     temperature: number;
   };
   hotkey: {
@@ -95,8 +93,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     openaiModel: 'gpt-4.1-nano',
     anthropicApiKey: '',
     anthropicModel: 'claude-haiku-4-5-20251001',
-    ollamaUrl: 'http://localhost:11434',
-    ollamaModel: 'llama3',
     temperature: 0.3,
   },
   hotkey: {

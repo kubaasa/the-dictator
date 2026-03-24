@@ -35,14 +35,13 @@ Klucz API przechowywany w electron-store, nigdy nie opuszcza lokalnej maszyny po
 Obsługa języka (auto lub konkretny język) dla obu silników.
 
 Faza 5 (AI post-processing + tryby) — ZROBIONE.
-AIService (src/main/services/ai.service.ts) z obsługą trzech providerów: OpenAI, Anthropic, Ollama.
+AIService (src/main/services/ai.service.ts) z obsługą dwóch providerów: OpenAI, Anthropic.
 Cached clients — re-create przy zmianie API key. Max 4096 tokenów dla Anthropic.
 5 trybów dyktowania: voice (czyszczenie transkryptu), email, chat, note, custom.
 Każdy tryb ma edytowalny system prompt z opcją reset do domyślnego.
 Modele AI (domyślne — najtańsze/najszybsze):
   - OpenAI: gpt-4.1-nano / gpt-4.1-mini / gpt-4.1
   - Anthropic: claude-sonnet-4-6 / claude-haiku-4-5
-  - Ollama: dowolny lokalny model
 
 Faza 6 (auto-paste) — ZROBIONE w całości.
 PasteService (src/main/services/paste.service.ts) implementuje pełny przepływ:
@@ -71,7 +70,7 @@ ModesPage (Processing):
   - wybór języka: pills English / Polish
   - wybór rozmiaru modelu: karta grid z indicatorami pobierania i progress-barem
   - sekcja API key (Whisper + AI provider)
-  - AI provider: pills None / OpenAI / Anthropic / Ollama (merged AI section)
+  - AI provider: pills None / OpenAI / Anthropic (merged AI section)
   - wybór modelu AI: karta grid z opisami
   - temperatura (slider)
   - edytor system promptu per tryb + test panel

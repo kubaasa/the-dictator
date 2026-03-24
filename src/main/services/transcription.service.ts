@@ -177,7 +177,7 @@ export class TranscriptionService {
     const fileBytes = new Map<string, { loaded: number; total: number }>();
 
     // Scoped fetch override: inject AbortSignal ONLY into HuggingFace model download
-    // requests. Other fetch calls (Groq API, Ollama, etc.) pass through untouched.
+    // requests. Other fetch calls (Groq API, etc.) pass through untouched.
     // This prevents cancelling unrelated requests when the user cancels a model download.
     this.cancelController = new AbortController();
     const { signal } = this.cancelController;

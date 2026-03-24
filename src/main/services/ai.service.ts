@@ -26,18 +26,6 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 100
   throw lastError;
 }
 
-/** Only allow localhost URLs for Ollama to prevent SSRF attacks. */
-function validateOllamaUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') {
-      return url;
-    }
-  } catch { /* invalid URL falls through */ }
-  throw new Error(`Ollama URL must be localhost. Got: "${url}"`);
-}
-
 export class AIService {
   private openaiClient: OpenAI | null = null;
   private openaiClientKey: string | null = null;
@@ -75,11 +63,6 @@ export class AIService {
           });
           break;
         }
-        case 'ollama': {
-          const baseUrl = validateOllamaUrl((this.store.get('ai.ollamaUrl') as string) ?? 'http://localhost:11434');
-          await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(5000) });
-          break;
-        }
       }
     } catch {
       // Warmup failure is non-critical — the real request will establish the connection
@@ -105,8 +88,6 @@ export class AIService {
         return this.processOpenAI(rawText, systemPrompt);
       case 'anthropic':
         return this.processAnthropic(rawText, systemPrompt);
-      case 'ollama':
-        return this.processOllama(rawText, systemPrompt);
       default:
         return rawText;
     }
@@ -195,70 +176,6 @@ export class AIService {
     });
   }
 
-  private async processOllama(text: string, systemPrompt: string): Promise<string> {
-    return withRetry(async () => {
-      const baseUrl = validateOllamaUrl((this.store.get('ai.ollamaUrl') as string) ?? 'http://localhost:11434');
-      const model = (this.store.get('ai.ollamaModel') as string) ?? 'llama3';
-      const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
-
-      const res = await fetch(`${baseUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(AI_METHOD_TIMEOUT_MS),
-        body: JSON.stringify({
-          model,
-          stream: true,
-          options: { temperature },
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: text },
-          ],
-        }),
-      });
-
-      if (!res.ok) throw new Error(`Ollama error: ${res.status} ${res.statusText}`);
-
-      // Ollama streams NDJSON — one JSON object per line
-      const chunks: string[] = [];
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error('Ollama response has no body');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const json = JSON.parse(line);
-            if (json.error) throw new Error(`Ollama: ${json.error}`);
-            if (json.message?.content) chunks.push(json.message.content);
-          } catch (e) {
-            if (e instanceof SyntaxError) continue; // skip malformed lines
-            throw e;
-          }
-        }
-      }
-      // Process remaining buffer
-      if (buffer.trim()) {
-        try {
-          const json = JSON.parse(buffer);
-          if (json.error) throw new Error(`Ollama: ${json.error}`);
-          if (json.message?.content) chunks.push(json.message.content);
-        } catch (e) {
-          if (!(e instanceof SyntaxError)) throw e;
-        }
-      }
-
-      return chunks.join('').trim() || text;
-    });
-  }
-
   async getOpenAIModels(): Promise<{ value: string; label: string }[]> {
     try {
       const client = this.getOpenAIClient();
@@ -292,8 +209,6 @@ export class AIService {
         return this.processOpenAI(text, fullPrompt);
       case 'anthropic':
         return this.processAnthropic(text, fullPrompt);
-      case 'ollama':
-        return this.processOllama(text, fullPrompt);
       default:
         throw new Error(`Unknown provider: ${provider}`);
     }

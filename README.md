@@ -35,7 +35,7 @@
 
 **AI Post-Processing**
 - Clean up, format, and restructure transcribed text with AI
-- 3 providers: OpenAI (GPT-4.1), Anthropic (Claude), Ollama (local)
+- 2 providers: OpenAI (GPT-4.1), Anthropic (Claude)
 - 5 dictation modes: Voice, Email, Chat, Note, Custom
 - Editable system prompts per mode with temperature control
 
@@ -123,7 +123,7 @@ All hotkeys are fully customizable in the Shortcuts page.
 
 | Setting | Options |
 |---------|---------|
-| Provider | None / OpenAI / Anthropic / Ollama |
+| Provider | None / OpenAI / Anthropic |
 | OpenAI models | gpt-4.1-nano, gpt-4.1-mini, gpt-4.1 |
 | Anthropic models | claude-haiku-4-5, claude-sonnet-4-6 |
 
@@ -177,7 +177,7 @@ npm run make     # Produces NSIS installer in out/make/
 | Language | TypeScript |
 | Local STT | @huggingface/transformers (ONNX runtime) |
 | Cloud STT | OpenAI Whisper API / Groq API |
-| AI | OpenAI SDK, Anthropic SDK, Ollama |
+| AI | OpenAI SDK, Anthropic SDK |
 | Database | SQLite via better-sqlite3 |
 | Settings | electron-store (encrypted) |
 | Hotkeys | uiohook-napi |

@@ -7,11 +7,11 @@ import { ApiKeyInput } from './ApiKeyInput';
 import { useToast } from './Toast';
 
 const MODEL_OPTIONS = [
-  { value: 'tiny', label: 'Tiny' },
-  { value: 'base', label: 'Base' },
-  { value: 'small', label: 'Small' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'large-v3', label: 'Large v3' },
+  { value: 'tiny', label: 'Tiny', size: '75 MB' },
+  { value: 'base', label: 'Base', size: '150 MB' },
+  { value: 'small', label: 'Small', size: '470 MB' },
+  { value: 'medium', label: 'Medium', size: '1.5 GB' },
+  { value: 'large-v3', label: 'Large', size: '3.1 GB' },
 ];
 
 const LANGUAGE_OPTIONS = [
@@ -46,9 +46,8 @@ export function ModesPage(props: ModelStatus) {
   const [openaiModels, setOpenaiModels] = useState(OPENAI_MODELS);
   const [aiAnthropicKey, setAiAnthropicKey] = useState('');
   const [aiAnthropicModel, setAiAnthropicModel] = useState('claude-haiku-4-5-20251001');
-  const [aiOllamaUrl, setAiOllamaUrl] = useState('http://localhost:11434');
-  const [aiOllamaModel, setAiOllamaModel] = useState('llama3');
-
+  const [openaiKeySaved, setOpenaiKeySaved] = useState(false);
+  const [anthropicKeySaved, setAnthropicKeySaved] = useState(false);
   // Output settings (read-only for pipeline bar)
   const [autoPaste, setAutoPaste] = useState(DEFAULT_SETTINGS.dictation.autoPaste);
 
@@ -69,10 +68,10 @@ export function ModesPage(props: ModelStatus) {
     setAiProvider(s.ai.provider);
     setAiOpenaiKey(s.ai.openaiApiKey);
     setAiOpenaiModel(s.ai.openaiModel);
+    setOpenaiKeySaved(!!s.ai.openaiApiKey);
     setAiAnthropicKey(s.ai.anthropicApiKey);
     setAiAnthropicModel(s.ai.anthropicModel);
-    setAiOllamaUrl(s.ai.ollamaUrl);
-    setAiOllamaModel(s.ai.ollamaModel);
+    setAnthropicKeySaved(!!s.ai.anthropicApiKey);
   }, []);
 
   useEffect(() => {
@@ -156,6 +155,21 @@ export function ModesPage(props: ModelStatus) {
     }
   };
 
+  const handleGroqKeyDelete = async () => {
+    try {
+      setGroqApiKey('');
+      setGroqValidation('idle');
+      setGroqValidationError('');
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        transcription: { ...current.transcription, groqApiKey: '' },
+      });
+      addToast('success', 'Groq API key removed');
+    } catch (err) {
+      console.error('[ModesPage] Failed to delete Groq key:', err);
+    }
+  };
+
   const handleToggleAi = async () => {
     const next = !aiPostProcessing;
     setAiPostProcessing(next);
@@ -233,24 +247,47 @@ export function ModesPage(props: ModelStatus) {
       } else if (aiProvider === 'anthropic') {
         updates.anthropicApiKey = aiAnthropicKey;
         updates.anthropicModel = aiAnthropicModel;
-      } else if (aiProvider === 'ollama') {
-        updates.ollamaUrl = aiOllamaUrl;
-        updates.ollamaModel = aiOllamaModel;
       }
       await window.dictator.setSettings({
         ai: { ...current.ai, ...updates },
       });
-      if (aiProvider === 'openai') fetchOpenAIModels();
+      if (aiProvider === 'openai') {
+        fetchOpenAIModels();
+        setOpenaiKeySaved(true);
+      } else if (aiProvider === 'anthropic') {
+        setAnthropicKeySaved(true);
+      }
       addToast('success', 'AI configuration saved');
     } catch (err) {
       console.error('[ModesPage] Failed to save AI key:', err);
     }
   };
 
+  const handleAiKeyDelete = async () => {
+    try {
+      const current = await window.dictator.getSettings();
+      if (aiProvider === 'openai') {
+        setAiOpenaiKey('');
+        setOpenaiKeySaved(false);
+        await window.dictator.setSettings({
+          ai: { ...current.ai, openaiApiKey: '' },
+        });
+      } else if (aiProvider === 'anthropic') {
+        setAiAnthropicKey('');
+        setAnthropicKeySaved(false);
+        await window.dictator.setSettings({
+          ai: { ...current.ai, anthropicApiKey: '' },
+        });
+      }
+      addToast('success', 'API key removed');
+    } catch (err) {
+      console.error('[ModesPage] Failed to delete AI key:', err);
+    }
+  };
+
   const isAiConfigured =
     aiProvider === 'openai' ? !!aiOpenaiKey :
     aiProvider === 'anthropic' ? !!aiAnthropicKey :
-    aiProvider === 'ollama' ? !!aiOllamaUrl :
     false;
 
   const isPromptModified = customPrompt !== DEFAULT_SETTINGS.dictation.customPrompt;
@@ -264,11 +301,9 @@ export function ModesPage(props: ModelStatus) {
 
   const aiModelLabel = aiProvider === 'openai'
     ? openaiModels.find(m => m.value === aiOpenaiModel)?.label ?? aiOpenaiModel
-    : aiProvider === 'anthropic'
-      ? ANTHROPIC_MODELS.find(m => m.value === aiAnthropicModel)?.label ?? aiAnthropicModel
-      : aiProvider === 'ollama' ? aiOllamaModel : '';
+    : ANTHROPIC_MODELS.find(m => m.value === aiAnthropicModel)?.label ?? aiAnthropicModel;
 
-  const providerLabel = aiProvider === 'openai' ? 'OpenAI' : aiProvider === 'anthropic' ? 'Anthropic' : 'Ollama';
+  const providerLabel = aiProvider === 'openai' ? 'OpenAI' : 'Anthropic';
   const aiSummary = !aiPostProcessing
     ? 'OFF'
     : !isAiConfigured
@@ -411,9 +446,10 @@ export function ModesPage(props: ModelStatus) {
                   value={groqApiKey}
                   onChange={handleGroqKeyChange}
                   onSave={handleGroqKeyVerify}
+                  onDelete={handleGroqKeyDelete}
+                  saved={groqValidation === 'valid'}
                   buttonLabel={
                     groqValidation === 'validating' ? 'Verifying...'
-                    : groqValidation === 'valid' ? 'Verified'
                     : 'Verify'
                   }
                   buttonDisabled={groqValidation === 'validating' || !groqApiKey.trim()}
@@ -468,7 +504,7 @@ export function ModesPage(props: ModelStatus) {
                     >
                       <div className="flex w-full items-center justify-between">
                         <span className={`font-mono text-sm font-semibold ${isSelected ? 'text-red-400' : 'text-neutral-300'}`}>
-                          {opt.label}
+                          {opt.label} <span className="text-neutral-600 font-normal">({opt.size})</span>
                         </span>
                         {isReady ? (
                           <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -513,17 +549,17 @@ export function ModesPage(props: ModelStatus) {
                     </button>
                   );
                 })}
-              </div>
 
-              {/* Download button for selected model */}
-              {!downloaded && !downloading && (
-                <button
-                  onClick={download}
-                  className="mt-3 rounded-lg bg-red-600/20 border border-red-600/30 px-4 py-2 font-mono text-xs font-semibold uppercase tracking-wider text-red-400 transition-colors hover:bg-red-600/30 cursor-pointer"
-                >
-                  Download Selected Model
-                </button>
-              )}
+                {/* Download button — in grid, under Small (3rd column, 2nd row) */}
+                {!downloaded && !downloading && (
+                  <button
+                    onClick={download}
+                    className="flex items-center justify-center rounded-lg bg-red-600/20 border border-red-600/30 px-4 py-2 font-mono text-xs font-semibold uppercase tracking-wider text-red-400 transition-colors hover:bg-red-600/30 cursor-pointer"
+                  >
+                    Download
+                  </button>
+                )}
+              </div>
 
               {error && (
                 <p role="alert" className="mt-2 rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-2 text-xs text-red-400">
@@ -663,32 +699,6 @@ export function ModesPage(props: ModelStatus) {
                   </div>
                 )}
 
-                {/* Ollama config */}
-                {aiProvider === 'ollama' && (
-                  <div className="flex flex-col gap-3">
-                    <div>
-                      <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">URL</span>
-                      <input
-                        type="text"
-                        value={aiOllamaUrl}
-                        onChange={(e) => setAiOllamaUrl(e.target.value)}
-                        placeholder="http://localhost:11434"
-                        className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30"
-                      />
-                    </div>
-                    <div>
-                      <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-1">Model</span>
-                      <input
-                        type="text"
-                        value={aiOllamaModel}
-                        onChange={(e) => setAiOllamaModel(e.target.value)}
-                        placeholder="llama3"
-                        className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30"
-                      />
-                    </div>
-                  </div>
-                )}
-
                 {/* API Key — AI Processing */}
                 {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
                   <div>
@@ -714,18 +724,10 @@ export function ModesPage(props: ModelStatus) {
                       value={aiProvider === 'openai' ? aiOpenaiKey : aiAnthropicKey}
                       onChange={(v) => aiProvider === 'openai' ? setAiOpenaiKey(v) : setAiAnthropicKey(v)}
                       onSave={handleAiKeySave}
+                      onDelete={handleAiKeyDelete}
+                      saved={aiProvider === 'openai' ? openaiKeySaved : anthropicKeySaved}
                     />
                   </div>
-                )}
-
-                {/* Ollama save */}
-                {aiProvider === 'ollama' && (
-                  <button
-                    onClick={handleAiKeySave}
-                    className="self-start rounded-lg bg-neutral-700 px-4 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider text-neutral-200 transition-colors hover:bg-neutral-600 cursor-pointer"
-                  >
-                    Save
-                  </button>
                 )}
 
                 {/* ── System Prompt ── */}

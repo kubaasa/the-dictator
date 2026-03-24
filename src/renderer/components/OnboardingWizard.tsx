@@ -165,6 +165,7 @@ function StepConfig({
   onModelSizeChange,
   groqApiKey,
   onKeyChange,
+  onKeyDelete,
   onValidate,
   validation,
   validationError,
@@ -174,18 +175,12 @@ function StepConfig({
   onModelSizeChange: (size: string) => void;
   groqApiKey: string;
   onKeyChange: (v: string) => void;
+  onKeyDelete: () => void;
   onValidate: () => void;
   validation: ValidationStatus;
   validationError: string;
 }) {
-  const verifyButtonLabel = (() => {
-    switch (validation) {
-      case 'validating': return 'Verifying...';
-      case 'valid': return 'Verified';
-      case 'invalid': return 'Verify';
-      default: return 'Verify';
-    }
-  })();
+  // verifyButtonLabel removed — handled inline by ApiKeyInput saved state
 
   if (engine === 'local') {
     return (
@@ -314,8 +309,12 @@ function StepConfig({
           value={groqApiKey}
           onChange={onKeyChange}
           onSave={onValidate}
+          onDelete={onKeyDelete}
           saved={validation === 'valid'}
-          buttonLabel={verifyButtonLabel}
+          buttonLabel={
+            validation === 'validating' ? 'Verifying...'
+            : 'Verify'
+          }
           buttonDisabled={validation === 'validating' || !groqApiKey.trim()}
           placeholder="paste access key..."
         />
@@ -703,6 +702,12 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
     }
   };
 
+  const handleKeyDelete = () => {
+    setGroqApiKey('');
+    setValidation('idle');
+    setValidationError('');
+  };
+
   const handleValidateKey = async () => {
     const key = groqApiKey.trim();
     if (!key) return;
@@ -808,6 +813,7 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
               onModelSizeChange={setModelSize}
               groqApiKey={groqApiKey}
               onKeyChange={handleKeyChange}
+              onKeyDelete={handleKeyDelete}
               onValidate={handleValidateKey}
               validation={validation}
               validationError={validationError}
