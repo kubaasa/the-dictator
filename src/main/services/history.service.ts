@@ -19,12 +19,18 @@ export interface ClearAllResult {
 
 export class HistoryService {
   private db: Database.Database;
+  private readonly dbPath: string;
   private recordingsDir: string | null = null;
 
   constructor(dbPath: string) {
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.exec(`
+    this.dbPath = dbPath;
+    this.db = this.openDatabase();
+  }
+
+  private openDatabase(): Database.Database {
+    const db = new Database(this.dbPath);
+    db.pragma('journal_mode = WAL');
+    db.exec(`
       CREATE TABLE IF NOT EXISTS recordings (
         id TEXT PRIMARY KEY,
         date TEXT NOT NULL,
@@ -38,21 +44,36 @@ export class HistoryService {
       );
       CREATE INDEX IF NOT EXISTS idx_recordings_date ON recordings(date DESC);
     `);
-    this.migrateSchema();
+    this.migrateSchema(db);
+    return db;
+  }
+
+  /**
+   * Ensure the database connection is open — auto-reconnect if it was closed
+   * (e.g. by Vite HMR restart calling close() via before-quit, while IPC handlers
+   * still hold a reference to this instance).
+   */
+  private ensureOpen(): void {
+    if (!this.db.open) {
+      console.warn('[HistoryService] Database was closed, reopening...');
+      this.db = this.openDatabase();
+    }
   }
 
   /** Add raw_word_count column if missing (existing databases from before this change). */
-  private migrateSchema(): void {
-    const columns = this.db.pragma('table_info(recordings)') as { name: string }[];
+  private migrateSchema(db?: Database.Database): void {
+    const target = db ?? this.db;
+    const columns = target.pragma('table_info(recordings)') as { name: string }[];
     const hasRawWordCount = columns.some((c) => c.name === 'raw_word_count');
     if (!hasRawWordCount) {
-      this.db.exec('ALTER TABLE recordings ADD COLUMN raw_word_count INTEGER DEFAULT 0');
+      target.exec('ALTER TABLE recordings ADD COLUMN raw_word_count INTEGER DEFAULT 0');
       // Backfill: for old entries without raw_word_count, copy word_count as best-effort fallback
-      this.db.exec('UPDATE recordings SET raw_word_count = word_count WHERE raw_word_count = 0');
+      target.exec('UPDATE recordings SET raw_word_count = word_count WHERE raw_word_count = 0');
     }
   }
 
   add(entry: RecordingEntry): void {
+    this.ensureOpen();
     this.validateEntry(entry);
     console.debug('[HistoryService] Adding entry:', entry.id);
     this.db.prepare(`
@@ -74,12 +95,14 @@ export class HistoryService {
 
   /** Total number of recordings in the database. */
   getCount(): number {
+    this.ensureOpen();
     const row = this.db.prepare('SELECT COUNT(*) as cnt FROM recordings').get() as { cnt: number };
     return row.cnt;
   }
 
   /** Aggregate stats across ALL recordings (no limit). */
   getStats(): HistoryStats {
+    this.ensureOpen();
     const row = this.db.prepare(`
       SELECT
         COUNT(*) as total_recordings,
@@ -106,6 +129,7 @@ export class HistoryService {
   }
 
   getAll(limit = DEFAULT_LIMIT, offset = 0): RecordingEntry[] {
+    this.ensureOpen();
     console.debug('[HistoryService] getAll limit=%d offset=%d', limit, offset);
     const rows = this.db.prepare(
       'SELECT * FROM recordings ORDER BY date DESC LIMIT ? OFFSET ?'
@@ -114,6 +138,7 @@ export class HistoryService {
   }
 
   delete(id: string): DeleteResult {
+    this.ensureOpen();
     if (!id || typeof id !== 'string') {
       throw new Error('Invalid recording ID');
     }
@@ -156,6 +181,7 @@ export class HistoryService {
   }
 
   search(query: string): RecordingEntry[] {
+    this.ensureOpen();
     const trimmed = (query ?? '').trim();
     if (!trimmed) return this.getAll();
     if (trimmed.length > MAX_QUERY_LENGTH) {
@@ -171,6 +197,7 @@ export class HistoryService {
   }
 
   clearAll(): ClearAllResult {
+    this.ensureOpen();
     console.debug('[HistoryService] Clearing all recordings');
 
     const deleteAll = this.db.transaction(() => {
@@ -216,6 +243,7 @@ export class HistoryService {
   }
 
   updateAudioPath(id: string, audioPath: string): void {
+    this.ensureOpen();
     if (!id || typeof id !== 'string') throw new Error('Invalid recording ID');
     if (!audioPath || typeof audioPath !== 'string') throw new Error('Invalid audio path');
     if (!this.isPathInsideRecordingsDir(audioPath)) {
@@ -225,6 +253,7 @@ export class HistoryService {
   }
 
   count(): number {
+    this.ensureOpen();
     const row = this.db.prepare('SELECT COUNT(*) as cnt FROM recordings').get() as { cnt: number };
     return row.cnt;
   }

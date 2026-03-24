@@ -1,6 +1,6 @@
 import { app, Menu, Tray, nativeImage, BrowserWindow } from 'electron';
 import path from 'node:path';
-import type { RecordingState } from '../shared/types';
+import type { RecordingState, UpdateState } from '../shared/types';
 
 /** Resolve asset path — dev: project root, prod: extraResource in resources/ */
 function getAssetPath(filename: string): string {
@@ -9,13 +9,21 @@ function getAssetPath(filename: string): string {
     : path.join(app.getAppPath(), 'assets', filename);
 }
 
+interface TrayCallbacks {
+  onCheckForUpdates: () => void;
+  onInstallUpdate: () => void;
+}
+
 export class TrayManager {
   private tray: Tray | null = null;
   private mainWindow: BrowserWindow | null = null;
   private state: RecordingState = 'idle';
+  private updateState: UpdateState | null = null;
+  private callbacks: TrayCallbacks | null = null;
 
-  create(mainWindow: BrowserWindow): void {
+  create(mainWindow: BrowserWindow, callbacks: TrayCallbacks): void {
     this.mainWindow = mainWindow;
+    this.callbacks = callbacks;
 
     const iconPath = getAssetPath('icon.png');
     const rawIcon = nativeImage.createFromPath(iconPath);
@@ -41,12 +49,17 @@ export class TrayManager {
     });
   }
 
-  updateState(state: RecordingState): void {
+  updateRecordingState(state: RecordingState): void {
     this.state = state;
     if (this.tray) {
       this.tray.setToolTip(`The Dictator — ${state}`);
       this.updateMenu();
     }
+  }
+
+  setUpdateState(state: UpdateState): void {
+    this.updateState = state;
+    this.updateMenu();
   }
 
   destroy(): void {
@@ -56,10 +69,40 @@ export class TrayManager {
     }
   }
 
+  private getUpdateMenuItem(): Electron.MenuItemConstructorOptions {
+    const status = this.updateState?.status ?? 'idle';
+
+    switch (status) {
+      case 'checking':
+        return { label: 'Checking for updates...', enabled: false };
+      case 'downloading':
+        return { label: 'Downloading update...', enabled: false };
+      case 'downloaded': {
+        const version = this.updateState?.latestVersion;
+        return {
+          label: `Restart to Update${version ? ` (v${version})` : ''}`,
+          click: () => this.callbacks?.onInstallUpdate(),
+        };
+      }
+      case 'error':
+      case 'idle':
+      default:
+        return {
+          label: 'Check for Updates',
+          click: () => this.callbacks?.onCheckForUpdates(),
+        };
+    }
+  }
+
   private updateMenu(): void {
     if (!this.tray) return;
 
     const contextMenu = Menu.buildFromTemplate([
+      {
+        label: `Version ${app.getVersion()}`,
+        enabled: false,
+      },
+      { type: 'separator' },
       {
         label: 'Show Settings',
         click: () => {
@@ -69,7 +112,7 @@ export class TrayManager {
           }
         },
       },
-      { type: 'separator' },
+      this.getUpdateMenuItem(),
       {
         label: 'Quit',
         click: () => app.quit(),

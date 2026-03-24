@@ -75,6 +75,8 @@ export const IPC = {
   // Updates
   UPDATE_CHECK: 'update:check',
   UPDATE_GET_INFO: 'update:get-info',
+  UPDATE_INSTALL: 'update:install',
+  UPDATE_STATUS_CHANGED: 'update:status-changed',
 
   // Notifications (main → renderer)
   NOTIFICATION_ERROR: 'notification:error',

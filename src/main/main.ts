@@ -26,6 +26,9 @@ if (started) {
   app.quit();
 }
 
+// Windows AppUserModelId — must match Squirrel shortcut for correct toast notification branding
+app.setAppUserModelId('com.squirrel.TheDictator.TheDictator');
+
 // Fix GPU/disk cache "Access Denied" errors on Windows
 app.commandLine.appendSwitch('disk-cache-dir', path.join(app.getPath('userData'), 'Cache'));
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
@@ -46,7 +49,7 @@ const trayManager = new TrayManager();
 const transcriptionService = new TranscriptionService(store);
 const pasteService = new PasteService();
 const aiService = new AIService(store);
-const updateService = new UpdateService();
+const updateService = new UpdateService(getAssetPath('icon.png'));
 
 // Hotkey sends toggle to the main renderer window (which owns getUserMedia)
 function sendToggleToRenderer(): void {
@@ -71,6 +74,7 @@ function showOrHideMainWindow(): void {
   }
 }
 
+let isQuitting = false;
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let currentState: RecordingState = 'idle';
@@ -173,8 +177,10 @@ function createMainWindow(): BrowserWindow {
   });
 
   win.on('close', (e) => {
-    e.preventDefault();
-    win.hide();
+    if (!isQuitting) {
+      e.preventDefault();
+      win.hide();
+    }
   });
 
   return win;
@@ -242,7 +248,7 @@ function broadcastState(state: RecordingState): void {
     clearTimeout(pttSafetyTimeout);
     pttSafetyTimeout = null;
   }
-  trayManager.updateState(state);
+  trayManager.updateRecordingState(state);
 
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send(IPC.RECORDING_STATE_CHANGED, state);
@@ -407,7 +413,18 @@ app.on('ready', () => {
   // Encrypt any existing plain-text API keys (one-time migration)
   migrateApiKeys(store);
 
-  trayManager.create(mainWindow);
+  trayManager.create(mainWindow, {
+    onCheckForUpdates: () => updateService.checkForUpdates(),
+    onInstallUpdate: () => updateService.quitAndInstall(),
+  });
+
+  updateService.onStatusChange((state) => {
+    trayManager.setUpdateState(state);
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(IPC.UPDATE_STATUS_CHANGED, state);
+    }
+  });
+
   registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService, () => currentState, updateService);
 
   // Start periodic update checks
@@ -474,6 +491,7 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
   if (pttSafetyTimeout) { clearTimeout(pttSafetyTimeout); pttSafetyTimeout = null; }
   hotkeyService.stop();

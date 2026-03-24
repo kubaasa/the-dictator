@@ -557,6 +557,7 @@ export function registerIpcHandlers(
   // Update check
   ipcMain.handle(IPC.UPDATE_CHECK, () => updateService.checkForUpdates());
   ipcMain.handle(IPC.UPDATE_GET_INFO, () => updateService.getUpdateInfo());
+  ipcMain.handle(IPC.UPDATE_INSTALL, () => updateService.quitAndInstall());
 
   // Groq key validation
   ipcMain.handle(IPC.GROQ_VALIDATE_KEY, async (_event, apiKey: string) => {
@@ -566,7 +567,7 @@ export function registerIpcHandlers(
 
   // Open external URL (whitelisted domains only)
   ipcMain.on(IPC.SHELL_OPEN_EXTERNAL, (_event, url: string) => {
-    const allowed = ['console.groq.com', 'groq.com'];
+    const allowed = ['console.groq.com', 'groq.com', 'github.com'];
     try {
       const hostname = new URL(url).hostname;
       if (allowed.some((d) => hostname === d || hostname.endsWith('.' + d))) {

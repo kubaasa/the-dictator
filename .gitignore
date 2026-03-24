@@ -100,5 +100,8 @@ models/
 recordings/
 dist/
 
+# Future test plans (local only)
+Future Tests/
+
 # Claude Code local settings
 .claude/

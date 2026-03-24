@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC } from '../shared/constants';
-import type { AppSettings, RecordingState, TranscriptionResult, RecordingEntry, HistoryStats } from '../shared/types';
+import type { AppSettings, RecordingState, TranscriptionResult, RecordingEntry, HistoryStats, UpdateState } from '../shared/types';
 
 export interface DictatorAPI {
   // Recording
@@ -79,8 +79,10 @@ export interface DictatorAPI {
 
   // Updates
   update: {
-    check: () => Promise<{ available: boolean; currentVersion: string; latestVersion?: string; downloadUrl?: string; releaseNotes?: string }>;
-    getInfo: () => Promise<{ available: boolean; currentVersion: string; latestVersion?: string; downloadUrl?: string; releaseNotes?: string }>;
+    check: () => Promise<UpdateState>;
+    getInfo: () => Promise<UpdateState>;
+    install: () => Promise<void>;
+    onStatusChange: (callback: (state: UpdateState) => void) => () => void;
   };
 
   // Notifications
@@ -215,6 +217,12 @@ const api: DictatorAPI = {
   update: {
     check: () => ipcRenderer.invoke(IPC.UPDATE_CHECK),
     getInfo: () => ipcRenderer.invoke(IPC.UPDATE_GET_INFO),
+    install: () => ipcRenderer.invoke(IPC.UPDATE_INSTALL),
+    onStatusChange: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: UpdateState) => callback(state);
+      ipcRenderer.on(IPC.UPDATE_STATUS_CHANGED, handler);
+      return () => ipcRenderer.removeListener(IPC.UPDATE_STATUS_CHANGED, handler);
+    },
   },
 
   // Notifications

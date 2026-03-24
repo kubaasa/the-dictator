@@ -166,3 +166,13 @@ Respond with ONLY the reformatted message wrapped in the required tags.`,
     widgetTooltipShown: false,
   },
 };
+
+export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
+
+export interface UpdateState {
+  status: UpdateStatus;
+  currentVersion: string;
+  latestVersion?: string;
+  releaseNotes?: string;
+  error?: string;
+}
