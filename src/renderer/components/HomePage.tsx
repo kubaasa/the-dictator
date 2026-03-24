@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import { RecIndicator } from './RecEffects';
 import { useToast } from './Toast';
+import { CopyButton } from './CopyButton';
 import type { RecordingState } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import type { useAudioRecorder } from '../hooks/useAudioRecorder';
@@ -180,7 +181,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
             onClick={isRecording ? stopRecording : startRecording}
             disabled={recordingState === 'transcribing'}
             aria-label={isRecording ? 'Stop recording' : recordingState === 'transcribing' ? 'Transcribing in progress' : 'Start recording'}
-            className={`btn-noise relative flex h-28 w-28 items-center justify-center rounded-full border-2 bg-zinc-950 ${
+            className={`btn-noise relative flex h-[134px] w-[134px] items-center justify-center rounded-full border-2 bg-zinc-950 ${
               isRecording ? 'animate-rec-glitch' : showEmptyState ? 'animate-first-run-glow' : ''
             } ${recordingState === 'transcribing' ? 'cursor-not-allowed' : 'hover:bg-zinc-900/80'}`}
             style={{
@@ -202,7 +203,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
               isRecording ? 'opacity-100' : 'opacity-0'
             }`}>
-              <svg className="h-9 w-9 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="h-11 w-11 text-white" fill="currentColor" viewBox="0 0 24 24">
                 <rect x="6" y="6" width="12" height="12" rx="2" />
               </svg>
             </div>
@@ -211,7 +212,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
               recordingState === 'transcribing' ? 'opacity-100' : 'opacity-0'
             }`}>
-              <svg className="h-8 w-8 text-zinc-500 animate-spin" fill="none" viewBox="0 0 24 24">
+              <svg className="h-10 w-10 text-zinc-500 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z" />
               </svg>
@@ -220,15 +221,15 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
         </div>
 
         {/* Status */}
-        <div className="flex flex-col items-center gap-2">
-          <p key={`${recordingState}-${isRecording}`} className="font-mono text-sm font-semibold tracking-[0.25em] uppercase text-neutral-300 animate-fade-in">
+        <div className="flex flex-col items-center gap-2" aria-live="polite" aria-atomic="true">
+          <p key={`${recordingState}-${isRecording}`} className="font-mono text-base font-semibold tracking-[0.25em] uppercase text-neutral-300 animate-fade-in">
             {recordingState === 'transcribing'
               ? '[ TRANSCRIBING... ]'
               : isRecording
               ? '[ RECORDING ]'
               : '[ CLICK TO RECORD ]'}
           </p>
-          <p key={`sub-${isRecording}`} className="font-mono text-xs text-neutral-600 tracking-widest animate-fade-in">
+          <p key={`sub-${isRecording}`} className="font-mono text-sm text-neutral-600 tracking-widest animate-fade-in">
             {isRecording ? 'click to stop' : toggleShortcut.replace(/\+/g, ' + ')}
           </p>
         </div>
@@ -236,7 +237,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
 
       {/* Transcription result */}
       {(result || error) && (
-        <div className="mx-auto w-full max-w-lg px-6">
+        <div className="mx-auto w-full max-w-xl px-6" aria-live="polite">
           {error ? (
             <div role="alert" className="flex flex-col items-center gap-2 rounded-xl border border-red-800 bg-red-950/50 px-4 py-3 text-center animate-fade-in">
               <p className="text-sm text-red-400">
@@ -256,20 +257,18 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
               <textarea
                 readOnly
                 value={result}
-                rows={4}
-                className="w-full resize-none rounded-xl border border-red-900/30 bg-[#141414] px-4 py-3 font-mono text-sm text-neutral-200 focus:outline-none"
+                rows={5}
+                className="w-full resize-none rounded-xl border border-red-900/30 bg-[#141414] px-5 py-4 font-mono text-base text-neutral-200 text-center focus:outline-none"
               />
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => { navigator.clipboard.writeText(result); addToast('success', 'Copied to clipboard'); }}
-                  className="rounded-lg border border-neutral-700 px-4 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-200"
-                >
-                  Copy
-                </button>
+              <div className="flex justify-center gap-2">
+                <CopyButton text={result} />
                 <button
                   onClick={() => { clearResult(); clearError(); }}
-                  className="rounded-lg border border-neutral-700 px-4 py-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-200"
+                  className="flex items-center gap-1.5 rounded-lg border border-neutral-700 px-3 py-1.5 font-mono text-sm font-semibold uppercase tracking-wider text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-200"
                 >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
                   Clear
                 </button>
               </div>

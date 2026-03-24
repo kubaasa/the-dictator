@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ViewfinderCorners } from './RecEffects';
-import { useToast } from './Toast';
+import { CopyButton } from './CopyButton';
 import type { RecordingEntry } from '../../shared/types';
 
 function formatTime(isoDate: string): string {
@@ -88,7 +88,7 @@ interface RecordingItemProps {
 }
 
 function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isDeleting, isLast }: RecordingItemProps) {
-  const { addToast } = useToast();
+
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Custom audio player state
@@ -122,12 +122,6 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
     const x = e.clientX - rect.left;
     const pct = x / rect.width;
     audioRef.current.currentTime = pct * audioDuration;
-  };
-
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(entry.text);
-    addToast('success', 'Copied to clipboard');
   };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
@@ -276,15 +270,7 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
               </div>
             ) : (
               <>
-                <button
-                  onClick={handleCopy}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-sm font-semibold uppercase tracking-wider text-neutral-400 border border-neutral-700 hover:border-neutral-500 hover:text-neutral-200 transition-colors"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
-                  </svg>
-                  Copy
-                </button>
+                <CopyButton text={entry.text} stopPropagation />
                 <button
                   onClick={handleDeleteClick}
                   className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-sm font-semibold uppercase tracking-wider text-neutral-400 border border-neutral-700 hover:border-red-800 hover:text-red-400 transition-colors"
