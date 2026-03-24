@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import type { WidgetType } from '../../shared/types';
 
 const WIDGETS: { id: WidgetType; label: string; tag: string; description: string }[] = [
@@ -6,19 +7,42 @@ const WIDGETS: { id: WidgetType; label: string; tag: string; description: string
   { id: 'maxi', label: 'Maxi', tag: 'FULL', description: 'Detailed card with waveform & shortcuts' },
 ];
 
+function RedWaveBars() {
+  const heights = [8, 14, 6, 16, 10, 12];
+  return (
+    <svg className="inline-block" width="42" height="20" viewBox="0 0 42 20">
+      {heights.map((h, i) => (
+        <rect
+          key={i}
+          x={3 + i * 6.5}
+          y={10 - h / 2}
+          width="3"
+          height={h}
+          rx="1.5"
+          fill="#DC2626"
+          opacity={0.85}
+        />
+      ))}
+    </svg>
+  );
+}
+
 type FeatureRow = {
   feature: string;
-  mini: string | boolean;
-  maxi: string | boolean;
+  mini: string | boolean | ReactNode;
+  maxi: string | boolean | ReactNode;
 };
 
 const COMPARISON: FeatureRow[] = [
-  { feature: 'Audio bars',          mini: '6',                    maxi: '60 (Hanning shape)' },
-  { feature: 'Form factor',         mini: 'Compact pill',         maxi: 'Wide card' },
-  { feature: 'Hover expand',        mini: true,                   maxi: false },
-  { feature: 'Error details',       mini: 'Icon only',            maxi: 'Full message' },
-  { feature: 'Processing state',    mini: '[...]',                maxi: '[ PROCESSING ... ]' },
-  { feature: 'Drag & drop',         mini: true,                   maxi: true },
+  { feature: 'Audio bars',          mini: '6 (flat)',              maxi: '60 (Hanning shape)' },
+  { feature: 'Form factor',         mini: 'Compact pill',          maxi: 'Wide card' },
+  { feature: 'Hover to interact',   mini: true,                    maxi: false },
+  { feature: 'Keyboard shortcuts',  mini: false,                   maxi: true },
+  { feature: 'REC indicator',       mini: false,                   maxi: true },
+  { feature: 'Error details',       mini: 'Icon + short text',     maxi: 'Full message' },
+  { feature: 'Processing state',    mini: <RedWaveBars />,         maxi: <span className="font-mono text-sm text-red-500">[ PROCESSING ... ]</span> },
+  { feature: 'Enter/exit animation',mini: false,                   maxi: true },
+  { feature: 'Drag & drop',         mini: true,                    maxi: true },
 ];
 
 export function WidgetPage() {
@@ -181,7 +205,7 @@ export function WidgetPage() {
   );
 }
 
-function CellValue({ value }: { value: string | boolean }) {
+function CellValue({ value }: { value: string | boolean | ReactNode }) {
   if (value === true) {
     return (
       <svg className="inline-block" width="18" height="18" viewBox="0 0 16 16">
@@ -196,9 +220,12 @@ function CellValue({ value }: { value: string | boolean }) {
       </svg>
     );
   }
-  return (
-    <span className="font-mono text-sm text-neutral-400">{value}</span>
-  );
+  if (typeof value === 'string') {
+    return (
+      <span className="font-mono text-sm text-neutral-400">{value}</span>
+    );
+  }
+  return <>{value}</>;
 }
 
 function MiniPreview({ active }: { active: boolean }) {
