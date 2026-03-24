@@ -442,28 +442,6 @@ export function ModesPage(props: ModelStatus) {
               </div>
             )}
 
-            {/* Language pills */}
-            <div>
-              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
-                Language
-              </span>
-              <div className="flex gap-2">
-                {LANGUAGE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => handleLanguageChange(opt.value)}
-                    className={`rounded-lg border px-5 py-2 font-mono text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-200 cursor-pointer ${
-                      language === opt.value
-                        ? 'border-red-600/50 bg-red-600/10 text-red-400'
-                        : 'border-neutral-700 bg-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Whisper model cards — only relevant for local engine */}
             {engine === 'local' && (
             <div>
@@ -552,8 +530,31 @@ export function ModesPage(props: ModelStatus) {
                   {error}
                 </p>
               )}
+
             </div>
             )}
+
+            {/* Language pills — shared by both engines */}
+            <div>
+              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
+                Language
+              </span>
+              <div className="flex gap-2">
+                {LANGUAGE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleLanguageChange(opt.value)}
+                    className={`rounded-lg border px-5 py-2 font-mono text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-200 cursor-pointer ${
+                      language === opt.value
+                        ? 'border-red-600/50 bg-red-600/10 text-red-400'
+                        : 'border-neutral-700 bg-neutral-800 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
           </div>
         </section>
