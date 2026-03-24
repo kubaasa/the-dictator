@@ -6,6 +6,7 @@ import { HomePage } from './components/HomePage';
 import { HistoryPage } from './components/HistoryPage';
 import { ModesPage } from './components/ModesPage';
 import { ShortcutsPage } from './components/ShortcutsPage';
+import { VocabularyPage } from './components/VocabularyPage';
 import { WidgetPage } from './components/WidgetPage';
 import { MicrophoneSelector } from './components/MicrophoneSelector';
 import { ScanLines, NoiseOverlay, Vignette, RecIndicator } from './components/RecEffects';
@@ -111,6 +112,7 @@ export function App() {
           {activeView === 'home' && <HomePage recordingState={recordingState} audioRecorder={audioRecorder} onNavigate={setActiveView} />}
           {activeView === 'history' && <HistoryPage />}
           {activeView === 'modes' && <ModesPage {...modelStatus} />}
+          {activeView === 'vocabulary' && <VocabularyPage />}
           {activeView === 'shortcuts' && <ShortcutsPage />}
           {activeView === 'widget' && <WidgetPage />}
         </div>

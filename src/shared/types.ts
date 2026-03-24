@@ -32,6 +32,12 @@ export type AIProviderType = 'openai' | 'anthropic';
 export type RecordingState = 'idle' | 'initializing' | 'recording' | 'transcribing' | 'processing' | 'done' | 'error';
 export type HotkeyMode = 'toggle' | 'push-to-talk';
 
+export interface VocabularyEntry {
+  id: string;
+  input: string;
+  replacement?: string;
+}
+
 export interface AppSettings {
   transcription: {
     engine: TranscriptionEngine;
@@ -65,7 +71,7 @@ export interface AppSettings {
   audio: {
     deviceId: string;
   };
-  vocabulary: string[];
+  vocabulary: VocabularyEntry[];
   widget: {
     activeWidget: WidgetType;
     x?: number;

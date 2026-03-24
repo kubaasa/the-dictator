@@ -2,7 +2,7 @@ import { ipcMain, BrowserWindow, shell, clipboard, app, screen, net } from 'elec
 import path from 'node:path';
 import fs from 'node:fs';
 import { IPC } from '../shared/constants';
-import type { AppSettings, RecordingState, WidgetType, RecordingEntry } from '../shared/types';
+import type { AppSettings, RecordingState, WidgetType, RecordingEntry, VocabularyEntry } from '../shared/types';
 import { TranscriptionService } from './services/transcription.service';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
@@ -20,6 +20,27 @@ function sanitizeId(id: string): string {
     throw new Error(`Invalid recording ID: "${id}"`);
   }
   return id;
+}
+
+/** Apply vocabulary find-and-replace (case-insensitive, whole-word). Last step in pipeline. */
+function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]): string {
+  if (!vocabulary || vocabulary.length === 0) return text;
+
+  let result = text;
+  for (const entry of vocabulary) {
+    if (!entry.replacement) continue;
+
+    const escaped = entry.input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // \b doesn't work with non-ASCII (Polish, Thai etc.) — use whitespace/punctuation boundaries instead
+    // eslint-disable-next-line no-control-regex
+    const hasNonAscii = /[^\x00-\x7F]/.test(entry.input);
+    const pattern = hasNonAscii
+      ? `(?<=^|[\\s.,;:!?"""''()\\[\\]])${escaped}(?=$|[\\s.,;:!?"""''()\\[\\]])`
+      : `\\b${escaped}\\b`;
+    const regex = new RegExp(pattern, 'gi');
+    result = result.replace(regex, entry.replacement);
+  }
+  return result;
 }
 
 export function getOverlaySize(widget: WidgetType): [number, number] {
@@ -112,6 +133,16 @@ export function registerIpcHandlers(
       store.set('dictation', migrated);
     }
 
+    // Migrate vocabulary: string[] → VocabularyEntry[]
+    const vocab = store.get('vocabulary') as unknown[];
+    if (Array.isArray(vocab) && vocab.length > 0 && typeof vocab[0] === 'string') {
+      const migrated = (vocab as string[]).map((word, i) => ({
+        id: `migrated-${i}-${Date.now()}`,
+        input: word,
+      }));
+      store.set('vocabulary', migrated);
+    }
+
     return decryptSettingsForRenderer(store.store);
   });
 
@@ -140,8 +171,15 @@ export function registerIpcHandlers(
     if (settings.dictation !== undefined && (typeof settings.dictation !== 'object' || settings.dictation === null)) {
       throw new Error('Invalid value for "dictation": expected object');
     }
-    if (settings.vocabulary !== undefined && !Array.isArray(settings.vocabulary)) {
-      throw new Error('Invalid value for "vocabulary": expected array');
+    if (settings.vocabulary !== undefined) {
+      if (!Array.isArray(settings.vocabulary)) {
+        throw new Error('Invalid value for "vocabulary": expected array');
+      }
+      for (const entry of settings.vocabulary) {
+        if (typeof entry !== 'object' || entry === null || typeof entry.input !== 'string') {
+          throw new Error('Invalid vocabulary entry: each must have "input" string');
+        }
+      }
     }
     if (settings.widget !== undefined && (typeof settings.widget !== 'object' || settings.widget === null)) {
       throw new Error('Invalid value for "widget": expected object');
@@ -299,6 +337,10 @@ export function registerIpcHandlers(
           win.webContents.send(IPC.NOTIFICATION_ERROR, `AI processing failed: ${aiMsg}. Using raw transcription.`);
         }
       }
+
+      // Vocabulary find-and-replace — last step before output
+      const vocabEntries = (store.get('vocabulary') as VocabularyEntry[]) ?? [];
+      text = applyVocabularyReplacements(text, vocabEntries);
 
       broadcastState('done');
       scheduleIdle(1500);

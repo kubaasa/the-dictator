@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import Store from 'electron-store';
-import type { AppSettings } from '../../shared/types';
+import type { AppSettings, VocabularyEntry } from '../../shared/types';
 import { getApiKey } from './secure-storage';
 
 /** Per-method timeout for AI streaming — clean cancellation if a stream hangs. */
@@ -81,7 +81,18 @@ export class AIService {
     const language = (this.store.get('transcription.language') as string) ?? 'en';
     const languageNames: Record<string, string> = { en: 'English', pl: 'Polish', th: 'Thai' };
     const languageName = languageNames[language] ?? 'English';
-    const systemPrompt = `${basePrompt} Always respond in ${languageName}.`;
+
+    const vocab = (this.store.get('vocabulary') as VocabularyEntry[]) ?? [];
+    let vocabSection = '';
+    if (vocab.length > 0) {
+      const lines = vocab.map(entry => {
+        if (entry.replacement) return `- "${entry.input}" → "${entry.replacement}"`;
+        return `- "${entry.input}"`;
+      });
+      vocabSection = `\n\nVocabulary/Names list (use for spelling context):\n${lines.join('\n')}`;
+    }
+
+    const systemPrompt = `${basePrompt}${vocabSection} Always respond in ${languageName}.`;
 
     switch (provider) {
       case 'openai':

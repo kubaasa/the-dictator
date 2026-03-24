@@ -1,6 +1,6 @@
 import { pipeline, env } from '@huggingface/transformers';
 import OpenAI, { toFile } from 'openai';
-import type { AppSettings } from '../../shared/types';
+import type { AppSettings, VocabularyEntry } from '../../shared/types';
 import Store from 'electron-store';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
@@ -286,10 +286,21 @@ export class TranscriptionService {
     return this.groqClient;
   }
 
+  private getVocabularyPromptHint(): string {
+    const vocab = this.store.get('vocabulary') as (VocabularyEntry | string)[];
+    if (!Array.isArray(vocab) || vocab.length === 0) return '';
+    const words = vocab
+      .map(entry => typeof entry === 'string' ? entry : entry.input)
+      .filter(Boolean);
+    if (words.length === 0) return '';
+    return words.join(', ');
+  }
+
   private async transcribeGroqFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
+      const vocabHint = this.getVocabularyPromptHint();
 
       const float32 = ipcBufferToFloat32(audioBuffer);
       const wavBuffer = encodeWavFast(float32, sampleRate);
@@ -299,6 +310,7 @@ export class TranscriptionService {
         model: 'whisper-large-v3',
         file,
         ...(language !== 'auto' && { language }),
+        ...(vocabHint && { prompt: vocabHint }),
       });
 
       return response.text.trim();
@@ -309,6 +321,7 @@ export class TranscriptionService {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
+      const vocabHint = this.getVocabularyPromptHint();
 
       const buf = Buffer.isBuffer(compressedAudio) ? compressedAudio : Buffer.from(compressedAudio);
       const file = await toFile(buf, 'audio.webm', { type: 'audio/webm' });
@@ -317,6 +330,7 @@ export class TranscriptionService {
         model: 'whisper-large-v3',
         file,
         ...(language !== 'auto' && { language }),
+        ...(vocabHint && { prompt: vocabHint }),
       });
 
       return response.text.trim();
@@ -348,8 +362,16 @@ export class TranscriptionService {
     }
 
     if (language !== 'auto') options.language = language;
-    if (language === 'pl') options.initial_prompt = 'Dyktowanie tekstu po polsku.';
-    if (language === 'th') options.initial_prompt = 'การเขียนตามคำบอกเป็นภาษาไทย';
+    const vocabHint = this.getVocabularyPromptHint();
+    const langHints: Record<string, string> = {
+      pl: 'Dyktowanie tekstu po polsku.',
+      th: 'การเขียนตามคำบอกเป็นภาษาไทย',
+    };
+    const langHint = langHints[language] ?? '';
+    const promptParts = [langHint, vocabHint].filter(Boolean);
+    if (promptParts.length > 0) {
+      options.initial_prompt = promptParts.join(' ');
+    }
 
     // Cap output tokens based on audio duration to prevent hallucination loops.
     // Normal speech: ~2-4 tokens/s, 8 tokens/s is a safe margin.
