@@ -170,13 +170,6 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
           </span>
         )}
         <span className="text-sm text-neutral-300 truncate flex-1">{preview}</span>
-        {/* Chevron */}
-        <svg
-          className={`h-4 w-4 text-neutral-600 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-          fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-        </svg>
       </button>
 
       {/* Expanded accordion body */}
@@ -262,7 +255,7 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
           )}
 
           {/* Actions */}
-          <div className="flex items-center gap-2 mx-5 border-t border-neutral-800/30 py-2">
+          <div className="flex items-center justify-center gap-2 mx-5 border-t border-neutral-800/30 py-2">
             {confirmingDelete ? (
               <div className="flex items-center gap-2 w-full justify-center">
                 <span className="font-mono text-sm text-neutral-400">Delete this recording?</span>
