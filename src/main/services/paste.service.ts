@@ -193,13 +193,12 @@ export class PasteService {
     });
   }
 
-  // Call when recording STARTS — captures the focused window if it's a valid paste target
+  // Call when recording STARTS — captures the focused window if it's a valid paste target.
+  // Does NOT reset targetHwnd upfront — the async PowerShell call overwrites it on success.
+  // Resetting eagerly caused a race: hwnd=null before the async result arrived, so
+  // hasTarget() returned false when transcription completed before capture finished.
   captureTarget(): void {
     if (process.platform !== 'win32') return;
-
-    // Always reset — each recording starts with a clean slate (prevents stale targets)
-    this.targetHwnd = null;
-    this.targetAppName = null;
 
     const handleResult = (stdout: string) => {
       const parts = stdout.trim().split('|');
@@ -254,18 +253,17 @@ export class PasteService {
     return this.targetHwnd !== null;
   }
 
-  // Focuses the captured window and types text from clipboard character-by-character
+  // Focuses the captured window and types text from clipboard character-by-character.
+  // Target is cleared only AFTER a successful paste — on failure the caller gets the
+  // error (re-thrown) and the target stays available for diagnostics/retry.
   async simulatePaste(): Promise<void> {
     if (process.platform !== 'win32' || !this.targetHwnd) return;
     const hwnd = this.targetHwnd;
-    this.targetHwnd = null;
-    this.targetAppName = null;
 
     try {
       if (this.psReady && this.psProcess) {
         await this.exec(buildPasteCmd(hwnd), 10000);
       } else {
-        // Fallback to cold-start (should rarely happen — persistent process starts at app boot)
         const args = [
           '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
           `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PW{[StructLayout(LayoutKind.Sequential)]public struct KI{public ushort vk;public ushort sc;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Sequential)]public struct MI{public int dx;public int dy;public uint md;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Explicit)]public struct IU{[FieldOffset(0)]public KI ki;[FieldOffset(0)]public MI mi;}[StructLayout(LayoutKind.Sequential)]public struct IP{public uint tp;public IU u;}[DllImport("user32.dll",SetLastError=true)]public static extern uint SendInput(uint n,IP[] i,int s);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,IntPtr p);[DllImport("kernel32.dll")]public static extern uint GetCurrentThreadId();[DllImport("user32.dll")]public static extern bool AttachThreadInput(uint a,uint b,bool c);public static void T(string s){int z=Marshal.SizeOf(typeof(IP));foreach(char ch in s){IP[] inp=new IP[2];inp[0].tp=1;inp[0].u.ki.sc=(ushort)ch;inp[0].u.ki.fl=4;inp[1].tp=1;inp[1].u.ki.sc=(ushort)ch;inp[1].u.ki.fl=6;SendInput(2,inp,z);}}}'; Add-Type -AssemblyName System.Windows.Forms; ${buildPasteCmd(hwnd)}`,
@@ -273,8 +271,13 @@ export class PasteService {
         await execFileAsync('powershell', args, { timeout: 10000, windowsHide: true });
       }
       log.info('Auto-typed successfully');
+      this.targetHwnd = null;
+      this.targetAppName = null;
     } catch (err) {
       log.warn('simulatePaste failed:', err instanceof Error ? err.message : err);
+      this.targetHwnd = null;
+      this.targetAppName = null;
+      throw err;
     }
   }
 

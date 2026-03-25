@@ -11,6 +11,8 @@ class RecorderProcessor extends AudioWorkletProcessor {
     this._buffer = new Float32Array(4096);
     this._offset = 0;
     this._stopped = false;
+    this._emptyFrames = 0;
+    this._noInputSent = false;
     this.port.onmessage = (e) => {
       if (e.data === 'stop') this._stopped = true;
     };
@@ -19,7 +21,15 @@ class RecorderProcessor extends AudioWorkletProcessor {
   process(inputs) {
     if (this._stopped) return false;
     const input = inputs[0];
-    if (!input || !input[0]) return true;
+    if (!input || !input[0]) {
+      this._emptyFrames++;
+      if (!this._noInputSent && this._emptyFrames > 250) {
+        this.port.postMessage({ type: 'no-input' });
+        this._noInputSent = true;
+      }
+      return true;
+    }
+    this._emptyFrames = 0;
 
     const samples = input[0];
     let srcOffset = 0;
@@ -116,26 +126,25 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
 
-  // Coordination between MediaRecorder.onstop and onTranscriptionResult
+  // Coordination between MediaRecorder.onstop and onTranscriptionResult.
+  // Two async sources (onstop → buffer, transcription → result ID) arrive independently.
+  // We match them by snapshotted recording ID — NOT recordingIdRef.current, which may
+  // already point to a new recording if the user started one quickly.
   const recordingIdRef = useRef<string>('');
-  const pendingAudioBufferRef = useRef<ArrayBuffer | null>(null);
-  const transcriptionResultIdRef = useRef<string | null>(null);
+  const pendingAudioRef = useRef<{ id: string; buffer: ArrayBuffer } | null>(null);
+  const pendingResultIdRef = useRef<string | null>(null);
 
-  // Called from both sides — sends audio when both id and buffer are ready
   const trySendAudio = useCallback((id: string, buffer?: ArrayBuffer) => {
-    if (buffer) pendingAudioBufferRef.current = buffer;
-    if (id) transcriptionResultIdRef.current = id;
+    if (buffer) pendingAudioRef.current = { id, buffer };
+    if (!buffer) pendingResultIdRef.current = id;
 
-    if (
-      transcriptionResultIdRef.current &&
-      transcriptionResultIdRef.current === recordingIdRef.current &&
-      pendingAudioBufferRef.current
-    ) {
-      const buf = pendingAudioBufferRef.current;
-      const rid = transcriptionResultIdRef.current;
-      pendingAudioBufferRef.current = null;
-      transcriptionResultIdRef.current = null;
-      window.dictator.audio.save(rid, buf).catch((e) => log.warn('audio save failed:', e));
+    const audio = pendingAudioRef.current;
+    const resultId = pendingResultIdRef.current;
+
+    if (audio && resultId && audio.id === resultId) {
+      pendingAudioRef.current = null;
+      pendingResultIdRef.current = null;
+      window.dictator.audio.save(resultId, audio.buffer).catch((e) => log.warn('audio save failed:', e));
     }
   }, []);
 
@@ -213,8 +222,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
       // Generate unique id for this recording before transcription starts
       recordingIdRef.current = Date.now().toString();
-      pendingAudioBufferRef.current = null;
-      transcriptionResultIdRef.current = null;
+      pendingAudioRef.current = null;
+      pendingResultIdRef.current = null;
 
       // Start MediaRecorder to collect WebM audio for history
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
@@ -267,6 +276,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
           chunksRef.current.push(e.data.samples);
         } else if (e.data.type === 'level') {
           window.dictator.sendVoiceActivity(e.data.level);
+        } else if (e.data.type === 'no-input') {
+          log.warn('AudioWorklet: no audio input detected — mic may be disconnected or context suspended');
         }
       };
 
@@ -373,12 +384,12 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     // Notify main process. Skip idle broadcast when audio exists — the
     // transcription handler manages state (transcribing → done → idle),
     // preventing a brief idle flash that causes widget flickering.
-    const hasAudio = chunks.length > 0 && !!audioContext;
+    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+    const hasAudio = totalLength > 0 && !!audioContext;
     window.dictator.stopRecording(!hasAudio);
 
     // Send buffer for transcription BEFORE closing context — minimize latency
     if (hasAudio) {
-      const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
       const merged = new Float32Array(totalLength);
       let offset = 0;
       for (const chunk of chunks) {
@@ -389,9 +400,19 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       const sampleRate = audioContext.sampleRate;
       // Collect compressed WebM/Opus blob if available (~<10ms wait for MediaRecorder flush).
       // API transcription uses this instead of re-encoding to WAV (~8x smaller upload).
-      // For local engine the blob is unused, but the ~10ms await is negligible vs inference time
-      // and the renderer doesn't know which engine is active.
-      const compressedAudio = compressedBlobPromise ? await compressedBlobPromise : undefined;
+      // Timeout guard: if MediaRecorder.onstop never fires (browser bug, resource exhaustion),
+      // we proceed without compressed audio instead of hanging forever.
+      let compressedAudio: ArrayBuffer | undefined;
+      if (compressedBlobPromise) {
+        try {
+          compressedAudio = await Promise.race([
+            compressedBlobPromise,
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('MediaRecorder flush timeout')), 5000)),
+          ]);
+        } catch (e) {
+          log.warn('Compressed audio unavailable, proceeding with raw buffer:', e);
+        }
+      }
       // Use snapshotted id — recordingIdRef.current may have changed if a new recording started
       window.dictator.transcribeBuffer(merged.buffer, sampleRate, snapshotRecordingId, compressedAudio)
         .catch((err: unknown) => {
@@ -425,8 +446,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       mediaRecorderRef.current = null;
     }
     mediaChunksRef.current = [];
-    pendingAudioBufferRef.current = null;
-    transcriptionResultIdRef.current = null;
+    pendingAudioRef.current = null;
+    pendingResultIdRef.current = null;
 
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());

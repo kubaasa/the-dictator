@@ -296,6 +296,11 @@ export function registerIpcHandlers(
     // Silence detection: skip transcription if audio is below speech threshold.
     // Prevents Whisper hallucinations like [muzyka], [music], [cisza] on silence.
     const samples = new Float32Array(audioBuffer);
+    if (samples.length === 0) {
+      log.warn('Empty audio buffer received — skipping transcription');
+      broadcastState('idle');
+      return;
+    }
     const rms = Math.sqrt(samples.reduce((sum, s) => sum + s * s, 0) / samples.length);
     if (rms < 0.01) {
       broadcastState('idle');
@@ -409,9 +414,6 @@ export function registerIpcHandlers(
       broadcastState('error');
       scheduleIdle(1500);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, msg);
-      for (const win of BrowserWindow.getAllWindows()) {
-        win.webContents.send(IPC.NOTIFICATION_ERROR, `Transcription failed: ${msg}`);
-      }
     }
     } finally {
       transcriptionInProgress = false;

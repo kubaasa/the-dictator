@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import log from 'electron-log/renderer';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import { RecIndicator } from './RecEffects';
-import { useToast } from './Toast';
+
 import { CopyButton } from './CopyButton';
 import type { RecordingState } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
@@ -37,15 +37,9 @@ const EMPTY_STATS: StatsDisplay = { totalWords: '—', totalTimeDisplay: '—', 
 export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePageProps) {
   const { isRecording, error: recorderError, errorType, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
   const { result, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
-  const { addToast } = useToast();
   const error = recorderError || transcriptionError;
 
   const [toggleShortcut, setToggleShortcut] = useState(DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
-
-  // Show toast for mic-related errors (OverconstrainedError, NotFoundError, etc.)
-  useEffect(() => {
-    if (recorderError) addToast('error', recorderError);
-  }, [recorderError]);
 
   useEffect(() => {
     // Clear stale recorder errors from previous attempts (e.g., "Model not downloaded")
