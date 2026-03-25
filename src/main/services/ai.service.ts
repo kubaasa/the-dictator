@@ -37,6 +37,37 @@ export class AIService {
 
   constructor(private store: Store<AppSettings>) {}
 
+  /** Validate an OpenAI API key by calling the lightweight /models endpoint. */
+  static async validateOpenAIKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+    try {
+      const client = new OpenAI({ apiKey });
+      await client.models.list({ timeout: 5000 });
+      return { valid: true };
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 401) return { valid: false, error: 'Invalid API key. Check that you copied it correctly.' };
+      if (status === 403) return { valid: false, error: 'API key does not have permission. Generate a new one.' };
+      return { valid: false, error: err instanceof Error ? err.message : 'Validation failed' };
+    }
+  }
+
+  /** Validate an Anthropic API key by calling the lightweight count_tokens endpoint. */
+  static async validateAnthropicKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
+    try {
+      const client = new Anthropic({ apiKey });
+      await client.messages.countTokens({
+        model: 'claude-haiku-4-5-20251001',
+        messages: [{ role: 'user', content: 'validate' }],
+      });
+      return { valid: true };
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 401) return { valid: false, error: 'Invalid API key. Check that you copied it correctly.' };
+      if (status === 403) return { valid: false, error: 'API key does not have permission. Generate a new one.' };
+      return { valid: false, error: err instanceof Error ? err.message : 'Validation failed' };
+    }
+  }
+
   /**
    * Pre-establish TCP+TLS connection with the configured AI provider.
    * Call this when transcription starts so the connection is ready when AI processing begins.

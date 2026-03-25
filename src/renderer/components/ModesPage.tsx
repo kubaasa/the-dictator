@@ -49,6 +49,8 @@ export function ModesPage(props: ModelStatus) {
   const [aiAnthropicModel, setAiAnthropicModel] = useState('claude-haiku-4-5-20251001');
   const [openaiKeySaved, setOpenaiKeySaved] = useState(false);
   const [anthropicKeySaved, setAnthropicKeySaved] = useState(false);
+  const [aiKeyValidation, setAiKeyValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
+  const [aiKeyValidationError, setAiKeyValidationError] = useState('');
   // Output settings (read-only for pipeline bar)
   const [autoPaste, setAutoPaste] = useState(DEFAULT_SETTINGS.dictation.autoPaste);
 
@@ -77,6 +79,10 @@ export function ModesPage(props: ModelStatus) {
     setAiAnthropicKey(s.ai.anthropicApiKey);
     setAiAnthropicModel(s.ai.anthropicModel);
     setAnthropicKeySaved(!!s.ai.anthropicApiKey);
+    // Set validation state based on whether the active provider has a saved key
+    const activeKey = s.ai.provider === 'openai' ? s.ai.openaiApiKey : s.ai.anthropicApiKey;
+    setAiKeyValidation(activeKey ? 'valid' : 'idle');
+    setAiKeyValidationError('');
   }, []);
 
   useEffect(() => {
@@ -217,6 +223,11 @@ export function ModesPage(props: ModelStatus) {
 
   const handleProviderChange = async (provider: AIProviderType) => {
     setAiProvider(provider);
+    // Reset validation to match new provider's saved key state
+    const activeKey = provider === 'openai' ? aiOpenaiKey : aiAnthropicKey;
+    const isSaved = provider === 'openai' ? openaiKeySaved : anthropicKeySaved;
+    setAiKeyValidation(isSaved && activeKey ? 'valid' : 'idle');
+    setAiKeyValidationError('');
     try {
       const current = await window.dictator.getSettings();
       await window.dictator.setSettings({
@@ -243,28 +254,44 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const handleAiKeySave = async () => {
+    const key = aiProvider === 'openai' ? aiOpenaiKey.trim() : aiAnthropicKey.trim();
+    if (!key) return;
+    setAiKeyValidation('validating');
+    setAiKeyValidationError('');
     try {
-      const current = await window.dictator.getSettings();
-      const updates: Record<string, unknown> = {};
-      if (aiProvider === 'openai') {
-        updates.openaiApiKey = aiOpenaiKey;
-        updates.openaiModel = aiOpenaiModel;
-      } else if (aiProvider === 'anthropic') {
-        updates.anthropicApiKey = aiAnthropicKey;
-        updates.anthropicModel = aiAnthropicModel;
+      const result = await window.dictator.ai.validateKey(aiProvider, key);
+      if (result.valid) {
+        setAiKeyValidation('valid');
+        const current = await window.dictator.getSettings();
+        const updates: Record<string, unknown> = {};
+        if (aiProvider === 'openai') {
+          updates.openaiApiKey = key;
+          updates.openaiModel = aiOpenaiModel;
+        } else {
+          updates.anthropicApiKey = key;
+          updates.anthropicModel = aiAnthropicModel;
+        }
+        await window.dictator.setSettings({
+          ai: { ...current.ai, ...updates },
+        });
+        if (aiProvider === 'openai') {
+          fetchOpenAIModels();
+          setOpenaiKeySaved(true);
+        } else {
+          setAnthropicKeySaved(true);
+        }
+        addToast('success', `${aiProvider === 'openai' ? 'OpenAI' : 'Anthropic'} API key verified and saved`);
+      } else {
+        setAiKeyValidation('invalid');
+        setAiKeyValidationError(result.error ?? 'Invalid API key');
+        if (aiProvider === 'openai') setAiOpenaiKey('');
+        else setAiAnthropicKey('');
       }
-      await window.dictator.setSettings({
-        ai: { ...current.ai, ...updates },
-      });
-      if (aiProvider === 'openai') {
-        fetchOpenAIModels();
-        setOpenaiKeySaved(true);
-      } else if (aiProvider === 'anthropic') {
-        setAnthropicKeySaved(true);
-      }
-      addToast('success', 'AI configuration saved');
-    } catch (err) {
-      log.error('[ModesPage] Failed to save AI key:', err);
+    } catch {
+      setAiKeyValidation('invalid');
+      setAiKeyValidationError('Validation failed. Check your internet connection.');
+      if (aiProvider === 'openai') setAiOpenaiKey('');
+      else setAiAnthropicKey('');
     }
   };
 
@@ -284,6 +311,8 @@ export function ModesPage(props: ModelStatus) {
           ai: { ...current.ai, anthropicApiKey: '' },
         });
       }
+      setAiKeyValidation('idle');
+      setAiKeyValidationError('');
       addToast('success', 'API key removed');
     } catch (err) {
       log.error('[ModesPage] Failed to delete AI key:', err);
@@ -634,8 +663,8 @@ export function ModesPage(props: ModelStatus) {
               </button>
             </div>
 
-            {/* [IDLE] banner */}
-            {aiPostProcessing && !isAiConfigured && (
+            {/* [IDLE] banner — hidden only after successful key validation */}
+            {aiPostProcessing && aiKeyValidation !== 'valid' && (
               <div className="flex items-center gap-3 rounded-lg border border-green-800/40 bg-green-950/20 px-4 py-3">
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="relative flex h-2 w-2">
@@ -730,11 +759,41 @@ export function ModesPage(props: ModelStatus) {
                     </p>
                     <ApiKeyInput
                       value={aiProvider === 'openai' ? aiOpenaiKey : aiAnthropicKey}
-                      onChange={(v) => aiProvider === 'openai' ? setAiOpenaiKey(v) : setAiAnthropicKey(v)}
+                      onChange={(v) => {
+                        if (aiProvider === 'openai') setAiOpenaiKey(v);
+                        else setAiAnthropicKey(v);
+                        if (aiKeyValidation === 'valid' || aiKeyValidation === 'invalid') {
+                          setAiKeyValidation('idle');
+                          setAiKeyValidationError('');
+                        }
+                      }}
                       onSave={handleAiKeySave}
                       onDelete={handleAiKeyDelete}
                       saved={aiProvider === 'openai' ? openaiKeySaved : anthropicKeySaved}
+                      buttonLabel={aiKeyValidation === 'validating' ? 'Verifying...' : 'Verify'}
+                      buttonDisabled={aiKeyValidation === 'validating' || !(aiProvider === 'openai' ? aiOpenaiKey.trim() : aiAnthropicKey.trim())}
                     />
+                    {aiKeyValidation === 'validating' && (
+                      <p className="mt-2 font-mono text-xs text-neutral-500 animate-pulse">
+                        Checking API key...
+                      </p>
+                    )}
+                    {aiKeyValidation === 'valid' && (
+                      <p className="mt-2 flex items-center gap-1.5 font-mono text-xs text-green-500">
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                        </svg>
+                        API key is valid — saved
+                      </p>
+                    )}
+                    {aiKeyValidation === 'invalid' && (
+                      <p className="mt-2 flex items-center gap-1.5 font-mono text-xs text-red-400">
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                        </svg>
+                        {aiKeyValidationError}
+                      </p>
+                    )}
                   </div>
                 )}
 

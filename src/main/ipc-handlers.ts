@@ -25,6 +25,29 @@ function sanitizeId(id: string): string {
   return id;
 }
 
+/**
+ * Extract a clean, user-friendly message from API errors (OpenAI, Anthropic, Groq SDKs).
+ * SDK error objects often dump raw JSON into .message — this pulls out just the human-readable part.
+ */
+function formatApiError(err: unknown): string {
+  const status = (err as { status?: number }).status;
+
+  // Anthropic SDK: err.error.error.message — clean inner message
+  const innerMsg =
+    (err as { error?: { error?: { message?: string } } })?.error?.error?.message
+    // OpenAI SDK: err.error.message
+    ?? (err as { error?: { message?: string } })?.error?.message;
+
+  if (status === 401 || status === 403) {
+    const detail = innerMsg ?? 'Invalid credentials';
+    return `${detail}. Delete the API key and add a new one.`;
+  }
+
+  if (innerMsg) return innerMsg;
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 /** Apply vocabulary find-and-replace (case-insensitive, whole-word). Last step in pipeline. */
 function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]): string {
   if (!vocabulary || vocabulary.length === 0) return text;
@@ -352,9 +375,9 @@ export function registerIpcHandlers(
       } catch (aiErr) {
         log.warn('AI processing failed, using raw text:', aiErr);
         text = rawText;
-        const aiMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
+        const aiMsg = formatApiError(aiErr);
         for (const win of BrowserWindow.getAllWindows()) {
-          win.webContents.send(IPC.NOTIFICATION_ERROR, `AI processing failed: ${aiMsg}. Using raw transcription.`);
+          win.webContents.send(IPC.NOTIFICATION_ERROR, `AI processing failed: ${aiMsg} Using raw transcription.`);
         }
       }
 
@@ -410,7 +433,7 @@ export function registerIpcHandlers(
 
       event.sender.send(IPC.TRANSCRIPTION_RESULT, { id: entryId, text, appName, durationSeconds });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatApiError(err);
       broadcastState('error');
       scheduleIdle(1500);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, msg);
@@ -622,6 +645,14 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.GROQ_VALIDATE_KEY, async (_event, apiKey: string) => {
     if (!apiKey || typeof apiKey !== 'string') return { valid: false, error: 'No API key provided' };
     return TranscriptionService.validateGroqApiKey(apiKey);
+  });
+
+  // AI provider key validation (OpenAI / Anthropic)
+  ipcMain.handle(IPC.AI_VALIDATE_KEY, async (_event, provider: string, apiKey: string) => {
+    if (!apiKey || typeof apiKey !== 'string') return { valid: false, error: 'No API key provided' };
+    if (provider === 'openai') return AIService.validateOpenAIKey(apiKey);
+    if (provider === 'anthropic') return AIService.validateAnthropicKey(apiKey);
+    return { valid: false, error: `Unknown provider: ${provider}` };
   });
 
   // Open external URL (whitelisted domains only)
