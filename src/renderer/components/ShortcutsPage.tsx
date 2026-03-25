@@ -148,30 +148,14 @@ export function ShortcutsPage() {
   const [error, setError] = useState('');
   const [shakingKey, setShakingKey] = useState<ShortcutKey | null>(null);
   const inputRef = useRef<HTMLDivElement>(null);
-  const [soundEnabled, setSoundEnabled] = useState(DEFAULT_SETTINGS.audio.soundEnabled);
 
   useEffect(() => {
     window.dictator.getSettings().then((s: AppSettings) => {
       const stored = s.hotkey?.shortcuts ?? DEFAULT_SETTINGS.hotkey.shortcuts;
       setShortcuts({ ...DEFAULT_SETTINGS.hotkey.shortcuts, ...stored });
       setHotkeyMode(s.hotkey?.mode ?? DEFAULT_SETTINGS.hotkey.mode);
-      setSoundEnabled(s.audio?.soundEnabled ?? DEFAULT_SETTINGS.audio.soundEnabled);
     }).catch((err) => log.error('Failed to load settings in ShortcutsPage:', err));
-
-    const unsub = window.dictator.onSettingsChange((s: AppSettings) => {
-      setSoundEnabled(s.audio?.soundEnabled ?? DEFAULT_SETTINGS.audio.soundEnabled);
-    });
-    return unsub;
   }, []);
-
-  const toggleSound = useCallback(async () => {
-    const next = !soundEnabled;
-    setSoundEnabled(next);
-    const settings = await window.dictator.getSettings();
-    await window.dictator.setSettings({
-      audio: { ...settings.audio, soundEnabled: next },
-    });
-  }, [soundEnabled]);
 
   const saveShortcuts = useCallback(async (newShortcuts: typeof shortcuts) => {
     const settings = await window.dictator.getSettings();
@@ -425,38 +409,6 @@ export function ShortcutsPage() {
       {error && (
         <p role="alert" className="text-sm text-red-400">{error}</p>
       )}
-
-      {/* Sound Feedback */}
-      <section>
-        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Sound Feedback</h2>
-        <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
-              <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">
-                State change sounds
-              </span>
-              <span className="text-xs text-neutral-500">
-                Play short audio cues when recording starts, stops, or encounters an error
-              </span>
-            </div>
-            <button
-              onClick={toggleSound}
-              role="switch"
-              aria-checked={soundEnabled}
-              aria-label="State change sounds"
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                soundEnabled ? 'bg-red-600' : 'bg-neutral-700'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  soundEnabled ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-      </section>
 
     </main>
   );

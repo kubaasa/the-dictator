@@ -454,8 +454,16 @@ app.on('ready', () => {
         win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
       }
     },
+    onAudioCuesToggle: (enabled) => {
+      store.set('audio.soundEnabled', enabled);
+      const decrypted = decryptSettingsForRenderer(store.store);
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
+      }
+    },
   });
   trayManager.setAutoStart(autoStartEnabled);
+  trayManager.setAudioCues(store.get('audio.soundEnabled') as boolean);
 
   updateService.onStatusChange((state) => {
     trayManager.setUpdateState(state);
@@ -467,6 +475,8 @@ app.on('ready', () => {
   registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService, () => currentState, updateService, (enabled) => {
     syncAutoStart(enabled);
     trayManager.setAutoStart(enabled);
+  }, (enabled) => {
+    trayManager.setAudioCues(enabled);
   });
 
   // Start periodic update checks

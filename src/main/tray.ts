@@ -13,6 +13,7 @@ interface TrayCallbacks {
   onCheckForUpdates: () => void;
   onInstallUpdate: () => void;
   onAutoStartToggle: (enabled: boolean) => void;
+  onAudioCuesToggle: (enabled: boolean) => void;
 }
 
 export class TrayManager {
@@ -22,6 +23,7 @@ export class TrayManager {
   private updateState: UpdateState | null = null;
   private callbacks: TrayCallbacks | null = null;
   private autoStartEnabled = false;
+  private audioCuesEnabled = true;
 
   create(mainWindow: BrowserWindow, callbacks: TrayCallbacks): void {
     this.mainWindow = mainWindow;
@@ -61,6 +63,11 @@ export class TrayManager {
 
   setAutoStart(enabled: boolean): void {
     this.autoStartEnabled = enabled;
+    this.updateMenu();
+  }
+
+  setAudioCues(enabled: boolean): void {
+    this.audioCuesEnabled = enabled;
     this.updateMenu();
   }
 
@@ -120,10 +127,18 @@ export class TrayManager {
         },
       },
       {
-        label: `${this.autoStartEnabled ? '■' : '□'}  Run with Windows`,
+        label: `${this.autoStartEnabled ? '■' : '   '} Run with Windows`,
         click: () => {
           this.autoStartEnabled = !this.autoStartEnabled;
           this.callbacks?.onAutoStartToggle(this.autoStartEnabled);
+          this.updateMenu();
+        },
+      },
+      {
+        label: `${this.audioCuesEnabled ? '■' : '   '} Sound Effects`,
+        click: () => {
+          this.audioCuesEnabled = !this.audioCuesEnabled;
+          this.callbacks?.onAudioCuesToggle(this.audioCuesEnabled);
           this.updateMenu();
         },
       },

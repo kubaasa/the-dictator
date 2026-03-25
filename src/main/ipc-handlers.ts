@@ -81,6 +81,7 @@ export function registerIpcHandlers(
   getCurrentState: () => RecordingState,
   updateService: UpdateService,
   onAutoStartChanged: (enabled: boolean) => void,
+  onAudioCuesChanged: (enabled: boolean) => void,
 ): void {
   const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
@@ -239,6 +240,11 @@ export function registerIpcHandlers(
     // Sync Windows login item when autoStart is toggled from renderer UI
     if (settings.general?.autoStart !== undefined) {
       onAutoStartChanged(store.get('general.autoStart') as boolean);
+    }
+
+    // Sync tray checkbox when audio cues are toggled from renderer UI
+    if (settings.audio?.soundEnabled !== undefined) {
+      onAudioCuesChanged(store.get('audio.soundEnabled') as boolean);
     }
 
     return decrypted;
