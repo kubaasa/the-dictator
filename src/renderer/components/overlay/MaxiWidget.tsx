@@ -25,7 +25,7 @@ const LERP_ATTACK  = 0.75;
 const LERP_RELEASE = 0.18;
 
 const ERROR_RED = '#DC2626';
-const BASE_COLOR = 'rgba(255,255,255,0.88)';
+const BASE_COLOR = 'rgba(255,255,255,0.85)';
 
 const KEY_ALIASES: Record<string, string> = {
   BracketRight: ']', BracketLeft: '[', Backquote: '`', Backslash: '\\',
@@ -102,11 +102,9 @@ const KEYFRAMES = `
   from { opacity: 1; transform: scale(1.0); }
   to   { opacity: 0; transform: scale(0.9); }
 }
-@keyframes processing-glitch {
-  0%, 92%, 100% { transform: translate(0, 0); opacity: 1; }
-  93%           { transform: translate(-2px, 1px); opacity: 0.8; }
-  95%           { transform: translate(1px, -1px); opacity: 0.6; }
-  97%           { transform: translate(2px, 0); opacity: 0.9; }
+@keyframes processing-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
 }
 @keyframes error-flicker {
   0%, 12%, 40%, 57%, 74%, 90%, 100% { opacity: 1; }
@@ -379,7 +377,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
         onMouseDown={handleMouseDown}
         style={{
           padding: 8,
-          borderRadius: 16,
+          borderRadius: 24,
           background: 'rgba(0,0,0,0.01)',
           cursor: isDragging ? 'grabbing' : 'grab',
           transformOrigin: 'center',
@@ -396,65 +394,17 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
             display: 'flex',
             flexDirection: 'column',
             padding: '10px 20px 8px',
-            borderRadius: 16,
-            background: '#000000',
-            border: '1.5px solid rgba(255,255,255,0.08)',
+            borderRadius: 20,
+            background: 'rgba(10, 10, 10, 0.75)',
+            backdropFilter: 'blur(24px)',
+            WebkitBackdropFilter: 'blur(24px)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            border: '1px solid rgba(255,255,255,0.06)',
             minWidth: 500,
             animation: 'none',
           } as React.CSSProperties}
         >
-          {showError ? (
-            /* Error view — REC / found-footage aesthetic */
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '12px 8px',
-              gap: 6,
-              animation: 'error-flicker 2s linear infinite',
-            }}>
-              {/* Row 1: blinking [ERROR] indicator */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{
-                  width: 9, height: 9, borderRadius: '50%',
-                  background: ERROR_RED, display: 'inline-block', flexShrink: 0,
-                  animation: 'rec-blink 1s step-start infinite',
-                }} />
-                <span style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 13, fontWeight: 700,
-                  letterSpacing: '0.08em',
-                  color: ERROR_RED,
-                }}>
-                  [ERROR]
-                </span>
-              </div>
-              {/* Row 2+3: error message split into lines at first period */}
-              {(() => {
-                const msg = errorMessage || 'Error';
-                const dotIdx = msg.indexOf('.');
-                const line1 = dotIdx >= 0 ? msg.slice(0, dotIdx + 1) : msg;
-                const line2 = dotIdx >= 0 ? msg.slice(dotIdx + 1).trim() : '';
-                const lineStyle: React.CSSProperties = {
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  letterSpacing: '0.15em',
-                  textTransform: 'uppercase',
-                  color: ERROR_RED,
-                  textAlign: 'center',
-                };
-                return (
-                  <>
-                    <span style={lineStyle}>[ {line1} ]</span>
-                    {line2 && <span style={{ ...lineStyle, fontSize: 10, fontWeight: 400 }}>{line2}</span>}
-                  </>
-                );
-              })()}
-            </div>
-          ) : (
-            <>
+          <>
               {/* Row 1: Status indicator */}
               <div style={{ height: 22, display: 'flex', alignItems: 'center' }}>
                 {indicator && (
@@ -482,24 +432,54 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: MAX_BAR_H,
-                gap: showProcessing ? 0 : BAR_GAP,
+                gap: (showError || showProcessing) ? 0 : BAR_GAP,
               }}>
-                {showProcessing ? (
-                  <span style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: 22,
-                    fontWeight: 600,
-                    letterSpacing: '0.25em',
-                    textTransform: 'uppercase',
-                    color: ERROR_RED,
-                    userSelect: 'none',
-                    animation: 'processing-glitch 4s linear infinite',
+                {showError ? (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%',
+                    gap: 8,
+                    animation: 'error-flicker 2s linear infinite',
                   }}>
-                    {'[ PROCESSING '}
-                    <span style={{ display: 'inline-block', width: '1.8em', textAlign: 'left' }}>
+                    {(() => {
+                      const msg = errorMessage || 'Error';
+                      const dotIdx = msg.indexOf('.');
+                      const line1 = dotIdx >= 0 ? msg.slice(0, dotIdx + 1) : msg;
+                      const line2 = dotIdx >= 0 ? msg.slice(dotIdx + 1).trim() : '';
+                      const lineStyle: React.CSSProperties = {
+                        fontFamily: "'JetBrains Mono', monospace",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        letterSpacing: '0.12em',
+                        textTransform: 'uppercase',
+                        color: ERROR_RED,
+                        textAlign: 'center',
+                      };
+                      return (
+                        <>
+                          <span style={lineStyle}>[ {line1} ]</span>
+                          {line2 && <span style={{ ...lineStyle, fontSize: 12, fontWeight: 400 }}>{line2}</span>}
+                        </>
+                      );
+                    })()}
+                  </div>
+                ) : showProcessing ? (
+                  <span style={{
+                    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                    fontSize: 16,
+                    fontWeight: 500,
+                    letterSpacing: '0.05em',
+                    color: 'rgba(255,255,255,0.6)',
+                    userSelect: 'none',
+                    animation: 'processing-pulse 2s ease-in-out infinite',
+                  }}>
+                    {'Processing'}
+                    <span style={{ display: 'inline-block', width: '1.5em', textAlign: 'left' }}>
                       {processingDots}
                     </span>
-                    {' ]'}
                   </span>
                 ) : (
                   Array.from({ length: BAR_COUNT }, (_, i) => {
@@ -536,7 +516,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
                         style={{
                           width: BAR_WIDTH,
                           height: MAX_BAR_H,
-                          borderRadius: 1,
+                          borderRadius: 1.5,
                           background: barColor,
                           transformOrigin: 'center',
                           flexShrink: 0,
@@ -566,7 +546,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
                 )}
               </div>
             </>
-          )}
         </div>
       </div>
     </div>
@@ -577,7 +556,7 @@ function ShortcutEntry({ label, raw }: { label: string; raw: string }) {
   const keys = raw.split('+').map(formatKey);
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#ffffff', lineHeight: '22px' }}>{label}</span>
+      <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: '22px' }}>{label}</span>
       {keys.map((k, i) => <KeyBadge key={i} k={k} />)}
     </span>
   );
@@ -588,9 +567,9 @@ function KeyBadge({ k }: { k: string }) {
     <span style={{
       padding: '2px 6px',
       borderRadius: 4,
-      background: 'rgba(255,255,255,0.10)',
-      border: '1px solid rgba(255,255,255,0.22)',
-      color: 'rgba(255,255,255,0.75)',
+      background: 'rgba(255,255,255,0.07)',
+      border: '1px solid rgba(255,255,255,0.12)',
+      color: 'rgba(255,255,255,0.45)',
       fontSize: 11,
       fontFamily: 'monospace',
       display: 'inline-block',
