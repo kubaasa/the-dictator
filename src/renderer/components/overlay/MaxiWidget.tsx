@@ -106,6 +106,11 @@ const KEYFRAMES = `
   0%, 100% { opacity: 0.5; }
   50%      { opacity: 1; }
 }
+@keyframes dot-blink {
+  0%        { opacity: 0; }
+  20%, 60%  { opacity: 1; }
+  100%      { opacity: 0; }
+}
 @keyframes error-flicker {
   0%, 12%, 40%, 57%, 74%, 90%, 100% { opacity: 1; }
   3%  { opacity: 0.4; }
@@ -147,19 +152,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
   const isDone         = state === 'done';
   const isError        = state === 'error';
 
-  // ─── Processing dots cycling animation ─────────────────────────────────────
-  const [processingDots, setProcessingDots] = useState('.');
-
-  useEffect(() => {
-    if (!isTranscribing) {
-      setProcessingDots('.');
-      return;
-    }
-    const id = setInterval(() => {
-      setProcessingDots(prev => prev.length >= 3 ? '.' : prev + '.');
-    }, 500);
-    return () => clearInterval(id);
-  }, [isTranscribing]);
+  // ─── Processing dots sequential animation (pure CSS) ────────────────────────
 
   // ─── Enter / exit animation state machine ────────────────────────────────
   const isActive = isInitializing || isRecording || isTranscribing || isDone || isError;
@@ -478,7 +471,16 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
                   }}>
                     {'Processing'}
                     <span style={{ display: 'inline-block', width: '1.5em', textAlign: 'left' }}>
-                      {processingDots}
+                      {[0, 1, 2].map(i => (
+                        <span
+                          key={i}
+                          style={{
+                            animation: 'dot-blink 1.4s infinite',
+                            animationDelay: `${i * 0.3}s`,
+                            opacity: 0,
+                          }}
+                        >.</span>
+                      ))}
                     </span>
                   </span>
                 ) : (
