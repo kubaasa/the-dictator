@@ -12,7 +12,7 @@ import { HotkeyService } from './services/hotkey.service';
 import { TranscriptionService } from './services/transcription.service';
 import { HistoryService } from './services/history.service';
 import { UpdateService } from './services/update.service';
-import { migrateApiKeys } from './services/secure-storage';
+import { migrateApiKeys, decryptSettingsForRenderer } from './services/secure-storage';
 import { registerIpcHandlers, getOverlaySize, clampToVisibleArea } from './ipc-handlers';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
@@ -57,6 +57,14 @@ const legacyEngine = store.get('transcription.engine') as string;
 if (legacyEngine === 'api' || legacyEngine === 'groq') {
   store.set('transcription.engine', 'cloud');
 }
+function syncAutoStart(enabled: boolean): void {
+  if (!app.isPackaged) return;
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    args: ['--autostart'],
+  });
+}
+
 const trayManager = new TrayManager();
 const transcriptionService = new TranscriptionService(store);
 const pasteService = new PasteService();
@@ -426,10 +434,28 @@ app.on('ready', () => {
   // Encrypt any existing plain-text API keys (one-time migration)
   migrateApiKeys(store);
 
+  // Auto-start: sync stored preference with Windows login item registry
+  const autoStartEnabled = store.get('general.autoStart') as boolean;
+  syncAutoStart(autoStartEnabled);
+
+  const launchedAtStartup = process.argv.includes('--autostart');
+  if (launchedAtStartup) {
+    log.info('Launched at Windows startup — starting minimized to tray');
+  }
+
   trayManager.create(mainWindow, {
     onCheckForUpdates: () => updateService.checkForUpdates(),
     onInstallUpdate: () => updateService.quitAndInstall(),
+    onAutoStartToggle: (enabled) => {
+      store.set('general.autoStart', enabled);
+      syncAutoStart(enabled);
+      const decrypted = decryptSettingsForRenderer(store.store);
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
+      }
+    },
   });
+  trayManager.setAutoStart(autoStartEnabled);
 
   updateService.onStatusChange((state) => {
     trayManager.setUpdateState(state);
@@ -438,7 +464,10 @@ app.on('ready', () => {
     }
   });
 
-  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService, () => currentState, updateService);
+  registerIpcHandlers(store, transcriptionService, broadcastState, pasteService, aiService, hotkeyService, () => overlayWindow, historyService, () => currentState, updateService, (enabled) => {
+    syncAutoStart(enabled);
+    trayManager.setAutoStart(enabled);
+  });
 
   // Start periodic update checks
   updateService.start();

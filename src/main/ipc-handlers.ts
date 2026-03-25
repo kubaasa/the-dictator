@@ -80,6 +80,7 @@ export function registerIpcHandlers(
   historyService: HistoryService,
   getCurrentState: () => RecordingState,
   updateService: UpdateService,
+  onAutoStartChanged: (enabled: boolean) => void,
 ): void {
   const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
@@ -233,6 +234,11 @@ export function registerIpcHandlers(
           setTimeout(() => { if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.setOpacity(1); }, 120);
         }
       }
+    }
+
+    // Sync Windows login item when autoStart is toggled from renderer UI
+    if (settings.general?.autoStart !== undefined) {
+      onAutoStartChanged(store.get('general.autoStart') as boolean);
     }
 
     return decrypted;

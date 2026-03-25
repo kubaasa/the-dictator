@@ -12,6 +12,7 @@ function getAssetPath(filename: string): string {
 interface TrayCallbacks {
   onCheckForUpdates: () => void;
   onInstallUpdate: () => void;
+  onAutoStartToggle: (enabled: boolean) => void;
 }
 
 export class TrayManager {
@@ -20,6 +21,7 @@ export class TrayManager {
   private state: RecordingState = 'idle';
   private updateState: UpdateState | null = null;
   private callbacks: TrayCallbacks | null = null;
+  private autoStartEnabled = false;
 
   create(mainWindow: BrowserWindow, callbacks: TrayCallbacks): void {
     this.mainWindow = mainWindow;
@@ -55,6 +57,11 @@ export class TrayManager {
       this.tray.setToolTip(`The Dictator — ${state}`);
       this.updateMenu();
     }
+  }
+
+  setAutoStart(enabled: boolean): void {
+    this.autoStartEnabled = enabled;
+    this.updateMenu();
   }
 
   setUpdateState(state: UpdateState): void {
@@ -110,6 +117,14 @@ export class TrayManager {
             this.mainWindow.show();
             this.mainWindow.focus();
           }
+        },
+      },
+      {
+        label: `${this.autoStartEnabled ? '■' : '□'}  Run with Windows`,
+        click: () => {
+          this.autoStartEnabled = !this.autoStartEnabled;
+          this.callbacks?.onAutoStartToggle(this.autoStartEnabled);
+          this.updateMenu();
         },
       },
       this.getUpdateMenuItem(),
