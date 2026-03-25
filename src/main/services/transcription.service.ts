@@ -253,14 +253,21 @@ export class TranscriptionService {
     return MODELS_CACHE_DIR;
   }
 
-  async transcribeFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number, _compressedAudio?: ArrayBuffer): Promise<string> {
+  async transcribeFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number, compressedAudio?: ArrayBuffer): Promise<string> {
     const engine = (this.store.get('transcription.engine') as string) ?? 'local';
 
-    // Always preprocess: trim silence edges + normalize peak level before transcription.
-    // Both are near-zero-cost (single pass over Float32) but improve accuracy and ensure
-    // consistent Whisper output formatting (capitalization, punctuation).
-    // The compressed WebM path was removed because skipping preprocessing caused
-    // intermittent formatting issues — Whisper is sensitive to raw audio quality.
+    // Cloud path: prefer pre-compressed WebM/Opus from MediaRecorder (~8x smaller upload).
+    // Trade-off: compressed blob is raw recording (no trimSilence/normalizeAudio) because
+    // we can't apply Float32 preprocessing to an already-encoded WebM. Groq Whisper API
+    // is robust to silence and volume variations, so faster upload outweighs preprocessing.
+    const compressedSize = compressedAudio ? (Buffer.isBuffer(compressedAudio) ? compressedAudio.length : compressedAudio.byteLength) : 0;
+    if (engine === 'cloud' && compressedSize > 0) {
+      return this.transcribeGroqFromCompressed(compressedAudio);
+    }
+
+    // Preprocess: trim silence edges + normalize peak level before transcription.
+    // Both are near-zero-cost (single pass over Float32) but improve accuracy and reduce
+    // wasted inference time on leading/trailing silence.
     const raw = ipcBufferToFloat32(audioBuffer);
     const trimmed = trimSilence(raw, sampleRate);
     const normalized = normalizeAudio(trimmed);
@@ -292,42 +299,41 @@ export class TranscriptionService {
     return words.join(', ');
   }
 
-  /**
-   * Build a Whisper prompt with a punctuated style-conditioning sentence
-   * followed by optional vocabulary hints. Without the leading sentence,
-   * a bare comma-separated vocabulary list causes Whisper to mimic that
-   * style and drop capitalization/punctuation from output.
-   */
-  private buildWhisperPrompt(): string {
-    const language = (this.store.get('transcription.language') as string) ?? 'auto';
-    const vocabHint = this.getVocabularyPromptHint();
-    const langHints: Record<string, string> = {
-      pl: 'Dyktowanie tekstu po polsku.',
-      th: 'การเขียนตามคำบอกเป็นภาษาไทย',
-      en: 'Voice dictation in English.',
-    };
-    const langHint = langHints[language] ?? 'Voice dictation.';
-    const parts = [langHint, vocabHint].filter(Boolean);
-    return parts.join(' ');
-  }
-
   private async transcribeGroqFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
+      const vocabHint = this.getVocabularyPromptHint();
 
       const float32 = ipcBufferToFloat32(audioBuffer);
       const wavBuffer = encodeWavFast(float32, sampleRate);
       const file = await toFile(wavBuffer, 'audio.wav', { type: 'audio/wav' });
 
-      // No `prompt` parameter — Groq's Whisper degrades punctuation/capitalization
-      // when any prompt is present. Vocabulary is handled post-transcription by
-      // applyVocabularyReplacements() in ipc-handlers.ts.
       const response = await client.audio.transcriptions.create({
         model: 'whisper-large-v3',
         file,
-        response_format: 'json',
         ...(language !== 'auto' && { language }),
+        ...(vocabHint && { prompt: vocabHint }),
+      });
+
+      return response.text.trim();
+    });
+  }
+
+  private async transcribeGroqFromCompressed(compressedAudio: ArrayBuffer): Promise<string> {
+    return withRetry(async () => {
+      const client = this.getGroqClient();
+      const language = (this.store.get('transcription.language') as string) ?? 'auto';
+      const vocabHint = this.getVocabularyPromptHint();
+
+      const buf = Buffer.isBuffer(compressedAudio) ? compressedAudio : Buffer.from(compressedAudio);
+      const file = await toFile(buf, 'audio.webm', { type: 'audio/webm' });
+
+      const response = await client.audio.transcriptions.create({
+        model: 'whisper-large-v3',
+        file,
+        ...(language !== 'auto' && { language }),
+        ...(vocabHint && { prompt: vocabHint }),
       });
 
       return response.text.trim();
@@ -359,7 +365,16 @@ export class TranscriptionService {
     }
 
     if (language !== 'auto') options.language = language;
-    options.initial_prompt = this.buildWhisperPrompt();
+    const vocabHint = this.getVocabularyPromptHint();
+    const langHints: Record<string, string> = {
+      pl: 'Dyktowanie tekstu po polsku.',
+      th: 'การเขียนตามคำบอกเป็นภาษาไทย',
+    };
+    const langHint = langHints[language] ?? '';
+    const promptParts = [langHint, vocabHint].filter(Boolean);
+    if (promptParts.length > 0) {
+      options.initial_prompt = promptParts.join(' ');
+    }
 
     // Cap output tokens based on audio duration to prevent hallucination loops.
     // Normal speech: ~2-4 tokens/s, 8 tokens/s is a safe margin.
