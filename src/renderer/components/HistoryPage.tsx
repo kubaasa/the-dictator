@@ -67,17 +67,6 @@ function groupByDate(entries: RecordingEntry[]): { label: string; entries: Recor
   return Array.from(groups.entries()).map(([label, entries]) => ({ label, entries }));
 }
 
-function buildAudioUrl(audioPath: string): string {
-  if (!audioPath) return '';
-  return 'recording:///' + audioPath.replace(/\\/g, '/');
-}
-
-function formatAudioTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
 interface RecordingItemProps {
   entry: RecordingEntry;
   isExpanded: boolean;
@@ -91,39 +80,6 @@ interface RecordingItemProps {
 function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isDeleting, isLast }: RecordingItemProps) {
 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-
-  // Custom audio player state
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [audioProgress, setAudioProgress] = useState(0);
-  const [audioCurrent, setAudioCurrent] = useState(0);
-  const [audioDuration, setAudioDuration] = useState(0);
-
-  // Pause audio when collapsing
-  useEffect(() => {
-    if (!isExpanded && audioRef.current && !audioRef.current.paused) {
-      audioRef.current.pause();
-    }
-  }, [isExpanded]);
-
-  const togglePlay = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!audioRef.current) return;
-    if (audioRef.current.paused) {
-      audioRef.current.play();
-    } else {
-      audioRef.current.pause();
-    }
-  };
-
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    if (!audioRef.current || !audioDuration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const pct = x / rect.width;
-    audioRef.current.currentTime = pct * audioDuration;
-  };
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -174,67 +130,6 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
       >
         <div className="overflow-hidden">
         <div className="bg-[#0f0f0f]/60 pb-1">
-          {/* Custom audio player */}
-          {entry.audioPath && (
-            <div className="px-5 py-3">
-              <audio
-                ref={audioRef}
-                preload="metadata"
-                src={buildAudioUrl(entry.audioPath)}
-                onLoadedMetadata={() => {
-                  if (audioRef.current) setAudioDuration(audioRef.current.duration);
-                }}
-                onTimeUpdate={() => {
-                  if (audioRef.current && audioDuration > 0) {
-                    setAudioCurrent(audioRef.current.currentTime);
-                    setAudioProgress((audioRef.current.currentTime / audioDuration) * 100);
-                  }
-                }}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onEnded={() => {
-                  setIsPlaying(false);
-                  setAudioProgress(0);
-                  setAudioCurrent(0);
-                }}
-                className="hidden"
-              />
-              <div className="flex items-center gap-3">
-                {/* Play/Pause button */}
-                <button
-                  onClick={togglePlay}
-                  className="h-8 w-8 shrink-0 flex items-center justify-center rounded-full border border-neutral-700 bg-neutral-800 hover:border-red-600/50 transition-colors cursor-pointer"
-                >
-                  {isPlaying ? (
-                    <svg className="h-3.5 w-3.5 text-neutral-300" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                    </svg>
-                  ) : (
-                    <svg className="h-3.5 w-3.5 text-neutral-300 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  )}
-                </button>
-
-                {/* Progress bar */}
-                <div
-                  className="flex-1 h-1 rounded-full bg-neutral-800 cursor-pointer relative"
-                  onClick={handleProgressClick}
-                >
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-full bg-red-600/60"
-                    style={{ width: `${audioProgress}%` }}
-                  />
-                </div>
-
-                {/* Time display */}
-                <span className="font-mono text-sm text-neutral-600 shrink-0">
-                  {formatAudioTime(audioCurrent)} / {formatAudioTime(audioDuration || entry.durationSeconds)}
-                </span>
-              </div>
-            </div>
-          )}
-
           {/* Transcription text */}
           <div className="mx-5 border-t border-neutral-800/30 py-3">
             <p className="text-sm text-neutral-200 leading-relaxed max-h-48 overflow-y-auto select-text whitespace-pre-wrap">

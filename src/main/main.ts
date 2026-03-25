@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, nativeImage, protocol, screen, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import { Readable } from 'node:stream';
 import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
 import { initSentry } from './services/sentry';
@@ -394,7 +395,8 @@ app.on('ready', () => {
   }
   // Serve local audio files via recording:// with proper Range request support.
   // The HTML5 audio element requires Range responses (HTTP 206) for buffering/seeking.
-  // net.fetch('file://') doesn't handle Range headers, so we do it manually.
+  // Uses streaming (fs.createReadStream) instead of loading entire file into memory —
+  // buffer-based Response hangs in Electron's custom protocol for files over ~1 MB.
   protocol.handle('recording', async (request) => {
     const filePath = decodeURIComponent(request.url.replace('recording:///', ''));
     try {
@@ -408,11 +410,8 @@ app.on('ready', () => {
           const start = parseInt(match[1], 10);
           const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
           const chunkSize = end - start + 1;
-          const fh = await fs.promises.open(filePath, 'r');
-          const buf = Buffer.alloc(chunkSize);
-          await fh.read(buf, 0, chunkSize, start);
-          await fh.close();
-          return new Response(buf, {
+          const stream = fs.createReadStream(filePath, { start, end });
+          return new Response(Readable.toWeb(stream) as ReadableStream, {
             status: 206,
             headers: {
               'Content-Type': 'audio/webm',
@@ -424,8 +423,8 @@ app.on('ready', () => {
         }
       }
 
-      const buf = await fs.promises.readFile(filePath);
-      return new Response(buf, {
+      const stream = fs.createReadStream(filePath);
+      return new Response(Readable.toWeb(stream) as ReadableStream, {
         status: 200,
         headers: {
           'Content-Type': 'audio/webm',
@@ -433,7 +432,8 @@ app.on('ready', () => {
           'Accept-Ranges': 'bytes',
         },
       });
-    } catch {
+    } catch (err) {
+      log.error('recording:// protocol error for', filePath, err);
       return new Response('Not found', { status: 404 });
     }
   });
