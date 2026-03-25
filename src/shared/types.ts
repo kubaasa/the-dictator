@@ -70,6 +70,7 @@ export interface AppSettings {
   };
   audio: {
     deviceId: string;
+    soundEnabled: boolean;
   };
   vocabulary: VocabularyEntry[];
   widget: {
@@ -159,6 +160,7 @@ Respond with ONLY the reformatted message wrapped in the required tags.`,
   },
   audio: {
     deviceId: '',
+    soundEnabled: true,
   },
   vocabulary: [],
   widget: {

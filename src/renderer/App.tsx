@@ -17,6 +17,7 @@ import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
 import { useAudioRecorder } from './hooks/useAudioRecorder';
+import { useSoundFeedback } from './hooks/useSoundFeedback';
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
 
@@ -50,6 +51,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 export function App() {
   const isOverlay = window.location.hash === '#overlay';
   const recordingState = useRecordingState();
+  useSoundFeedback(recordingState, isOverlay);
   const modelStatus = useModelStatus();
   const [activeView, setActiveView] = useState<ActiveView>('home');
   const micSelector = useMicrophoneSelector();
