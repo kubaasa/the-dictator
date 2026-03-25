@@ -38,6 +38,13 @@ if (started) {
   app.quit();
 }
 
+// Single instance lock — prevent multiple app windows from running simultaneously.
+// Second instance focuses the existing window instead of opening a duplicate.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+
 // Windows AppUserModelId — must match Squirrel shortcut for correct toast notification branding
 app.setAppUserModelId('com.squirrel.TheDictator.TheDictator');
 
@@ -93,6 +100,14 @@ function showOrHideMainWindow(): void {
     mainWindow.focus();
   }
 }
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
 
 let isQuitting = false;
 let mainWindow: BrowserWindow | null = null;
