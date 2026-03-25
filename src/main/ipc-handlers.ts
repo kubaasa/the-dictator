@@ -111,6 +111,11 @@ export function registerIpcHandlers(
 
   // Guard: prevent concurrent transcriptions from spamming the expensive pipeline
   let transcriptionInProgress = false;
+  // Tracks last paste to insert a space between consecutive dictations in the same app.
+  // e.g. "First sentence." + "Second sentence." → "First sentence. Second sentence."
+  // Resets when the user switches to a different application.
+  let lastPastedEndsWithPunctuation = false;
+  let lastPastedAppName: string | null = null;
 
   // Deduplicated idle-transition timeout — prevents stale setTimeout callbacks
   // from resetting state after a new recording has already started
@@ -385,6 +390,17 @@ export function registerIpcHandlers(
       const vocabEntries = (store.get('vocabulary') as VocabularyEntry[]) ?? [];
       text = applyVocabularyReplacements(text, vocabEntries);
 
+      // Consecutive dictation spacing: prepend a space when the previous paste
+      // ended with punctuation AND we're still in the same application.
+      // Switching apps resets the state so a new context doesn't start with a space.
+      const currentAppName = pasteService.getAppName() ?? null;
+      const sameApp = currentAppName !== null && currentAppName === lastPastedAppName;
+      if (sameApp && lastPastedEndsWithPunctuation && text.length > 0 && !/^\s/.test(text)) {
+        text = ' ' + text;
+      }
+      lastPastedEndsWithPunctuation = /[.!?]$/.test(text.trim());
+      lastPastedAppName = currentAppName;
+
       broadcastState('done');
       scheduleIdle(1500);
       const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
@@ -394,7 +410,7 @@ export function registerIpcHandlers(
       clipboard.writeText(text);
       log.info('Text copied to clipboard');
 
-      const appName = pasteService.getAppName() ?? undefined;
+      const appName = currentAppName ?? undefined;
       if (autoPaste && pasteService.hasTarget()) {
         try {
           await pasteService.simulatePaste();
