@@ -413,12 +413,12 @@ export class TranscriptionService {
 /**
  * Trim leading and trailing silence from audio.
  * Scans inward from both edges until RMS of a 512-sample window exceeds threshold.
- * Keeps a safety margin (200ms) to avoid clipping speech onset/offset.
+ * Keeps a safety margin (350ms) to avoid clipping speech onset/offset.
  */
 function trimSilence(samples: Float32Array, sampleRate: number): Float32Array {
   const WINDOW = 512;
-  const THRESHOLD = 0.015;
-  const MARGIN = Math.round(sampleRate * 0.2); // 200ms
+  const THRESHOLD = 0.01;
+  const MARGIN = Math.round(sampleRate * 0.35); // 350ms
 
   // Too short to analyze — return as-is (also handles edge case where length < WINDOW)
   if (samples.length < WINDOW * 2) return samples;

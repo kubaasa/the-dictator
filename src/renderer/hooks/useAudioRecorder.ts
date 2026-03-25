@@ -14,7 +14,16 @@ class RecorderProcessor extends AudioWorkletProcessor {
     this._emptyFrames = 0;
     this._noInputSent = false;
     this.port.onmessage = (e) => {
-      if (e.data === 'stop') this._stopped = true;
+      if (e.data === 'stop') {
+        // Flush remaining samples before terminating — prevents up to 256ms audio loss
+        if (this._offset > 0) {
+          const partial = new Float32Array(this._buffer.subarray(0, this._offset));
+          this.port.postMessage({ type: 'audio', samples: partial }, [partial.buffer]);
+          this._offset = 0;
+        }
+        this.port.postMessage({ type: 'done' });
+        this._stopped = true;
+      }
     };
   }
 
@@ -354,15 +363,32 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       mediaRecorderRef.current = null;
     }
 
+    // Signal the worklet processor to flush remaining audio and stop.
+    // IMPORTANT: MediaStream tracks are stopped AFTER the worklet finishes,
+    // so the audio pipeline keeps delivering frames until the worklet has flushed.
+    // Wait for the 'done' confirmation so in-flight audio messages are not dropped.
+    if (workletNodeRef.current) {
+      await new Promise<void>((resolve) => {
+        const port = workletNodeRef.current!.port;
+        const prevHandler = port.onmessage;
+        port.onmessage = (ev) => {
+          // Keep processing audio/level messages that arrive before 'done'
+          if (prevHandler) prevHandler.call(port, ev);
+          if (ev.data?.type === 'done') {
+            port.onmessage = null;
+            resolve();
+          }
+        };
+        port.postMessage('stop');
+        // Safety timeout — don't hang forever if worklet never responds
+        setTimeout(() => { port.onmessage = null; resolve(); }, 200);
+      });
+    }
+
+    // Now that the worklet is done, stop the microphone stream
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
-    }
-
-    // Signal the worklet processor to stop and clean up the message handler
-    if (workletNodeRef.current) {
-      workletNodeRef.current.port.postMessage('stop');
-      workletNodeRef.current.port.onmessage = null;
     }
 
     // Snapshot chunks and null immediately to prevent race with rapid re-start.
