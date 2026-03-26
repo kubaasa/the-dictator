@@ -95,7 +95,7 @@ const KEYFRAMES = `
   50%       { transform: scaleY(var(--init-peak, 0.35)); }
 }
 @keyframes maxi-enter {
-  from { opacity: 0; transform: scale(0.9); }
+  from { opacity: 0; transform: scale(0.92); }
   to   { opacity: 1; transform: scale(1.0); }
 }
 @keyframes maxi-exit {
@@ -155,35 +155,40 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
   // ─── Processing dots sequential animation (pure CSS) ────────────────────────
 
   // ─── Enter / exit animation state machine ────────────────────────────────
-  const isActive = isInitializing || isRecording || isTranscribing || isDone || isError;
+  // 'done' is NOT active — widget starts fading out immediately when transcription completes
+  const isActive = isInitializing || isRecording || isTranscribing || isError;
 
-  // Track whether the widget was showing error/processing content — sticky until next activation.
+  // Track what content the widget was showing — sticky until next activation.
   // Prevents bars from flashing during the exit animation after processing or error.
   const wasErrorRef = useRef(false);
   const wasProcessingRef = useRef(false);
 
-  // Clear stickiness synchronously during render (before computing showError/showProcessing)
-  // to prevent a one-frame flash of stale processing/error content on new activation
+  // Clear stickiness synchronously during render (before computing show* flags)
+  // to prevent a one-frame flash of stale content on new activation
   if (isActive && !prevIsActiveRef.current) {
     wasErrorRef.current = false;
     wasProcessingRef.current = false;
   }
 
   if (isError) wasErrorRef.current = true;
-  if (isTranscribing || isDone) wasProcessingRef.current = true;
+  if (isTranscribing) wasProcessingRef.current = true;
 
-  const showError = isError || (wasErrorRef.current && (animPhase === 'exiting' || !isActive));
-  const showProcessing = isTranscribing || isDone || (wasProcessingRef.current && (animPhase === 'exiting' || !isActive));
+  const isExiting = animPhase === 'exiting' || !isActive;
+  const showError = isError || (wasErrorRef.current && isExiting);
+  const showProcessing = isTranscribing || (!showError && wasProcessingRef.current && isExiting);
   useEffect(() => {
     const wasActive = prevIsActiveRef.current;
     prevIsActiveRef.current = isActive;
 
     if (isActive && !wasActive) {
       setAnimPhase('entering');
-      const t = setTimeout(() => setAnimPhase('active'), 320);
+      const t = setTimeout(() => setAnimPhase('active'), 220);
       return () => clearTimeout(t);
     } else if (!isActive && wasActive) {
       setAnimPhase('exiting');
+      // Transition to 'idle' after exit animation (250ms) + small buffer
+      const t = setTimeout(() => setAnimPhase('idle'), 300);
+      return () => clearTimeout(t);
     }
   }, [isActive]);
 
@@ -376,7 +381,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
           transformOrigin: 'center',
           opacity: animPhase === 'idle' ? 0 : undefined,
           animation:
-            animPhase === 'entering' ? 'maxi-enter 300ms ease-out both' :
+            animPhase === 'entering' ? 'maxi-enter 200ms ease-out both' :
             animPhase === 'exiting'  ? 'maxi-exit 250ms ease-in both'   :
             'none',
         }}

@@ -288,7 +288,11 @@ function broadcastState(state: RecordingState): void {
   trayManager.updateRecordingState(state);
 
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(IPC.RECORDING_STATE_CHANGED, state);
+    try {
+      win.webContents.send(IPC.RECORDING_STATE_CHANGED, state);
+    } catch {
+      // Window webContents may have been destroyed between getAllWindows() and send()
+    }
   }
 
   // Maxi widget: visible for all active states, hidden only on idle
@@ -300,7 +304,7 @@ function broadcastState(state: RecordingState): void {
         overlayHideTimeout = setTimeout(() => {
           if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
           overlayHideTimeout = null;
-        }, 400);
+        }, 100);
       }
     } else {
       // Active states (initializing, recording, transcribing, processing, done, error):

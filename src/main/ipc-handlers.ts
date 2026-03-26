@@ -405,7 +405,7 @@ export function registerIpcHandlers(
       text = applyVocabularyReplacements(text, vocabEntries);
 
       broadcastState('done');
-      scheduleIdle(1500);
+      scheduleIdle(400);
       const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
       log.info('Transcription done. autoPaste=%s, chars=%d', autoPaste, text.length);
 
