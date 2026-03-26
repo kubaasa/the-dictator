@@ -8,7 +8,7 @@ const WIDGETS: { id: WidgetType; label: string; tag: string; description: string
   { id: 'maxi', label: 'Maxi', tag: 'FULL', description: 'Detailed card with waveform & shortcuts' },
 ];
 
-function RedWaveBars() {
+function WhiteWaveBars() {
   const heights = [8, 14, 6, 16, 10, 12];
   return (
     <svg className="inline-block" width="42" height="20" viewBox="0 0 42 20">
@@ -20,7 +20,7 @@ function RedWaveBars() {
           width="3"
           height={h}
           rx="1.5"
-          fill="#DC2626"
+          fill="rgba(255,255,255,0.85)"
           opacity={0.85}
         />
       ))}
@@ -40,9 +40,9 @@ const COMPARISON: FeatureRow[] = [
   { feature: 'Hover to interact',   mini: true,                    maxi: false },
   { feature: 'Keyboard shortcuts',  mini: false,                   maxi: true },
   { feature: 'REC indicator',       mini: false,                   maxi: true },
-  { feature: 'Error details',       mini: 'Icon + short text',     maxi: 'Full message' },
-  { feature: 'Processing state',    mini: <RedWaveBars />,         maxi: <span className="font-mono text-sm text-red-500">[ PROCESSING ... ]</span> },
-  { feature: 'Enter/exit animation',mini: false,                   maxi: true },
+  { feature: 'Error details',       mini: '✕ icon',                maxi: 'Full message' },
+  { feature: 'Processing state',    mini: <WhiteWaveBars />,       maxi: <span className="font-mono text-sm text-neutral-400">Processing...</span> },
+  { feature: 'Enter/exit animation',mini: true,                    maxi: true },
   { feature: 'Drag & drop',         mini: true,                    maxi: true },
 ];
 
