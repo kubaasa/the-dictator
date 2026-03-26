@@ -240,6 +240,38 @@ textarea:focus:not(:focus-visible),
   animation: first-run-glow 2s ease-in-out infinite;
 }
 
+/* New history entry — slide-down + subtle red glow */
+@keyframes entry-slide-in {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    max-height: 80px;
+    transform: translateY(0);
+  }
+}
+
+@keyframes entry-glow {
+  0% {
+    box-shadow: 0 0 12px rgba(220, 38, 38, 0.3), 0 0 24px rgba(220, 38, 38, 0.1);
+    border-color: rgba(220, 38, 38, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
+    border-color: rgba(38, 38, 38, 1);
+  }
+}
+
+.animate-entry-new {
+  overflow: hidden;
+  animation:
+    entry-slide-in 0.4s ease-out both,
+    entry-glow 1.5s ease-out 0.2s both;
+}
+
 .btn-noise {
   position: relative;
 }
