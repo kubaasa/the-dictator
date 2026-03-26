@@ -4,6 +4,7 @@ import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import { RecIndicator } from './RecEffects';
 
 import { CopyButton } from './CopyButton';
+import { useToast } from './Toast';
 import type { RecordingEntry, RecordingState } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import type { useAudioRecorder } from '../hooks/useAudioRecorder';
@@ -35,10 +36,20 @@ function formatTime(totalSeconds: number): string {
 const EMPTY_STATS: StatsDisplay = { totalWords: '—', totalTimeDisplay: '—', totalRecordings: '—', avgWpm: '—' };
 
 export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePageProps) {
-  const { isRecording, error: recorderError, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
+  const { isRecording, error: recorderError, errorType, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
   const { result, error: transcriptionError } = useTranscriptionResult(recordingState);
   const error = recorderError || transcriptionError;
+  const { addToast } = useToast();
 
+  // Show errors as toasts with optional navigation action
+  useEffect(() => {
+    if (!error) return;
+    const needsNav = errorType === 'missing-api-key' || errorType === 'model-not-downloaded';
+    addToast('error', error, {
+      durationMs: needsNav ? 8000 : 4000,
+      action: needsNav ? { label: 'Go to Processing →', onClick: () => { clearError(); onNavigate('modes'); } } : undefined,
+    });
+  }, [error]);
 
   const [toggleShortcut, setToggleShortcut] = useState(DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
 

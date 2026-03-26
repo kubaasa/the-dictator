@@ -2,14 +2,20 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 
 type ToastType = 'success' | 'error' | 'info';
 
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface Toast {
   id: number;
   type: ToastType;
   message: string;
+  action?: ToastAction;
 }
 
 interface ToastContextValue {
-  addToast: (type: ToastType, message: string, durationMs?: number) => void;
+  addToast: (type: ToastType, message: string, options?: { durationMs?: number; action?: ToastAction }) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -25,12 +31,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const addToast = useCallback((type: ToastType, message: string, durationMs = AUTO_DISMISS_MS) => {
+  const addToast = useCallback((type: ToastType, message: string, options?: { durationMs?: number; action?: ToastAction }) => {
+    const { durationMs = AUTO_DISMISS_MS, action } = options ?? {};
     setToasts((prev) => {
       if (prev.some((t) => t.message === message)) return prev;
       const id = ++nextId;
       setTimeout(() => removeToast(id), durationMs);
-      return [...prev, { id, type, message }];
+      return [...prev, { id, type, message, action }];
     });
   }, [removeToast]);
 
@@ -115,7 +122,17 @@ function ToastContainer({ toasts, removeToast }: ToastContainerProps) {
             className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm shadow-lg backdrop-blur animate-fade-in ${STYLE_MAP[toast.type]}`}
           >
             <Icon />
-            <span className="flex-1 font-mono text-xs leading-relaxed">{toast.message}</span>
+            <div className="flex-1 font-mono text-xs leading-relaxed">
+              <span>{toast.message}</span>
+              {toast.action && (
+                <button
+                  onClick={() => { toast.action?.onClick(); removeToast(toast.id); }}
+                  className="ml-2 underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
+                >
+                  {toast.action.label}
+                </button>
+              )}
+            </div>
             <button
               onClick={() => removeToast(toast.id)}
               aria-label="Dismiss notification"
