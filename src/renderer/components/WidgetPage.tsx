@@ -230,24 +230,32 @@ function CellValue({ value }: { value: string | boolean | ReactNode }) {
 }
 
 function MiniPreview({ active }: { active: boolean }) {
-  const stroke = active ? '#EF4444' : '#525252';
-  const bar = active ? '#EF4444' : '#737373';
-  const barOpacity = active ? 0.8 : 0.5;
-  const heights = [5, 14, 8, 18, 10, 15];
+  const borderColor = active ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)';
+  const barColor = active ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.45)';
+
+  // Envelope heights from real VoiceBar formula: 1 - |dist|^1.8 * 0.55
+  const heights = [9, 16, 19.5, 19.5, 16, 9];
 
   return (
-    <svg width="80" height="28" viewBox="0 0 80 28">
-      <rect x="0.5" y="0.5" width="79" height="27" rx="13.5" fill="none" stroke={stroke} strokeWidth="1" opacity={active ? 0.6 : 0.35} />
+    <svg width="82" height="34" viewBox="0 0 82 34">
+      {/* Drop shadow */}
+      <rect x="3" y="4" width="78" height="28" rx="14" fill="rgba(0,0,0,0.2)" />
+      {/* Pill body — matches real VoiceBar glassmorphic style */}
+      <rect x="1" y="2" width="78" height="28" rx="14"
+        fill="#0a0a0a" stroke={borderColor} strokeWidth="1" />
+      {/* Inner catch-light */}
+      <rect x="2" y="3" width="76" height="26" rx="13"
+        fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
+      {/* Audio bars with envelope shape */}
       {heights.map((h, i) => (
         <rect
           key={i}
-          x={18 + i * 8}
-          y={14 - h / 2}
+          x={21 + i * 7}
+          y={16 - h / 2}
           width="3"
           height={h}
           rx="1.5"
-          fill={bar}
-          opacity={barOpacity}
+          fill={barColor}
         />
       ))}
     </svg>
@@ -255,40 +263,72 @@ function MiniPreview({ active }: { active: boolean }) {
 }
 
 function MaxiPreview({ active }: { active: boolean }) {
-  const stroke = active ? '#EF4444' : '#525252';
-  const bar = active ? '#EF4444' : '#737373';
-  const barOpacity = active ? 0.7 : 0.4;
-  const text = active ? '#EF4444' : '#737373';
+  const borderColor = active ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.06)';
+  const barColor = active ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.35)';
+  const accentColor = active ? '#DC2626' : 'rgba(255,255,255,0.35)';
+  const labelColor = active ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.25)';
+  const badgeFill = active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)';
+  const badgeStroke = active ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.08)';
+  const badgeText = active ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)';
+
+  const barCount = 30;
+  const barW = 2;
+  const barGap = 1.5;
+  const maxBarH = 18;
+  const totalBarsW = barCount * barW + (barCount - 1) * barGap;
+  const barsStartX = 1 + (128 - totalBarsW) / 2;
 
   return (
-    <svg width="120" height="40" viewBox="0 0 120 40">
-      <rect x="0.5" y="0.5" width="119" height="39" rx="8" fill="none" stroke={stroke} strokeWidth="1" opacity={active ? 0.6 : 0.35} />
+    <svg width="132" height="48" viewBox="0 0 132 48">
+      {/* Drop shadow */}
+      <rect x="3" y="3" width="128" height="44" rx="8" fill="rgba(0,0,0,0.2)" />
+      {/* Card body — matches real MaxiWidget glassmorphic style */}
+      <rect x="1" y="1" width="128" height="44" rx="8"
+        fill="#0a0a0a" stroke={borderColor} strokeWidth="1" />
+      {/* Inner catch-light */}
+      <rect x="2" y="2" width="126" height="42" rx="7"
+        fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
 
-      {/* [REC] indicator */}
-      <circle cx="10" cy="8" r="2.5" fill={text} opacity={0.6} />
-      <text x="15" y="10.5" fontFamily="monospace" fontSize="6" fontWeight="700" fill={text} opacity={0.5}>REC</text>
+      {/* [●REC] indicator */}
+      <text x="9" y="12" fontFamily="'Courier New', monospace" fontSize="6" fontWeight="700"
+        fill={accentColor} letterSpacing="0.5">[</text>
+      <circle cx="15.5" cy="10" r="2" fill={accentColor} opacity={active ? 1 : 0.5} />
+      <text x="19" y="12" fontFamily="'Courier New', monospace" fontSize="6" fontWeight="700"
+        fill={accentColor} letterSpacing="0.5">REC]</text>
 
-      {/* Waveform bars */}
-      {Array.from({ length: 20 }, (_, i) => {
-        const pattern = [4, 12, 7, 15, 5, 14, 9, 16, 6, 13, 3, 11, 8, 15, 4, 10, 14, 6, 12, 5];
-        const h = pattern[i];
+      {/* Hanning waveform bars — spindle/diamond shape like real MaxiWidget */}
+      {Array.from({ length: barCount }, (_, i) => {
+        const w = Math.pow(Math.sin(Math.PI * i / (barCount - 1)), 2);
+        const h = Math.max(1.5, w * maxBarH);
         return (
           <rect
             key={i}
-            x={8 + i * 5.2}
-            y={22 - h / 2}
-            width="2.5"
+            x={barsStartX + i * (barW + barGap)}
+            y={25 - h / 2}
+            width={barW}
             height={h}
             rx="1"
-            fill={bar}
-            opacity={barOpacity}
+            fill={barColor}
           />
         );
       })}
 
-      {/* Shortcut hints */}
-      <rect x="8" y="33" width="20" height="5" rx="1.5" fill={text} opacity={0.15} />
-      <rect x="31" y="33" width="14" height="5" rx="1.5" fill={text} opacity={0.15} />
+      {/* Keyboard shortcut badges — styled like real KeyBadge component */}
+      <text x="30" y="42" fontFamily="'Courier New', monospace" fontSize="5"
+        fill={labelColor}>Stop</text>
+      <rect x="46" y="37" width="12" height="7" rx="1.5"
+        fill={badgeFill} stroke={badgeStroke} strokeWidth="0.5" />
+      <text x="48.5" y="42.5" fontFamily="'Courier New', monospace" fontSize="4.5"
+        fill={badgeText}>F2</text>
+
+      <line x1="62" y1="38" x2="62" y2="44" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
+
+      <text x="66" y="42" fontFamily="'Courier New', monospace" fontSize="5"
+        fill={labelColor}>Cancel</text>
+      <rect x="87" y="37" width="14" height="7" rx="1.5"
+        fill={badgeFill} stroke={badgeStroke} strokeWidth="0.5" />
+      <text x="89" y="42.5" fontFamily="'Courier New', monospace" fontSize="4.5"
+        fill={badgeText}>Esc</text>
     </svg>
   );
 }
