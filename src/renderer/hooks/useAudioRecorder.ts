@@ -381,7 +381,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         };
         port.postMessage('stop');
         // Safety timeout — don't hang forever if worklet never responds
-        setTimeout(() => { port.onmessage = null; resolve(); }, 200);
+        setTimeout(() => { port.onmessage = null; resolve(); }, 1000);
       });
     }
 

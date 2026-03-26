@@ -340,11 +340,18 @@ export function registerIpcHandlers(
     const samples = new Float32Array(audioBuffer);
     if (samples.length === 0) {
       log.warn('Empty audio buffer received — skipping transcription');
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(IPC.NOTIFICATION_ERROR, 'Recording was empty — no audio captured. Try again.');
+      }
       broadcastState('idle');
       return;
     }
     const rms = Math.sqrt(samples.reduce((sum, s) => sum + s * s, 0) / samples.length);
-    if (rms < 0.01) {
+    if (rms < 0.003) {
+      log.info('Audio below speech threshold (RMS=%.4f) — skipping transcription', rms);
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(IPC.NOTIFICATION_ERROR, 'Audio too quiet — nothing to transcribe. Check your microphone.');
+      }
       broadcastState('idle');
       return;
     }
@@ -374,6 +381,10 @@ export function registerIpcHandlers(
       // Safety net: filter known Whisper hallucinations that appear on near-silence audio
       const HALLUCINATION_RE = /^\s*[[(]?(muzyka|music|cisza|silence|szum|noise|applause|oklaski|śmiech|laughter)[\])]?\s*$/i;
       if (!rawText || HALLUCINATION_RE.test(rawText)) {
+        log.info('Whisper returned empty or hallucinated text: "%s" — skipping', rawText ?? '');
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(IPC.NOTIFICATION_ERROR, 'No speech detected — recording contained only silence or background noise.');
+        }
         broadcastState('idle');
         return;
       }
@@ -433,6 +444,9 @@ export function registerIpcHandlers(
         }
       } else if (autoPaste) {
         log.info('No paste target captured — text is in clipboard');
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(IPC.NOTIFICATION_ERROR, 'Could not detect target window — text copied to clipboard, use Ctrl+V.');
+        }
       }
 
       // Save to history — sanitize ID to prevent path traversal in downstream audio save
