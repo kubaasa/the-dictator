@@ -368,7 +368,6 @@ export class TranscriptionService {
     const vocabHint = this.getVocabularyPromptHint();
     const langHints: Record<string, string> = {
       pl: 'Dyktowanie tekstu po polsku.',
-      th: 'การเขียนตามคำบอกเป็นภาษาไทย',
     };
     const langHint = langHints[language] ?? '';
     const promptParts = [langHint, vocabHint].filter(Boolean);

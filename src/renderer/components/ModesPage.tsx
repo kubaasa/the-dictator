@@ -18,7 +18,6 @@ const MODEL_OPTIONS = [
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
   { value: 'pl', label: 'Polish' },
-  { value: 'th', label: 'Thai' },
 ];
 
 const AI_PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
