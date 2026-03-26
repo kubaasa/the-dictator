@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import log from 'electron-log/renderer';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import { RecIndicator } from './RecEffects';
 
 import { CopyButton } from './CopyButton';
-import type { RecordingState } from '../../shared/types';
+import type { RecordingEntry, RecordingState } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import type { useAudioRecorder } from '../hooks/useAudioRecorder';
 import type { View } from './Sidebar';
@@ -38,6 +38,14 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
   const { isRecording, error: recorderError, errorType, recordingStartTime, startRecording, stopRecording, clearError } = audioRecorder;
   const { result, error: transcriptionError, clearResult } = useTranscriptionResult(recordingState);
   const error = recorderError || transcriptionError;
+
+  const [editedResult, setEditedResult] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync editedResult when a new transcription arrives
+  useEffect(() => {
+    setEditedResult(result);
+  }, [result]);
 
   const [toggleShortcut, setToggleShortcut] = useState(DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
 
@@ -81,12 +89,27 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
 
   useEffect(() => { refreshStats(); }, [refreshStats]);
 
-  // Refresh stats when a new transcription result arrives
+  // Recent transcriptions for mini-history
+  const [recentEntries, setRecentEntries] = useState<RecordingEntry[]>([]);
+
+  const refreshRecent = useCallback(async () => {
+    try {
+      const res = await window.dictator.history.getAll(3, 0);
+      if (res.success) setRecentEntries(res.data);
+    } catch (err) {
+      log.error('[HomePage] Failed to load recent entries:', err);
+    }
+  }, []);
+
+  useEffect(() => { refreshRecent(); }, [refreshRecent]);
+
+  // Refresh stats and recent history when a new transcription result arrives
   useEffect(() => {
     if (result && result.trim()) {
       refreshStats();
+      refreshRecent();
     }
-  }, [result, refreshStats]);
+  }, [result, refreshStats, refreshRecent]);
 
   const { totalWords, totalTimeDisplay, totalRecordings, avgWpm } = stats;
   const isEmpty = totalRecordings === '—';
@@ -132,7 +155,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
   ];
 
   return (
-    <main className="flex flex-1 flex-col gap-6 pb-6 overflow-y-auto animate-fade-in">
+    <main className="flex flex-1 flex-col gap-6 pb-6 overflow-hidden animate-fade-in">
       {/* Stats grid */}
       <div className="mx-6 mt-6 grid grid-cols-4" style={{ gap: 'clamp(0.5rem, 1vw, 0.75rem)' }}>
         {statCards.map((stat, i) => (
@@ -250,15 +273,18 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
           ) : (
             <div className="flex flex-col gap-3 animate-fade-in">
               <textarea
-                readOnly
-                value={result}
-                rows={5}
-                className="w-full resize-none rounded-xl border border-red-900/30 bg-[#141414] px-5 py-4 font-mono text-base text-neutral-200 text-center focus:outline-none"
+                ref={textareaRef}
+                value={editedResult}
+                onChange={(e) => setEditedResult(e.target.value)}
+                rows={Math.max(2, Math.min(10, Math.ceil(editedResult.length / 60)))}
+                className={`w-full resize-none rounded-xl border border-red-900/30 bg-[#141414] px-5 py-4 font-mono text-base text-neutral-200 focus:outline-none focus:border-red-700/50 transition-colors ${
+                  editedResult.length <= 80 ? 'text-center' : 'text-left'
+                }`}
               />
               <div className="flex justify-center gap-2">
-                <CopyButton text={result} />
+                <CopyButton text={editedResult} />
                 <button
-                  onClick={() => { clearResult(); clearError(); }}
+                  onClick={() => { clearResult(); clearError(); setEditedResult(''); }}
                   className="flex items-center gap-1.5 rounded-lg border border-neutral-700 px-3 py-1.5 font-mono text-sm font-semibold uppercase tracking-wider text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-200"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -269,6 +295,33 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Recent transcriptions mini-history */}
+      {recentEntries.length > 0 && (
+        <div className="mx-auto w-full max-w-xl px-6 flex-1 min-h-0 flex flex-col animate-fade-in">
+          <p className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-neutral-600 mb-2 shrink-0">Recent</p>
+          <div className="flex flex-col gap-1.5 overflow-y-auto min-h-0">
+            {recentEntries.map((entry) => (
+              <button
+                key={entry.id}
+                onClick={() => setEditedResult(entry.text)}
+                className="group flex items-center gap-3 rounded-lg border border-neutral-800 bg-[#141414] px-4 py-2.5 text-left transition-colors hover:border-neutral-700 hover:bg-[#1A1A1A] shrink-0"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-mono text-sm text-neutral-300 group-hover:text-neutral-100 transition-colors">
+                    {entry.text}
+                  </p>
+                  <p className="font-mono text-xs text-neutral-600 mt-0.5">
+                    {new Date(entry.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {entry.appName && <span className="ml-2 text-neutral-700">{entry.appName}</span>}
+                  </p>
+                </div>
+                <CopyButton text={entry.text} stopPropagation className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 rounded-lg px-2 py-1 font-mono text-xs font-semibold uppercase tracking-wider border text-neutral-500 border-neutral-700 hover:border-neutral-500 hover:text-neutral-200" />
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
