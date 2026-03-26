@@ -57,14 +57,15 @@ function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]
     if (!entry.replacement) continue;
 
     const escaped = entry.input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // \b doesn't work with non-ASCII (Polish, Thai etc.) — use whitespace/punctuation boundaries instead
+    // \b doesn't work with non-ASCII (Polish etc.) — use whitespace/punctuation boundaries instead
     // eslint-disable-next-line no-control-regex
     const hasNonAscii = /[^\x00-\x7F]/.test(entry.input);
     const pattern = hasNonAscii
       ? `(?<=^|[\\s.,;:!?"""''()\\[\\]])${escaped}(?=$|[\\s.,;:!?"""''()\\[\\]])`
       : `\\b${escaped}\\b`;
     const regex = new RegExp(pattern, 'gi');
-    result = result.replace(regex, entry.replacement);
+    const safeReplacement = entry.replacement.replace(/\$/g, '$$$$');
+    result = result.replace(regex, safeReplacement);
   }
   return result;
 }
@@ -203,9 +204,27 @@ export function registerIpcHandlers(
       if (!Array.isArray(settings.vocabulary)) {
         throw new Error('Invalid value for "vocabulary": expected array');
       }
+      if (settings.vocabulary.length > 500) {
+        throw new Error('Vocabulary limit exceeded: maximum 500 entries');
+      }
       for (const entry of settings.vocabulary) {
         if (typeof entry !== 'object' || entry === null || typeof entry.input !== 'string') {
           throw new Error('Invalid vocabulary entry: each must have "input" string');
+        }
+        if (typeof entry.id !== 'string') {
+          throw new Error('Invalid vocabulary entry: "id" must be a string');
+        }
+        if (!entry.input.trim()) {
+          throw new Error('Invalid vocabulary entry: "input" cannot be empty');
+        }
+        if (entry.input.length > 200) {
+          throw new Error('Invalid vocabulary entry: "input" exceeds 200 characters');
+        }
+        if (entry.replacement !== undefined && typeof entry.replacement !== 'string') {
+          throw new Error('Invalid vocabulary entry: "replacement" must be a string');
+        }
+        if (typeof entry.replacement === 'string' && entry.replacement.length > 200) {
+          throw new Error('Invalid vocabulary entry: "replacement" exceeds 200 characters');
         }
       }
     }

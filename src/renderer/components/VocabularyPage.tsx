@@ -10,6 +10,7 @@ export function VocabularyPage() {
   const [editInput, setEditInput] = useState('');
   const [editReplacement, setEditReplacement] = useState('');
   const [error, setError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
@@ -22,8 +23,17 @@ export function VocabularyPage() {
   }, []);
 
   const save = useCallback(async (updated: VocabularyEntry[]) => {
-    await window.dictator.setSettings({ vocabulary: updated });
-    setEntries(updated);
+    setIsSaving(true);
+    try {
+      await window.dictator.setSettings({ vocabulary: updated });
+      setEntries(updated);
+      setError('');
+    } catch (err) {
+      log.error('Failed to save vocabulary:', err);
+      setError('Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   }, []);
 
   const addEntry = useCallback(async () => {
@@ -44,7 +54,6 @@ export function VocabularyPage() {
     await save([...entries, entry]);
     setNewInput('');
     setNewReplacement('');
-    setError('');
   }, [newInput, newReplacement, entries, save]);
 
   const deleteEntry = useCallback(async (id: string) => {
@@ -76,7 +85,6 @@ export function VocabularyPage() {
     );
     await save(updated);
     setEditingId(null);
-    setError('');
   }, [editInput, editReplacement, editingId, entries, save]);
 
   const cancelEdit = useCallback(() => {
@@ -132,6 +140,7 @@ export function VocabularyPage() {
               value={newInput}
               onChange={(e) => { setNewInput(e.target.value); setError(''); }}
               onKeyDown={handleAddKeyDown}
+              maxLength={200}
               placeholder="New word or sentence"
               className="flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200 placeholder-neutral-600 outline-none transition-colors focus:border-red-600"
             />
@@ -140,12 +149,14 @@ export function VocabularyPage() {
               value={newReplacement}
               onChange={(e) => setNewReplacement(e.target.value)}
               onKeyDown={handleAddKeyDown}
+              maxLength={200}
               placeholder="Replace with..."
               className="flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200 placeholder-neutral-600 outline-none transition-colors focus:border-red-600"
             />
             <button
               onClick={addEntry}
-              className="whitespace-nowrap rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800"
+              disabled={isSaving}
+              className="whitespace-nowrap rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Add to vocabulary
             </button>
@@ -173,6 +184,7 @@ export function VocabularyPage() {
                       onChange={(e) => { setEditInput(e.target.value); setError(''); }}
                       onKeyDown={handleEditKeyDown}
                       autoFocus
+                      maxLength={200}
                       className="flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 outline-none transition-colors focus:border-red-600"
                     />
                     <span className="text-neutral-600 text-xs">&rarr;</span>
@@ -181,12 +193,14 @@ export function VocabularyPage() {
                       value={editReplacement}
                       onChange={(e) => setEditReplacement(e.target.value)}
                       onKeyDown={handleEditKeyDown}
+                      maxLength={200}
                       placeholder="Replace with..."
                       className="flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 outline-none transition-colors focus:border-red-600"
                     />
                     <button
                       onClick={saveEdit}
-                      className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
+                      disabled={isSaving}
+                      className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Save
                     </button>
@@ -200,16 +214,16 @@ export function VocabularyPage() {
                 ) : (
                   /* Display mode */
                   <>
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-mono text-neutral-200">{entry.input}</span>
+                    <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+                      <span className="truncate font-mono text-neutral-200">{entry.input}</span>
                       {entry.replacement && (
                         <>
-                          <span className="text-neutral-600">&rarr;</span>
-                          <span className="font-mono text-red-400">{entry.replacement}</span>
+                          <span className="flex-shrink-0 text-neutral-600">&rarr;</span>
+                          <span className="truncate font-mono text-red-400">{entry.replacement}</span>
                         </>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-shrink-0 items-center gap-2">
                       <button
                         onClick={() => startEdit(entry)}
                         title="Edit"
@@ -221,8 +235,9 @@ export function VocabularyPage() {
                       </button>
                       <button
                         onClick={() => deleteEntry(entry.id)}
+                        disabled={isSaving}
                         title="Delete"
-                        className="rounded p-1 text-neutral-600 transition-colors hover:text-red-400"
+                        className="rounded p-1 text-neutral-600 transition-colors hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
