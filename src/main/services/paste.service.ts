@@ -193,45 +193,47 @@ export class PasteService {
     });
   }
 
-  // Call when recording STARTS — captures the focused window if it's a valid paste target.
-  // Does NOT reset targetHwnd upfront — the async PowerShell call overwrites it on success.
-  // Resetting eagerly caused a race: hwnd=null before the async result arrived, so
-  // hasTarget() returned false when transcription completed before capture finished.
-  captureTarget(): void {
+  // Captures the currently focused window as the paste target.
+  // Resolves after the target is set (or skipped). Caller should await before pasting.
+  async captureTarget(): Promise<void> {
     if (process.platform !== 'win32') return;
 
-    const handleResult = (stdout: string) => {
-      const parts = stdout.trim().split('|');
-      const hwnd = parts[0]?.trim() ?? '';
-      const windowClass = parts[1]?.trim() ?? '';
-      const processName = parts[2]?.trim() ?? 'unknown';
+    // Reset previous target — caller awaits so there is no race
+    this.targetHwnd = null;
+    this.targetAppName = null;
 
-      if (!hwnd || !/^\d+$/.test(hwnd) || hwnd === '0') return;
-
-      if (this.isOwnWindow(hwnd)) {
-        log.info('Foreground is own Electron window — skipping paste target');
-        return;
+    let stdout: string;
+    try {
+      if (this.psReady && this.psProcess) {
+        stdout = await this.exec(CAPTURE_CMD, 3000);
+      } else {
+        const result = await execFileAsync('powershell', GET_HWND_ARGS, { timeout: 3000, windowsHide: true });
+        stdout = result.stdout;
       }
-      if (EXCLUDED_SHELL_CLASSES.has(windowClass)) {
-        log.info('Shell/desktop window ("%s") — skipping paste target', windowClass);
-        return;
-      }
-
-      this.targetHwnd = hwnd;
-      this.targetAppName = processName;
-      log.info('Captured paste target (class: %s, process: %s)', windowClass, processName);
-    };
-
-    // Use persistent process if ready, otherwise fall back to cold-start
-    if (this.psReady && this.psProcess) {
-      this.exec(CAPTURE_CMD, 3000)
-        .then(handleResult)
-        .catch((err) => log.warn('captureTarget (persistent) failed:', err.message));
-    } else {
-      execFileAsync('powershell', GET_HWND_ARGS, { timeout: 3000, windowsHide: true })
-        .then(({ stdout }) => handleResult(stdout))
-        .catch((err) => log.warn('captureTarget (fallback) failed:', err.message));
+    } catch (err) {
+      log.warn('captureTarget failed:', err instanceof Error ? err.message : err);
+      return;
     }
+
+    const parts = stdout.trim().split('|');
+    const hwnd = parts[0]?.trim() ?? '';
+    const windowClass = parts[1]?.trim() ?? '';
+    const processName = parts[2]?.trim() ?? 'unknown';
+
+    if (!hwnd || !/^\d+$/.test(hwnd) || hwnd === '0') return;
+
+    if (this.isOwnWindow(hwnd)) {
+      log.info('Foreground is own Electron window — skipping paste target');
+      return;
+    }
+    if (EXCLUDED_SHELL_CLASSES.has(windowClass)) {
+      log.info('Shell/desktop window ("%s") — skipping paste target', windowClass);
+      return;
+    }
+
+    this.targetHwnd = hwnd;
+    this.targetAppName = processName;
+    log.info('Captured paste target (class: %s, process: %s)', windowClass, processName);
   }
 
   getAppName(): string | null {

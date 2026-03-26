@@ -122,7 +122,6 @@ const hotkeyService = new HotkeyService(
   () => {
     // Clear safety timeout on new recording start
     if (pttSafetyTimeout) { clearTimeout(pttSafetyTimeout); pttSafetyTimeout = null; }
-    pasteService.captureTarget();
     broadcastState('initializing');
     sendToggleToRenderer();
   },
@@ -324,7 +323,6 @@ function setupRecordingIpc(): void {
     // Sync HotkeyService for non-hotkey sources (overlay button, main window button)
     // so keyboard shortcuts can correctly stop the recording
     hotkeyService.notifyRecordingStarted();
-    pasteService.captureTarget();
     broadcastState('initializing');
   });
 
@@ -361,7 +359,7 @@ function setupRecordingIpc(): void {
   });
 
   ipcMain.on(IPC.OVERLAY_TOGGLE, () => {
-    // captureTarget is handled by RECORDING_INIT (start) or onRecordingStart (PTT)
+    // captureTarget is called after transcription completes (just before paste)
     sendToggleToRenderer();
   });
 

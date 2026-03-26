@@ -404,16 +404,22 @@ export function registerIpcHandlers(
       const vocabEntries = (store.get('vocabulary') as VocabularyEntry[]) ?? [];
       text = applyVocabularyReplacements(text, vocabEntries);
 
+      // Capture the focused window FIRST — before any Electron UI operations
+      // (broadcastState, clipboard, scheduleIdle) that may shift OS focus.
+      const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
+      if (autoPaste) {
+        await pasteService.captureTarget();
+      }
+      const appName = pasteService.getAppName() ?? undefined;
+
       broadcastState('done');
       scheduleIdle(400);
-      const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
       log.info('Transcription done. autoPaste=%s, chars=%d', autoPaste, text.length);
 
       // Always write to clipboard so the user can always Ctrl+V manually
       clipboard.writeText(text);
       log.info('Text copied to clipboard');
 
-      const appName = pasteService.getAppName() ?? undefined;
       if (autoPaste && pasteService.hasTarget()) {
         try {
           await pasteService.simulatePaste();
