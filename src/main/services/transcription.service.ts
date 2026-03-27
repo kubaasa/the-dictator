@@ -331,7 +331,7 @@ export class TranscriptionService {
       const file = await toFile(wavBuffer, 'audio.wav', { type: 'audio/wav' });
 
       const response = await client.audio.transcriptions.create({
-        model: 'whisper-large-v3-turbo',
+        model: 'whisper-large-v3',
         file,
         ...(language !== 'auto' && { language }),
         ...(vocabHint && { prompt: vocabHint }),
@@ -351,7 +351,7 @@ export class TranscriptionService {
       const file = await toFile(buf, 'audio.webm', { type: 'audio/webm' });
 
       const response = await client.audio.transcriptions.create({
-        model: 'whisper-large-v3-turbo',
+        model: 'whisper-large-v3',
         file,
         ...(language !== 'auto' && { language }),
         ...(vocabHint && { prompt: vocabHint }),
