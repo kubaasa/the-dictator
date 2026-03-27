@@ -618,6 +618,16 @@ export function registerIpcHandlers(
     }
   });
 
+  // AI enhance prompt
+  ipcMain.handle(IPC.AI_ENHANCE_PROMPT, async (_event, rawPrompt: string) => {
+    try {
+      const result = await aiService.enhancePrompt(rawPrompt);
+      return { success: true, result };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // Open models cache folder in system file explorer
   ipcMain.on(IPC.APP_OPEN_MODELS_FOLDER, () => {
     shell.openPath(transcriptionService.getModelsCacheDir());

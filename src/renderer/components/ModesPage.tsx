@@ -208,6 +208,31 @@ export function ModesPage(props: ModelStatus) {
     }
   };
 
+  const [enhancing, setEnhancing] = useState(false);
+
+  const handlePromptEnhance = async () => {
+    if (!customPrompt.trim() || enhancing) return;
+    setEnhancing(true);
+    try {
+      const res = await window.dictator.ai.enhancePrompt(customPrompt);
+      if (res.success && res.result) {
+        setCustomPrompt(res.result);
+        const current = await window.dictator.getSettings();
+        await window.dictator.setSettings({
+          dictation: { ...current.dictation, customPrompt: res.result },
+        });
+        addToast('success', 'Prompt enhanced successfully');
+      } else {
+        addToast('error', res.error ?? 'Failed to enhance prompt');
+      }
+    } catch (err) {
+      log.error('[ModesPage] Failed to enhance prompt:', err);
+      addToast('error', 'Failed to enhance prompt');
+    } finally {
+      setEnhancing(false);
+    }
+  };
+
   const handlePromptReset = async () => {
     setCustomPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
     try {
@@ -817,6 +842,17 @@ export function ModesPage(props: ModelStatus) {
                   />
 
                   <div className="flex items-center gap-3 mt-2">
+                    <button
+                      onClick={handlePromptEnhance}
+                      disabled={!customPrompt.trim() || enhancing || !isAiConfigured}
+                      className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
+                        customPrompt.trim() && !enhancing && isAiConfigured
+                          ? 'border-red-800/50 text-red-400 hover:border-red-700 hover:text-red-300 cursor-pointer'
+                          : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
+                      }`}
+                    >
+                      {enhancing ? 'Enhancing...' : 'Enhance Prompt'}
+                    </button>
                     <button
                       onClick={handlePromptReset}
                       disabled={!isPromptModified}

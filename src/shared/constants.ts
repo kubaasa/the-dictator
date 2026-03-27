@@ -51,6 +51,7 @@ export const IPC = {
 
   // AI
   AI_TEST_PROMPT: 'ai:test-prompt',
+  AI_ENHANCE_PROMPT: 'ai:enhance-prompt',
   AI_GET_OPENAI_MODELS: 'ai:get-openai-models',
   AI_VALIDATE_KEY: 'ai:validate-key',
 

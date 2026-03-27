@@ -58,6 +58,7 @@ export interface DictatorAPI {
   // AI
   ai: {
     testPrompt: (text: string, systemPrompt: string) => Promise<{ success: boolean; result?: string; error?: string }>;
+    enhancePrompt: (rawPrompt: string) => Promise<{ success: boolean; result?: string; error?: string }>;
     getOpenAIModels: () => Promise<{ success: boolean; models: { value: string; label: string }[]; error?: string }>;
     validateKey: (provider: string, apiKey: string) => Promise<{ valid: boolean; error?: string }>;
   };
@@ -195,6 +196,7 @@ const api: DictatorAPI = {
   // AI
   ai: {
     testPrompt: (text, systemPrompt) => ipcRenderer.invoke(IPC.AI_TEST_PROMPT, text, systemPrompt),
+    enhancePrompt: (rawPrompt) => ipcRenderer.invoke(IPC.AI_ENHANCE_PROMPT, rawPrompt),
     getOpenAIModels: () => ipcRenderer.invoke(IPC.AI_GET_OPENAI_MODELS),
     validateKey: (provider, apiKey) => ipcRenderer.invoke(IPC.AI_VALIDATE_KEY, provider, apiKey),
   },
