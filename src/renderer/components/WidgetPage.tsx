@@ -233,8 +233,7 @@ function MiniPreview({ active }: { active: boolean }) {
   const borderColor = active ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)';
   const barColor = active ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.45)';
 
-  // Envelope heights from real VoiceBar formula: 1 - |dist|^1.8 * 0.55
-  const heights = [9, 16, 19.5, 19.5, 16, 9];
+  const heights = [4, 12, 7, 18, 14, 5];
 
   return (
     <svg width="82" height="34" viewBox="0 0 82 34">
@@ -296,22 +295,18 @@ function MaxiPreview({ active }: { active: boolean }) {
       <text x="19" y="12" fontFamily="'Courier New', monospace" fontSize="6" fontWeight="700"
         fill={accentColor} letterSpacing="0.5">REC]</text>
 
-      {/* Hanning waveform bars — spindle/diamond shape like real MaxiWidget */}
-      {Array.from({ length: barCount }, (_, i) => {
-        const w = Math.pow(Math.sin(Math.PI * i / (barCount - 1)), 2);
-        const h = Math.max(1.5, w * maxBarH);
-        return (
-          <rect
-            key={i}
-            x={barsStartX + i * (barW + barGap)}
-            y={25 - h / 2}
-            width={barW}
-            height={h}
-            rx="1"
-            fill={barColor}
-          />
-        );
-      })}
+      {/* Waveform bars — realistic irregular audio shape */}
+      {[2, 3, 5, 8, 14, 7, 16, 11, 18, 9, 15, 17, 6, 14, 18, 16, 8, 17, 12, 15, 10, 18, 7, 13, 16, 9, 6, 4, 3, 1.5].map((h, i) => (
+        <rect
+          key={i}
+          x={barsStartX + i * (barW + barGap)}
+          y={25 - h / 2}
+          width={barW}
+          height={h}
+          rx="1"
+          fill={barColor}
+        />
+      ))}
 
       {/* Keyboard shortcut badges — styled like real KeyBadge component */}
       <text x="30" y="42" fontFamily="'Courier New', monospace" fontSize="5"
