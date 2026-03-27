@@ -67,6 +67,7 @@ export function ModesPage(props: ModelStatus) {
   const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useState<string>('default');
   const [savingPrompt, setSavingPrompt] = useState(false);
+  const savingRef = useRef(false);
   const [isCreatingNewPrompt, setIsCreatingNewPrompt] = useState(false);
   const [newPromptTempId, setNewPromptTempId] = useState<string | null>(null);
   const [lastLoadedPrompt, setLastLoadedPrompt] = useState(DEFAULT_SETTINGS.dictation.customPrompt);
@@ -94,6 +95,7 @@ export function ModesPage(props: ModelStatus) {
     setAiPostProcessing(s.dictation.aiPostProcessing);
     setCustomPrompt(s.dictation.customPrompt);
     setSavedPrompts(s.dictation.savedPrompts ?? []);
+    setSelectedPromptId(s.dictation.selectedPromptId ?? 'default');
     setAutoPaste(s.dictation.autoPaste);
     setAiProvider(s.ai.provider);
     setAiOpenaiKey(s.ai.openaiApiKey);
@@ -111,7 +113,11 @@ export function ModesPage(props: ModelStatus) {
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
       syncFromSettings(s);
-      setLastLoadedPrompt(s.dictation.customPrompt);
+      const id = s.dictation.selectedPromptId ?? 'default';
+      const loaded = id === 'default'
+        ? DEFAULT_SETTINGS.dictation.customPrompt
+        : (s.dictation.savedPrompts ?? []).find(p => p.id === id)?.content ?? DEFAULT_SETTINGS.dictation.customPrompt;
+      setLastLoadedPrompt(loaded);
       if (s.ai.provider === 'openai' && s.ai.openaiApiKey) fetchOpenAIModels();
     }).catch((err) => log.error('Failed to load settings in ModesPage:', err));
 
@@ -292,7 +298,7 @@ export function ModesPage(props: ModelStatus) {
     try {
       const current = await window.dictator.getSettings();
       await window.dictator.setSettings({
-        dictation: { ...current.dictation, customPrompt: content },
+        dictation: { ...current.dictation, customPrompt: content, selectedPromptId: id },
       });
     } catch (err) {
       log.error('[ModesPage] Failed to load prompt:', err);
@@ -310,11 +316,13 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const handleSavePrompt = async () => {
-    if (savingPrompt || savedPrompts.length >= 5 || !isAiConfigured || !customPrompt.trim()) return;
+    if (savingRef.current || savedPrompts.length >= 5 || !isAiConfigured || !customPrompt.trim()) return;
+    savingRef.current = true;
     setSavingPrompt(true);
     try {
       const res = await window.dictator.ai.generatePromptName(customPrompt);
       const name = res.success && res.name ? res.name.trim() : `Prompt ${savedPrompts.length + 1}`;
+      if (!res.success) addToast('error', 'Could not generate name — using fallback');
       const newPrompt: SavedPrompt = {
         id: crypto.randomUUID(),
         name,
@@ -323,7 +331,7 @@ export function ModesPage(props: ModelStatus) {
       const updated = [...savedPrompts, newPrompt];
       const current = await window.dictator.getSettings();
       await window.dictator.setSettings({
-        dictation: { ...current.dictation, savedPrompts: updated, customPrompt: customPrompt },
+        dictation: { ...current.dictation, savedPrompts: updated, customPrompt: customPrompt, selectedPromptId: newPrompt.id },
       });
       setSavedPrompts(updated);
       setSelectedPromptId(newPrompt.id);
@@ -335,6 +343,7 @@ export function ModesPage(props: ModelStatus) {
       log.error('[ModesPage] Failed to save prompt:', err);
       addToast('error', 'Failed to save prompt');
     } finally {
+      savingRef.current = false;
       setSavingPrompt(false);
     }
   };
@@ -342,21 +351,26 @@ export function ModesPage(props: ModelStatus) {
   const handleDeletePrompt = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     const updated = savedPrompts.filter(p => p.id !== id);
+    const isSelected = selectedPromptId === id;
     try {
       const current = await window.dictator.getSettings();
       await window.dictator.setSettings({
-        dictation: { ...current.dictation, savedPrompts: updated },
+        dictation: {
+          ...current.dictation,
+          savedPrompts: updated,
+          ...(isSelected && {
+            selectedPromptId: 'default',
+            customPrompt: DEFAULT_SETTINGS.dictation.customPrompt,
+          }),
+        },
       });
       setSavedPrompts(updated);
       setIsCreatingNewPrompt(false);
       setNewPromptTempId(null);
-      if (selectedPromptId === id) {
+      if (isSelected) {
         setSelectedPromptId('default');
         setCustomPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
         setLastLoadedPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
-        await window.dictator.setSettings({
-          dictation: { ...current.dictation, savedPrompts: updated, customPrompt: DEFAULT_SETTINGS.dictation.customPrompt },
-        });
       }
     } catch (err) {
       log.error('[ModesPage] Failed to delete prompt:', err);

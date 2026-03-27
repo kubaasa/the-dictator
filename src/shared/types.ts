@@ -72,6 +72,7 @@ export interface AppSettings {
     aiPostProcessing: boolean;
     customPrompt: string;
     savedPrompts: SavedPrompt[];
+    selectedPromptId: string;
     autoPaste: boolean;
     restoreClipboard: boolean;
   };
@@ -163,6 +164,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 Respond with ONLY the reformatted message wrapped in the required tags.`,
     savedPrompts: [],
+    selectedPromptId: 'default',
     autoPaste: true,
     restoreClipboard: true,
   },

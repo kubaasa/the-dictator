@@ -157,6 +157,7 @@ export function registerIpcHandlers(
         aiPostProcessing: dictation.aiPostProcessing ?? DEFAULT_SETTINGS.dictation.aiPostProcessing,
         customPrompt: dictation.customPrompt ?? DEFAULT_SETTINGS.dictation.customPrompt,
         savedPrompts: dictation.savedPrompts ?? DEFAULT_SETTINGS.dictation.savedPrompts,
+        selectedPromptId: dictation.selectedPromptId ?? DEFAULT_SETTINGS.dictation.selectedPromptId,
         autoPaste: dictation.autoPaste ?? DEFAULT_SETTINGS.dictation.autoPaste,
         restoreClipboard: dictation.restoreClipboard ?? DEFAULT_SETTINGS.dictation.restoreClipboard,
       };
