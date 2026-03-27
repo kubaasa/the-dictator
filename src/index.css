@@ -272,6 +272,11 @@ textarea:focus:not(:focus-visible),
     entry-glow 1.5s ease-out 0.2s both;
 }
 
+@keyframes dotFade {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
 .btn-noise {
   position: relative;
 }

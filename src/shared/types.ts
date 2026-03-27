@@ -38,6 +38,12 @@ export interface VocabularyEntry {
   replacement?: string;
 }
 
+export interface SavedPrompt {
+  id: string;
+  name: string;
+  content: string;
+}
+
 export interface AppSettings {
   transcription: {
     engine: TranscriptionEngine;
@@ -65,6 +71,7 @@ export interface AppSettings {
   dictation: {
     aiPostProcessing: boolean;
     customPrompt: string;
+    savedPrompts: SavedPrompt[];
     autoPaste: boolean;
     restoreClipboard: boolean;
   };
@@ -155,6 +162,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 - Don't include placeholders in output
 
 Respond with ONLY the reformatted message wrapped in the required tags.`,
+    savedPrompts: [],
     autoPaste: true,
     restoreClipboard: true,
   },

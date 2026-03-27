@@ -156,6 +156,7 @@ export function registerIpcHandlers(
       const migrated = {
         aiPostProcessing: dictation.aiPostProcessing ?? DEFAULT_SETTINGS.dictation.aiPostProcessing,
         customPrompt: dictation.customPrompt ?? DEFAULT_SETTINGS.dictation.customPrompt,
+        savedPrompts: dictation.savedPrompts ?? DEFAULT_SETTINGS.dictation.savedPrompts,
         autoPaste: dictation.autoPaste ?? DEFAULT_SETTINGS.dictation.autoPaste,
         restoreClipboard: dictation.restoreClipboard ?? DEFAULT_SETTINGS.dictation.restoreClipboard,
       };
@@ -199,6 +200,25 @@ export function registerIpcHandlers(
     }
     if (settings.dictation !== undefined && (typeof settings.dictation !== 'object' || settings.dictation === null)) {
       throw new Error('Invalid value for "dictation": expected object');
+    }
+    if (settings.dictation?.savedPrompts !== undefined) {
+      if (!Array.isArray(settings.dictation.savedPrompts)) {
+        throw new Error('Invalid value for "savedPrompts": expected array');
+      }
+      if (settings.dictation.savedPrompts.length > 5) {
+        throw new Error('Saved prompts limit exceeded: maximum 5 prompts');
+      }
+      for (const prompt of settings.dictation.savedPrompts) {
+        if (typeof prompt !== 'object' || prompt === null) {
+          throw new Error('Invalid saved prompt: expected object');
+        }
+        if (typeof prompt.id !== 'string' || typeof prompt.name !== 'string' || typeof prompt.content !== 'string') {
+          throw new Error('Invalid saved prompt: "id", "name", and "content" must be strings');
+        }
+        if (!prompt.name.trim()) {
+          throw new Error('Invalid saved prompt: "name" cannot be empty');
+        }
+      }
     }
     if (settings.vocabulary !== undefined) {
       if (!Array.isArray(settings.vocabulary)) {
@@ -623,6 +643,16 @@ export function registerIpcHandlers(
     try {
       const result = await aiService.enhancePrompt(rawPrompt);
       return { success: true, result };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // AI generate prompt name
+  ipcMain.handle(IPC.AI_GENERATE_PROMPT_NAME, async (_event, promptContent: string) => {
+    try {
+      const name = await aiService.generatePromptName(promptContent);
+      return { success: true, name };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }

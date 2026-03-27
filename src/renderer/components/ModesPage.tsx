@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import log from 'electron-log/renderer';
 import type { ModelStatus } from '../hooks/useModelStatus';
-import type { AIProviderType, TranscriptionEngine, AppSettings } from '../../shared/types';
+import type { AIProviderType, TranscriptionEngine, AppSettings, SavedPrompt } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import { WHISPER_MODEL_DESCRIPTIONS, AI_MODEL_DESCRIPTIONS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
 import { ApiKeyInput } from './ApiKeyInput';
@@ -24,6 +24,19 @@ const AI_PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
   { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
 ];
+
+function EnhancingDots() {
+  return (
+    <span className="inline-flex items-center">
+      Enhancing
+      <span className="inline-flex w-[1.2em] ml-[1px]">
+        <span className="animate-[dotFade_1.4s_ease-in-out_infinite]">.</span>
+        <span className="animate-[dotFade_1.4s_ease-in-out_0.2s_infinite]">.</span>
+        <span className="animate-[dotFade_1.4s_ease-in-out_0.4s_infinite]">.</span>
+      </span>
+    </span>
+  );
+}
 
 export function ModesPage(props: ModelStatus) {
   const { downloaded, downloadedModels, downloading, progress, error, download, cancel, recheck } = props;
@@ -50,6 +63,16 @@ export function ModesPage(props: ModelStatus) {
   const [anthropicKeySaved, setAnthropicKeySaved] = useState(false);
   const [aiKeyValidation, setAiKeyValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
   const [aiKeyValidationError, setAiKeyValidationError] = useState('');
+  // Saved prompts
+  const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([]);
+  const [selectedPromptId, setSelectedPromptId] = useState<string>('default');
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const [isCreatingNewPrompt, setIsCreatingNewPrompt] = useState(false);
+  const [newPromptTempId, setNewPromptTempId] = useState<string | null>(null);
+  const [lastLoadedPrompt, setLastLoadedPrompt] = useState(DEFAULT_SETTINGS.dictation.customPrompt);
+  const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
+  const promptDropdownRef = useRef<HTMLDivElement>(null);
+
   // Output settings (read-only for pipeline bar)
   const [autoPaste, setAutoPaste] = useState(DEFAULT_SETTINGS.dictation.autoPaste);
 
@@ -70,6 +93,7 @@ export function ModesPage(props: ModelStatus) {
     setGroqValidation(s.transcription.groqApiKey ? 'valid' : 'idle');
     setAiPostProcessing(s.dictation.aiPostProcessing);
     setCustomPrompt(s.dictation.customPrompt);
+    setSavedPrompts(s.dictation.savedPrompts ?? []);
     setAutoPaste(s.dictation.autoPaste);
     setAiProvider(s.ai.provider);
     setAiOpenaiKey(s.ai.openaiApiKey);
@@ -87,12 +111,23 @@ export function ModesPage(props: ModelStatus) {
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
       syncFromSettings(s);
+      setLastLoadedPrompt(s.dictation.customPrompt);
       if (s.ai.provider === 'openai' && s.ai.openaiApiKey) fetchOpenAIModels();
     }).catch((err) => log.error('Failed to load settings in ModesPage:', err));
 
     const unsub = window.dictator.onSettingsChange(syncFromSettings);
     return unsub;
   }, [syncFromSettings, fetchOpenAIModels]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (promptDropdownRef.current && !promptDropdownRef.current.contains(e.target as Node)) {
+        setPromptDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLanguageChange = async (newLang: string) => {
     setLanguage(newLang);
@@ -234,14 +269,97 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const handlePromptReset = async () => {
-    setCustomPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
+    setCustomPrompt(lastLoadedPrompt);
     try {
       const current = await window.dictator.getSettings();
       await window.dictator.setSettings({
-        dictation: { ...current.dictation, customPrompt: DEFAULT_SETTINGS.dictation.customPrompt },
+        dictation: { ...current.dictation, customPrompt: lastLoadedPrompt },
       });
     } catch (err) {
       log.error('[ModesPage] Failed to reset prompt:', err);
+    }
+  };
+
+  const handleSelectPrompt = async (id: string) => {
+    setSelectedPromptId(id);
+    setIsCreatingNewPrompt(false);
+    setNewPromptTempId(null);
+    const content = id === 'default'
+      ? DEFAULT_SETTINGS.dictation.customPrompt
+      : savedPrompts.find(p => p.id === id)?.content ?? '';
+    setCustomPrompt(content);
+    setLastLoadedPrompt(content);
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        dictation: { ...current.dictation, customPrompt: content },
+      });
+    } catch (err) {
+      log.error('[ModesPage] Failed to load prompt:', err);
+    }
+  };
+
+  const handleNewPrompt = () => {
+    if (savingPrompt || enhancing) return;
+    const tempId = `new-${Date.now()}`;
+    setNewPromptTempId(tempId);
+    setIsCreatingNewPrompt(true);
+    setSelectedPromptId(tempId);
+    setCustomPrompt('');
+    setLastLoadedPrompt('');
+  };
+
+  const handleSavePrompt = async () => {
+    if (savingPrompt || savedPrompts.length >= 5 || !isAiConfigured || !customPrompt.trim()) return;
+    setSavingPrompt(true);
+    try {
+      const res = await window.dictator.ai.generatePromptName(customPrompt);
+      const name = res.success && res.name ? res.name.trim() : `Prompt ${savedPrompts.length + 1}`;
+      const newPrompt: SavedPrompt = {
+        id: crypto.randomUUID(),
+        name,
+        content: customPrompt,
+      };
+      const updated = [...savedPrompts, newPrompt];
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        dictation: { ...current.dictation, savedPrompts: updated, customPrompt: customPrompt },
+      });
+      setSavedPrompts(updated);
+      setSelectedPromptId(newPrompt.id);
+      setLastLoadedPrompt(customPrompt);
+      setIsCreatingNewPrompt(false);
+      setNewPromptTempId(null);
+      addToast('success', `Prompt saved as "${name}"`);
+    } catch (err) {
+      log.error('[ModesPage] Failed to save prompt:', err);
+      addToast('error', 'Failed to save prompt');
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
+
+  const handleDeletePrompt = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const updated = savedPrompts.filter(p => p.id !== id);
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        dictation: { ...current.dictation, savedPrompts: updated },
+      });
+      setSavedPrompts(updated);
+      setIsCreatingNewPrompt(false);
+      setNewPromptTempId(null);
+      if (selectedPromptId === id) {
+        setSelectedPromptId('default');
+        setCustomPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
+        setLastLoadedPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
+        await window.dictator.setSettings({
+          dictation: { ...current.dictation, savedPrompts: updated, customPrompt: DEFAULT_SETTINGS.dictation.customPrompt },
+        });
+      }
+    } catch (err) {
+      log.error('[ModesPage] Failed to delete prompt:', err);
     }
   };
 
@@ -348,7 +466,12 @@ export function ModesPage(props: ModelStatus) {
     aiProvider === 'anthropic' ? !!aiAnthropicKey :
     false;
 
-  const isPromptModified = customPrompt !== DEFAULT_SETTINGS.dictation.customPrompt;
+  const isPromptModified = customPrompt !== lastLoadedPrompt;
+
+  const canSavePrompt = isAiConfigured && savedPrompts.length < 5 &&
+    !!customPrompt.trim() &&
+    customPrompt !== DEFAULT_SETTINGS.dictation.customPrompt &&
+    !savedPrompts.some(p => p.content === customPrompt);
 
   const currentAiModels = aiProvider === 'openai' ? openaiModels : aiProvider === 'anthropic' ? ANTHROPIC_MODELS : [];
   const currentAiModel = aiProvider === 'openai' ? aiOpenaiModel : aiProvider === 'anthropic' ? aiAnthropicModel : '';
@@ -832,27 +955,117 @@ export function ModesPage(props: ModelStatus) {
                       )}
                     </div>
                   </div>
+                  <p className="text-xs text-neutral-500 mb-3">
+                    A set of instructions the AI uses to clean up, correct, and reformat your dictated text.
+                  </p>
+
+                  {/* Saved prompts dropdown */}
+                  <div className="relative mb-3" ref={promptDropdownRef}>
+                    <button
+                      onClick={() => setPromptDropdownOpen(!promptDropdownOpen)}
+                      className="w-full flex items-center justify-between rounded-lg border border-neutral-700/50 bg-neutral-900 px-4 py-2.5 font-mono text-xs text-neutral-300 focus:outline-none focus:border-red-600/30 cursor-pointer text-left"
+                    >
+                      <span>{
+                        isCreatingNewPrompt ? 'New Prompt...' :
+                        selectedPromptId === 'default' ? 'Voice to Text (Default)' :
+                        savedPrompts.find(p => p.id === selectedPromptId)?.name ?? 'Voice to Text (Default)'
+                      }</span>
+                      <svg className={`h-4 w-4 text-neutral-500 transition-transform ${promptDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                    {promptDropdownOpen && (
+                      <div className="absolute z-10 mt-1 w-full rounded-lg border border-neutral-700/50 bg-neutral-900 py-1 shadow-lg">
+                        <button
+                          onClick={() => { handleSelectPrompt('default'); setPromptDropdownOpen(false); }}
+                          className={`w-full px-4 py-2 text-left font-mono text-xs transition-colors cursor-pointer ${
+                            selectedPromptId === 'default' ? 'text-red-400 bg-red-950/20' : 'text-neutral-300 hover:bg-neutral-800'
+                          }`}
+                        >
+                          Voice to Text (Default)
+                        </button>
+                        {savedPrompts.map((p) => (
+                          <div
+                            key={p.id}
+                            className={`flex items-center justify-between px-4 py-2 transition-colors ${
+                              selectedPromptId === p.id ? 'text-red-400 bg-red-950/20' : 'text-neutral-300 hover:bg-neutral-800'
+                            }`}
+                          >
+                            <button
+                              onClick={() => { handleSelectPrompt(p.id); setPromptDropdownOpen(false); }}
+                              className="flex-1 text-left font-mono text-xs cursor-pointer"
+                            >
+                              {p.name}
+                            </button>
+                            <button
+                              onClick={(e) => handleDeletePrompt(e, p.id)}
+                              className="ml-2 text-neutral-600 hover:text-red-400 transition-colors cursor-pointer"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                        {isCreatingNewPrompt && (
+                          <button
+                            className="w-full px-4 py-2 text-left font-mono text-xs text-red-400 bg-red-950/20 cursor-default"
+                            disabled
+                          >
+                            New Prompt...
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <textarea
                     value={customPrompt}
                     onChange={(e) => handlePromptChange(e.target.value)}
-                    onBlur={handlePromptSave}
-                    placeholder="Enter system prompt..."
+                    onBlur={savingPrompt || enhancing ? undefined : handlePromptSave}
+                    placeholder={isCreatingNewPrompt ? 'Type your new prompt here...' : 'Enter system prompt...'}
                     rows={6}
                     className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-4 py-3 text-sm text-neutral-300 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 resize-none leading-relaxed"
                   />
 
-                  <div className="flex items-center gap-3 mt-2">
-                    <button
-                      onClick={handlePromptEnhance}
-                      disabled={!customPrompt.trim() || enhancing || !isAiConfigured}
-                      className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
-                        customPrompt.trim() && !enhancing && isAiConfigured
-                          ? 'border-red-800/50 text-red-400 hover:border-red-700 hover:text-red-300 cursor-pointer'
-                          : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
-                      }`}
-                    >
-                      {enhancing ? 'Enhancing...' : 'Enhance Prompt'}
-                    </button>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handlePromptEnhance}
+                        disabled={!customPrompt.trim() || enhancing || !isAiConfigured}
+                        className={`rounded-lg border px-3 py-1.5 min-w-[145px] text-center font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
+                          enhancing
+                            ? 'border-red-800/50 text-red-400 cursor-wait'
+                            : customPrompt.trim() && !enhancing && isAiConfigured
+                              ? 'border-red-800/50 text-red-400 hover:border-red-700 hover:text-red-300 cursor-pointer'
+                              : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
+                        }`}
+                      >
+                        {enhancing ? <EnhancingDots /> : 'Enhance Prompt'}
+                      </button>
+                      <button
+                        onClick={handleSavePrompt}
+                        disabled={!canSavePrompt || savingPrompt}
+                        className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
+                          canSavePrompt && !savingPrompt
+                            ? 'border-red-800/50 text-red-400 hover:border-red-700 hover:text-red-300 cursor-pointer'
+                            : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
+                        }`}
+                      >
+                        {savingPrompt ? 'Saving...' : savedPrompts.length >= 5 ? 'Limit Reached' : 'Save Prompt'}
+                      </button>
+                      <button
+                        onClick={handleNewPrompt}
+                        disabled={isCreatingNewPrompt || savedPrompts.length >= 5 || savingPrompt || enhancing}
+                        className={`rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wider transition-colors ${
+                          !isCreatingNewPrompt && savedPrompts.length < 5 && !savingPrompt && !enhancing
+                            ? 'border-red-800/50 text-red-400 hover:border-red-700 hover:text-red-300 cursor-pointer'
+                            : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
+                        }`}
+                      >
+                        New Prompt
+                      </button>
+                    </div>
                     <button
                       onClick={handlePromptReset}
                       disabled={!isPromptModified}

@@ -285,6 +285,24 @@ ${systemPrompt}
     }
   }
 
+  async generatePromptName(promptContent: string): Promise<string> {
+    const provider = (this.store.get('ai.provider') as string) ?? 'openai';
+    if (!promptContent.trim()) throw new Error('Prompt is empty.');
+
+    const metaPrompt = `Generate a short, descriptive name (2-4 words) for the following voice dictation system prompt. The name should capture the prompt's main purpose. Output ONLY the name, nothing else. No quotes, no punctuation.`;
+
+    const wrappedText = `<input>\n${promptContent}\n</input>`;
+
+    switch (provider) {
+      case 'openai':
+        return this.processOpenAI(wrappedText, metaPrompt);
+      case 'anthropic':
+        return this.processAnthropic(wrappedText, metaPrompt);
+      default:
+        throw new Error(`Unknown provider: ${provider}`);
+    }
+  }
+
   async enhancePrompt(rawPrompt: string): Promise<string> {
     const provider = (this.store.get('ai.provider') as string) ?? 'openai';
     if (!rawPrompt.trim()) throw new Error('Prompt is empty.');
