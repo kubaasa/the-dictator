@@ -74,10 +74,9 @@ interface RecordingItemProps {
   onDelete: (id: string) => void;
   deleteError: string | null;
   isDeleting: boolean;
-  isLast: boolean;
 }
 
-function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isDeleting, isLast }: RecordingItemProps) {
+function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isDeleting }: RecordingItemProps) {
 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -101,7 +100,7 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
   const modeBadge = entry.mode ? MODE_LABELS[entry.mode] ?? entry.mode.toUpperCase() : null;
 
   return (
-    <div className={`${!isLast ? 'border-b border-neutral-800/50' : ''}`}>
+    <div className="rounded-xl border border-neutral-800 bg-[#141414] overflow-hidden">
       {/* Collapsed row */}
       <button
         onClick={onToggle}
@@ -474,8 +473,8 @@ export function HistoryPage() {
                 <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">
                   {label}
                 </h2>
-                <div className="rounded-xl border border-neutral-800 bg-[#141414] overflow-hidden">
-                  {entries.map((entry, idx) => (
+                <div className="flex flex-col gap-3">
+                  {entries.map((entry) => (
                     <RecordingItem
                       key={entry.id}
                       entry={entry}
@@ -484,7 +483,6 @@ export function HistoryPage() {
                       onDelete={handleDelete}
                       deleteError={deleteError?.id === entry.id ? deleteError.msg : null}
                       isDeleting={deletingId === entry.id}
-                      isLast={idx === entries.length - 1}
                     />
                   ))}
                 </div>
