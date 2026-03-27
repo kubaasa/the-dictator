@@ -303,7 +303,7 @@ function broadcastState(state: RecordingState): void {
         overlayHideTimeout = setTimeout(() => {
           if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
           overlayHideTimeout = null;
-        }, 100);
+        }, 350);
       }
     } else {
       // Active states (initializing, recording, transcribing, processing, done, error):
