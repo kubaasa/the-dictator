@@ -291,7 +291,9 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
                     {entry.appName && <span className="ml-2 text-neutral-700">{entry.appName}</span>}
                   </p>
                 </div>
-                <CopyButton text={entry.text} stopPropagation className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 rounded-lg px-2 py-1 font-mono text-xs font-semibold uppercase tracking-wider border text-neutral-500 border-neutral-700 hover:border-neutral-500 hover:text-neutral-200" />
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                  <CopyButton text={entry.text} stopPropagation />
+                </div>
               </button>
               );
             })}

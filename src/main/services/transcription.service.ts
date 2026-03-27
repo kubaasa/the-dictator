@@ -67,6 +67,7 @@ export class TranscriptionService {
   private pipe: any = null;
   private loadedModelId: string | null = null;
   private cancelController: AbortController | null = null;
+  private downloadPromise: Promise<void> | null = null;
   private loadingPromise: Promise<void> | null = null;
   private groqClient: OpenAI | null = null;
   private groqClientKey: string | null = null;
@@ -166,6 +167,22 @@ export class TranscriptionService {
   // integrity verification would require parsing the repo's LFS metadata.
   // Corrupted-in-transit files could cause silent transcription failures.
   async downloadModel(onProgress: (pct: number) => void): Promise<void> {
+    // Wait for any previous download/cleanup to fully finish before starting.
+    // Prevents EPERM on Windows when Cancel → Download is clicked rapidly
+    // (rmSync / stream close races with new file open).
+    if (this.downloadPromise) {
+      await this.downloadPromise.catch(() => {});
+    }
+
+    this.downloadPromise = this.executeDownload(onProgress);
+    try {
+      await this.downloadPromise;
+    } finally {
+      this.downloadPromise = null;
+    }
+  }
+
+  private async executeDownload(onProgress: (pct: number) => void): Promise<void> {
     const modelId = this.getModelId();
 
     // Only count files > 20 MB (actual ONNX model weights).
@@ -225,6 +242,10 @@ export class TranscriptionService {
     this.loadedModelId = modelId;
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
+        // Windows doesn't release file handles from aborted fetch streams immediately.
+        // Without this delay, a rapid Cancel → Download sequence would EPERM
+        // because the new pipeline tries to open files still locked by the old stream.
+        await new Promise((r) => setTimeout(r, 500));
         const modelDir = path.join(MODELS_CACHE_DIR, modelId);
         try {
           fs.rmSync(modelDir, { recursive: true, force: true });

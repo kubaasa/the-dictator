@@ -55,6 +55,9 @@ export function useModelStatus() {
       cleanup();
       setError(msg);
       setDownloading(false);
+      // Refresh downloaded models list — partial .onnx files on disk
+      // could cause false-positive green checkmarks after a failed download.
+      window.dictator.getDownloadedModels().then(setDownloadedModels);
     }));
 
     cleanupRef.current = cleanup;

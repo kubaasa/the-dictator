@@ -113,7 +113,7 @@ export function ModesPage(props: ModelStatus) {
       await window.dictator.setSettings({
         transcription: { ...current.transcription, localModelSize: newSize },
       });
-      recheck();
+      if (!downloading) recheck();
     } catch (err) {
       log.error('[ModesPage] Failed to save model:', err);
     }
@@ -549,13 +549,8 @@ export function ModesPage(props: ModelStatus) {
                           </svg>
                         )}
                       </div>
-                      <span className="mt-1 text-xs text-neutral-600 leading-tight">
-                        {WHISPER_MODEL_DESCRIPTIONS[opt.value]}
-                      </span>
-
-                      {/* Download progress inside card */}
-                      {isDownloading && (
-                        <div className="mt-2 w-full">
+                      {isDownloading ? (
+                        <div className="mt-1 w-full">
                           <div className={`h-1 w-full rounded-full overflow-hidden ${
                             progress === 0 ? 'bg-red-900/40 animate-pulse' : 'bg-neutral-700'
                           }`}>
@@ -578,6 +573,10 @@ export function ModesPage(props: ModelStatus) {
                             </button>
                           </div>
                         </div>
+                      ) : (
+                        <span className="mt-1 text-xs text-neutral-600 leading-tight">
+                          {WHISPER_MODEL_DESCRIPTIONS[opt.value]}
+                        </span>
                       )}
                     </button>
                   );
