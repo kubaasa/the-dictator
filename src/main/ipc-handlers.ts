@@ -340,19 +340,27 @@ export function registerIpcHandlers(
     const samples = new Float32Array(audioBuffer);
     if (samples.length === 0) {
       log.warn('Empty audio buffer received — skipping transcription');
+      const emptyMsg = 'Recording was empty — no audio captured. Try again.';
       for (const win of BrowserWindow.getAllWindows()) {
-        win.webContents.send(IPC.NOTIFICATION_ERROR, 'Recording was empty — no audio captured. Try again.');
+        win.webContents.send(IPC.NOTIFICATION_ERROR, emptyMsg);
       }
-      broadcastState('idle');
+      broadcastState('error');
+      const overlay = getOverlayWindow();
+      if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, emptyMsg);
+      scheduleIdle(2500);
       return;
     }
     const rms = Math.sqrt(samples.reduce((sum, s) => sum + s * s, 0) / samples.length);
     if (rms < 0.003) {
       log.info('Audio below speech threshold (RMS=%.4f) — skipping transcription', rms);
+      const quietMsg = 'Audio too quiet — nothing to transcribe. Check your microphone.';
       for (const win of BrowserWindow.getAllWindows()) {
-        win.webContents.send(IPC.NOTIFICATION_ERROR, 'Audio too quiet — nothing to transcribe. Check your microphone.');
+        win.webContents.send(IPC.NOTIFICATION_ERROR, quietMsg);
       }
-      broadcastState('idle');
+      broadcastState('error');
+      const overlay = getOverlayWindow();
+      if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, quietMsg);
+      scheduleIdle(2500);
       return;
     }
 
@@ -382,10 +390,14 @@ export function registerIpcHandlers(
       const HALLUCINATION_RE = /^\s*[[(]?(muzyka|music|cisza|silence|szum|noise|applause|oklaski|śmiech|laughter)[\])]?\s*$/i;
       if (!rawText || HALLUCINATION_RE.test(rawText)) {
         log.info('Whisper returned empty or hallucinated text: "%s" — skipping', rawText ?? '');
+        const noSpeechMsg = 'No speech detected — recording contained only silence or background noise.';
         for (const win of BrowserWindow.getAllWindows()) {
-          win.webContents.send(IPC.NOTIFICATION_ERROR, 'No speech detected — recording contained only silence or background noise.');
+          win.webContents.send(IPC.NOTIFICATION_ERROR, noSpeechMsg);
         }
-        broadcastState('idle');
+        broadcastState('error');
+        const overlay = getOverlayWindow();
+        if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, noSpeechMsg);
+        scheduleIdle(2500);
         return;
       }
 
