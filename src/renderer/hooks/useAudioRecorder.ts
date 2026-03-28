@@ -161,21 +161,30 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   }, [trySendAudio]);
 
   const getOrCreateAudioContext = useCallback(async (): Promise<AudioContext> => {
-    if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
+    if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed' && workletReadyRef.current) {
       if (persistentCtxRef.current.state === 'suspended') {
         await persistentCtxRef.current.resume();
       }
       return persistentCtxRef.current;
     }
 
+    // Close stale context (exists but worklet not registered, or other bad state)
+    if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
+      try { await persistentCtxRef.current.close(); } catch { /* ignore */ }
+    }
+
     const ctx = new AudioContext({ sampleRate: 16000 });
     persistentCtxRef.current = ctx;
+    workletReadyRef.current = false;
 
     const blob = new Blob([WORKLET_PROCESSOR_CODE], { type: 'application/javascript' });
     const workletUrl = URL.createObjectURL(blob);
-    await ctx.audioWorklet.addModule(workletUrl);
-    URL.revokeObjectURL(workletUrl);
-    workletReadyRef.current = true;
+    try {
+      await ctx.audioWorklet.addModule(workletUrl);
+      workletReadyRef.current = true;
+    } finally {
+      URL.revokeObjectURL(workletUrl);
+    }
 
     return ctx;
   }, []);
@@ -249,17 +258,37 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
       mediaStreamRef.current = stream;
 
-      const audioContext = await getOrCreateAudioContext();
+      let audioContext = await getOrCreateAudioContext();
       if (sessionIdRef.current !== thisSession) {
         stream.getTracks().forEach(t => t.stop());
         return;
       }
       audioContextRef.current = audioContext;
 
-      const source = audioContext.createMediaStreamSource(stream);
+      let source = audioContext.createMediaStreamSource(stream);
       sourceRef.current = source;
 
-      const workletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
+      let workletNode: AudioWorkletNode;
+      try {
+        workletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
+      } catch (workletErr) {
+        // Worklet registration lost (e.g. after Teams/Meet took over audio) — recreate context
+        log.warn('AudioWorkletNode creation failed, recreating audio context:', workletErr);
+        workletReadyRef.current = false;
+        try { await persistentCtxRef.current?.close(); } catch { /* ignore */ }
+        persistentCtxRef.current = null;
+
+        audioContext = await getOrCreateAudioContext();
+        if (sessionIdRef.current !== thisSession) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+        audioContextRef.current = audioContext;
+        source.disconnect();
+        source = audioContext.createMediaStreamSource(stream);
+        sourceRef.current = source;
+        workletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
+      }
       workletNodeRef.current = workletNode;
       chunksRef.current = [];
 
