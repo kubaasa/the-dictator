@@ -289,7 +289,7 @@ ${systemPrompt}
     const provider = (this.store.get('ai.provider') as string) ?? 'openai';
     if (!promptContent.trim()) throw new Error('Prompt is empty.');
 
-    const metaPrompt = `Generate a short, descriptive name (2-4 words) for the following voice dictation system prompt. The name should capture the prompt's main purpose. Output ONLY the name, nothing else. No quotes, no punctuation.`;
+    const metaPrompt = `Generate a short, descriptive name (2-4 words) for the following voice dictation system prompt. The name should capture the prompt's main purpose. Start the name with a single relevant emoji that matches the topic. Output ONLY the emoji followed by the name, nothing else. No quotes, no punctuation. Example: 📧 Email Formatter`;
 
     const wrappedText = `<input>\n${promptContent}\n</input>`;
 
