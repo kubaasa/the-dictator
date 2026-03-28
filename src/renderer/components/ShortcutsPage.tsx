@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import log from 'electron-log/renderer';
 import { DEFAULT_SETTINGS, type AppSettings, type HotkeyMode } from '../../shared/types';
+import { useToast } from './Toast';
 
 type ShortcutKey = 'toggleRecording' | 'cancelRecording' | 'pushToTalk' | 'showWindow';
 
@@ -23,12 +24,6 @@ const APP_SHORTCUTS: ShortcutConfig[] = [
 const MODIFIER_CODES = new Set([
   'ControlLeft', 'ControlRight', 'ShiftLeft', 'ShiftRight',
   'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight',
-]);
-
-// Known system shortcuts that may conflict with app hotkeys
-const SYSTEM_SHORTCUTS = new Set([
-  'Ctrl+C', 'Ctrl+V', 'Ctrl+Z', 'Ctrl+S', 'Ctrl+A', 'Ctrl+X',
-  'Alt+F4', 'Alt+Tab',
 ]);
 
 const KEY_DISPLAY_SYMBOLS: Record<string, string> = {
@@ -146,6 +141,7 @@ export function ShortcutsPage() {
   const [listeningFor, setListeningFor] = useState<ShortcutKey | null>(null);
   const [pendingKeys, setPendingKeys] = useState('');
   const [error, setError] = useState('');
+  const { addToast } = useToast();
   const [shakingKey, setShakingKey] = useState<ShortcutKey | null>(null);
   const inputRef = useRef<HTMLDivElement>(null);
 
@@ -207,7 +203,9 @@ export function ShortcutsPage() {
           .map(([, v]) => v);
 
         if (otherShortcuts.includes(result)) {
-          setError(`"${result}" is already used by another shortcut`);
+          const duplicateKey = Object.entries(shortcuts).find(([k, v]) => k !== listeningFor && v === result)?.[0];
+          addToast('error', `"${result}" is already used by "${duplicateKey}"`);
+          cancelListening();
           return;
         }
 
@@ -232,7 +230,7 @@ export function ShortcutsPage() {
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [listeningFor, shortcuts, saveShortcuts, cancelListening]);
+  }, [listeningFor, shortcuts, saveShortcuts, cancelListening, addToast]);
 
   useEffect(() => {
     if (listeningFor && inputRef.current) {
@@ -259,22 +257,6 @@ export function ShortcutsPage() {
     setError('');
   }, [shortcuts, saveShortcuts]);
 
-  /** Returns a warning string if the shortcut conflicts with a system shortcut or another configured shortcut. */
-  const getShortcutWarning = useCallback((key: ShortcutKey): string | null => {
-    const combo = shortcuts[key];
-    if (!combo) return null;
-    if (SYSTEM_SHORTCUTS.has(combo)) {
-      return `"${combo}" is a common system shortcut and may not work as expected`;
-    }
-    const duplicate = Object.entries(shortcuts).find(
-      ([k, v]) => k !== key && v === combo,
-    );
-    if (duplicate) {
-      return `"${combo}" is also used by "${duplicate[0]}" — this will cause conflicts`;
-    }
-    return null;
-  }, [shortcuts]);
-
   const isInactive = (key: ShortcutKey): boolean => {
     if (hotkeyMode === 'toggle') return key === 'pushToTalk';
     if (hotkeyMode === 'push-to-talk') return key === 'toggleRecording' || key === 'cancelRecording';
@@ -284,10 +266,9 @@ export function ShortcutsPage() {
   const renderShortcutRow = (config: ShortcutConfig) => {
     const inactive = isInactive(config.key);
     const isListening = !inactive && listeningFor === config.key;
-    const warning = !inactive ? getShortcutWarning(config.key) : null;
     return (
-      <div key={config.key} className="flex flex-col gap-1">
         <div
+          key={config.key}
           className={`flex items-center justify-between rounded-lg border px-5 py-4 transition-opacity ${
             inactive
               ? 'border-neutral-800/50 bg-[#0f0f0f] opacity-35 pointer-events-none select-none'
@@ -344,10 +325,6 @@ export function ShortcutsPage() {
             </div>
           </div>
         </div>
-        {warning && (
-          <p className="ml-5 text-xs text-amber-500 font-mono">{warning}</p>
-        )}
-      </div>
     );
   };
 
