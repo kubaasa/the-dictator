@@ -48,13 +48,16 @@ function formatApiError(err: unknown): string {
   return String(err);
 }
 
-/** Apply vocabulary find-and-replace (case-insensitive, whole-word). Last step in pipeline. */
+/** Apply vocabulary find-and-replace (case-insensitive, whole-word). Last step in pipeline.
+ *  Single-pass replacement prevents chains (A→B, B→C won't cascade). */
 function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]): string {
   if (!vocabulary || vocabulary.length === 0) return text;
 
-  let result = text;
+  const replacementMap = new Map<string, string>();
+  const patterns: string[] = [];
+
   for (const entry of vocabulary) {
-    if (!entry.replacement) continue;
+    if (entry.replacement == null) continue;
 
     const escaped = entry.input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // \b doesn't work with non-ASCII (Polish etc.) — use whitespace/punctuation boundaries instead
@@ -63,11 +66,18 @@ function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]
     const pattern = hasNonAscii
       ? `(?<=^|[\\s.,;:!?"""''()\\[\\]])${escaped}(?=$|[\\s.,;:!?"""''()\\[\\]])`
       : `\\b${escaped}\\b`;
-    const regex = new RegExp(pattern, 'gi');
-    const safeReplacement = entry.replacement.replace(/\$/g, '$$$$');
-    result = result.replace(regex, safeReplacement);
+
+    patterns.push(`(?:${pattern})`);
+    replacementMap.set(entry.input.toLowerCase(), entry.replacement);
   }
-  return result;
+
+  if (patterns.length === 0) return text;
+
+  // Combined regex — each match position visited only once, no chaining
+  const combinedRegex = new RegExp(patterns.join('|'), 'gi');
+  return text.replace(combinedRegex, (match) => {
+    return replacementMap.get(match.toLowerCase()) ?? match;
+  });
 }
 
 export function getOverlaySize(widget: WidgetType): [number, number] {
@@ -219,6 +229,17 @@ export function registerIpcHandlers(
         if (!prompt.name.trim()) {
           throw new Error('Invalid saved prompt: "name" cannot be empty');
         }
+        if (prompt.content.length > 4000) {
+          throw new Error('Invalid saved prompt: "content" exceeds 4000 characters');
+        }
+      }
+    }
+    if (settings.dictation?.customPrompt !== undefined) {
+      if (typeof settings.dictation.customPrompt !== 'string') {
+        throw new Error('Invalid value for "customPrompt": expected string');
+      }
+      if (settings.dictation.customPrompt.length > 2000) {
+        throw new Error('Custom prompt exceeds 2000 characters');
       }
     }
     if (settings.vocabulary !== undefined) {

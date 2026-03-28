@@ -292,7 +292,7 @@ export function ModesPage(props: ModelStatus) {
     setNewPromptTempId(null);
     const content = id === 'default'
       ? DEFAULT_SETTINGS.dictation.customPrompt
-      : savedPrompts.find(p => p.id === id)?.content ?? '';
+      : savedPrompts.find(p => p.id === id)?.content ?? DEFAULT_SETTINGS.dictation.customPrompt;
     setCustomPrompt(content);
     setLastLoadedPrompt(content);
     try {
@@ -316,29 +316,44 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const handleSavePrompt = async () => {
-    if (savingRef.current || savedPrompts.length >= 5 || !isAiConfigured || !customPrompt.trim()) return;
+    if (savingRef.current || !isAiConfigured || !customPrompt.trim()) return;
     savingRef.current = true;
     setSavingPrompt(true);
     try {
-      const res = await window.dictator.ai.generatePromptName(customPrompt);
-      const name = res.success && res.name ? res.name.trim() : `Prompt ${savedPrompts.length + 1}`;
-      if (!res.success) addToast('error', 'Could not generate name — using fallback');
-      const newPrompt: SavedPrompt = {
-        id: crypto.randomUUID(),
-        name,
-        content: customPrompt,
-      };
-      const updated = [...savedPrompts, newPrompt];
-      const current = await window.dictator.getSettings();
-      await window.dictator.setSettings({
-        dictation: { ...current.dictation, savedPrompts: updated, customPrompt: customPrompt, selectedPromptId: newPrompt.id },
-      });
-      setSavedPrompts(updated);
-      setSelectedPromptId(newPrompt.id);
-      setLastLoadedPrompt(customPrompt);
-      setIsCreatingNewPrompt(false);
-      setNewPromptTempId(null);
-      addToast('success', `Prompt saved as "${name}"`);
+      if (isEditingExistingPrompt) {
+        const updated = savedPrompts.map(p =>
+          p.id === selectedPromptId ? { ...p, content: customPrompt } : p
+        );
+        const current = await window.dictator.getSettings();
+        await window.dictator.setSettings({
+          dictation: { ...current.dictation, savedPrompts: updated, customPrompt },
+        });
+        setSavedPrompts(updated);
+        setLastLoadedPrompt(customPrompt);
+        addToast('success', 'Prompt updated');
+      } else {
+        if (savedPrompts.length >= 5) return;
+        const res = await window.dictator.ai.generatePromptName(customPrompt);
+        const generatedName = res.success && res.name ? res.name.trim() : '';
+        const name = generatedName || `Prompt ${savedPrompts.length + 1}`;
+        if (!generatedName) addToast('info', 'Could not generate name — using fallback');
+        const newPrompt: SavedPrompt = {
+          id: crypto.randomUUID(),
+          name,
+          content: customPrompt,
+        };
+        const updated = [...savedPrompts, newPrompt];
+        const current = await window.dictator.getSettings();
+        await window.dictator.setSettings({
+          dictation: { ...current.dictation, savedPrompts: updated, customPrompt, selectedPromptId: newPrompt.id },
+        });
+        setSavedPrompts(updated);
+        setSelectedPromptId(newPrompt.id);
+        setLastLoadedPrompt(customPrompt);
+        setIsCreatingNewPrompt(false);
+        setNewPromptTempId(null);
+        addToast('success', `Prompt saved as "${name}"`);
+      }
     } catch (err) {
       log.error('[ModesPage] Failed to save prompt:', err);
       addToast('error', 'Failed to save prompt');
@@ -365,9 +380,9 @@ export function ModesPage(props: ModelStatus) {
         },
       });
       setSavedPrompts(updated);
-      setIsCreatingNewPrompt(false);
-      setNewPromptTempId(null);
       if (isSelected) {
+        setIsCreatingNewPrompt(false);
+        setNewPromptTempId(null);
         setSelectedPromptId('default');
         setCustomPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
         setLastLoadedPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
@@ -482,10 +497,15 @@ export function ModesPage(props: ModelStatus) {
 
   const isPromptModified = customPrompt !== lastLoadedPrompt;
 
-  const canSavePrompt = isAiConfigured && savedPrompts.length < 5 &&
-    !!customPrompt.trim() &&
-    customPrompt !== DEFAULT_SETTINGS.dictation.customPrompt &&
-    !savedPrompts.some(p => p.content === customPrompt);
+  const isEditingExistingPrompt = selectedPromptId !== 'default' && savedPrompts.some(p => p.id === selectedPromptId);
+
+  const canSavePrompt = isAiConfigured && !!customPrompt.trim() && (
+    isEditingExistingPrompt
+      ? isPromptModified
+      : savedPrompts.length < 5 &&
+        customPrompt !== DEFAULT_SETTINGS.dictation.customPrompt &&
+        !savedPrompts.some(p => p.content === customPrompt)
+  );
 
   const currentAiModels = aiProvider === 'openai' ? openaiModels : aiProvider === 'anthropic' ? ANTHROPIC_MODELS : [];
   const currentAiModel = aiProvider === 'openai' ? aiOpenaiModel : aiProvider === 'anthropic' ? aiAnthropicModel : '';
@@ -1038,9 +1058,15 @@ export function ModesPage(props: ModelStatus) {
                     onChange={(e) => handlePromptChange(e.target.value)}
                     onBlur={savingPrompt || enhancing ? undefined : handlePromptSave}
                     placeholder={isCreatingNewPrompt ? 'Type your new prompt here...' : 'Enter system prompt...'}
+                    maxLength={4000}
                     rows={6}
                     className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-4 py-3 text-sm text-neutral-300 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 resize-none leading-relaxed"
                   />
+                  <div className="flex justify-end mt-1">
+                    <span className={`font-mono text-[10px] ${customPrompt.length > 3600 ? 'text-amber-500' : 'text-neutral-600'}`}>
+                      {customPrompt.length}/4000
+                    </span>
+                  </div>
 
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center gap-3">
@@ -1066,7 +1092,11 @@ export function ModesPage(props: ModelStatus) {
                             : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
                         }`}
                       >
-                        {savingPrompt ? 'Saving...' : savedPrompts.length >= 5 ? 'Limit Reached' : 'Save Prompt'}
+                        {savingPrompt
+                          ? (isEditingExistingPrompt ? 'Updating...' : 'Saving...')
+                          : isEditingExistingPrompt
+                            ? 'Update Prompt'
+                            : savedPrompts.length >= 5 ? 'Limit Reached' : 'Save Prompt'}
                       </button>
                       <button
                         onClick={handleNewPrompt}

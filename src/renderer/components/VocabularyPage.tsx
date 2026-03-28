@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import log from 'electron-log/renderer';
 import type { VocabularyEntry } from '../../shared/types';
+import { useToast } from './Toast';
 
 export function VocabularyPage() {
   const [entries, setEntries] = useState<VocabularyEntry[]>([]);
@@ -9,8 +10,8 @@ export function VocabularyPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editInput, setEditInput] = useState('');
   const [editReplacement, setEditReplacement] = useState('');
-  const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const { addToast } = useToast();
 
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
@@ -22,15 +23,16 @@ export function VocabularyPage() {
     return unsub;
   }, []);
 
-  const save = useCallback(async (updated: VocabularyEntry[]) => {
+  const save = useCallback(async (updated: VocabularyEntry[]): Promise<boolean> => {
     setIsSaving(true);
     try {
       await window.dictator.setSettings({ vocabulary: updated });
       setEntries(updated);
-      setError('');
+      return true;
     } catch (err) {
       log.error('Failed to save vocabulary:', err);
-      setError('Failed to save. Please try again.');
+      addToast('error', 'Failed to save. Please try again.');
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -38,22 +40,25 @@ export function VocabularyPage() {
 
   const addEntry = useCallback(async () => {
     const trimmed = newInput.trim();
-    if (!trimmed) {
-      setError('Word or sentence cannot be empty');
+    const trimmedReplacement = newReplacement.trim();
+    if (!trimmed || !trimmedReplacement) {
+      addToast('error', 'Both fields are required');
       return;
     }
     if (entries.some((e) => e.input.toLowerCase() === trimmed.toLowerCase())) {
-      setError(`"${trimmed}" is already in your vocabulary`);
+      addToast('error', `"${trimmed}" is already in your vocabulary`);
       return;
     }
     const entry: VocabularyEntry = {
       id: crypto.randomUUID(),
       input: trimmed,
-      ...(newReplacement.trim() && { replacement: newReplacement.trim() }),
+      replacement: trimmedReplacement,
     };
-    await save([...entries, entry]);
-    setNewInput('');
-    setNewReplacement('');
+    const ok = await save([...entries, entry]);
+    if (ok) {
+      setNewInput('');
+      setNewReplacement('');
+    }
   }, [newInput, newReplacement, entries, save]);
 
   const deleteEntry = useCallback(async (id: string) => {
@@ -65,22 +70,22 @@ export function VocabularyPage() {
     setEditingId(entry.id);
     setEditInput(entry.input);
     setEditReplacement(entry.replacement ?? '');
-    setError('');
   }, []);
 
   const saveEdit = useCallback(async () => {
     const trimmed = editInput.trim();
-    if (!trimmed) {
-      setError('Word or sentence cannot be empty');
+    const trimmedReplacement = editReplacement.trim();
+    if (!trimmed || !trimmedReplacement) {
+      addToast('error', 'Both fields are required');
       return;
     }
     if (entries.some((e) => e.id !== editingId && e.input.toLowerCase() === trimmed.toLowerCase())) {
-      setError(`"${trimmed}" is already in your vocabulary`);
+      addToast('error', `"${trimmed}" is already in your vocabulary`);
       return;
     }
     const updated = entries.map((e) =>
       e.id === editingId
-        ? { ...e, input: trimmed, replacement: editReplacement.trim() || undefined }
+        ? { ...e, input: trimmed, replacement: trimmedReplacement }
         : e,
     );
     await save(updated);
@@ -89,7 +94,6 @@ export function VocabularyPage() {
 
   const cancelEdit = useCallback(() => {
     setEditingId(null);
-    setError('');
   }, []);
 
   const handleAddKeyDown = (e: React.KeyboardEvent) => {
@@ -138,7 +142,7 @@ export function VocabularyPage() {
             <input
               type="text"
               value={newInput}
-              onChange={(e) => { setNewInput(e.target.value); setError(''); }}
+              onChange={(e) => setNewInput(e.target.value)}
               onKeyDown={handleAddKeyDown}
               maxLength={200}
               placeholder="New word or sentence"
@@ -163,10 +167,6 @@ export function VocabularyPage() {
           </div>
         </div>
 
-        {error && (
-          <p role="alert" className="text-sm text-red-400 mb-4">{error}</p>
-        )}
-
         {/* Entry list */}
         {entries.length > 0 && (
           <div className="space-y-2">
@@ -181,7 +181,7 @@ export function VocabularyPage() {
                     <input
                       type="text"
                       value={editInput}
-                      onChange={(e) => { setEditInput(e.target.value); setError(''); }}
+                      onChange={(e) => setEditInput(e.target.value)}
                       onKeyDown={handleEditKeyDown}
                       autoFocus
                       maxLength={200}
@@ -216,18 +216,23 @@ export function VocabularyPage() {
                   <>
                     <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
                       <span className="truncate font-mono text-neutral-200">{entry.input}</span>
-                      {entry.replacement && (
+                      {entry.replacement != null && (
                         <>
                           <span className="flex-shrink-0 text-neutral-600">&rarr;</span>
-                          <span className="truncate font-mono text-red-400">{entry.replacement}</span>
+                          {entry.replacement ? (
+                            <span className="truncate font-mono text-red-400">{entry.replacement}</span>
+                          ) : (
+                            <span className="truncate font-mono text-neutral-500 italic">(remove)</span>
+                          )}
                         </>
                       )}
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-2">
                       <button
                         onClick={() => startEdit(entry)}
+                        disabled={isSaving}
                         title="Edit"
-                        className="rounded p-1 text-neutral-600 transition-colors hover:text-neutral-300"
+                        className="rounded p-1 text-neutral-600 transition-colors hover:text-neutral-300 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
