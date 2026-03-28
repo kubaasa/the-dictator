@@ -375,7 +375,7 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          cursor: isDragging ? 'grabbing' : 'grab',
+          cursor: 'default',
         } as React.CSSProperties}
       >
         {/* Pill container */}
