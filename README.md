@@ -13,15 +13,7 @@
 </div>
 
 ---
-
-<!-- TODO: Replace with actual screenshot or demo GIF -->
-<div align="center">
-
-> **Screenshots coming soon** — place a screenshot or GIF of the app in action here.
->
-> Suggested: `assets/demo.gif` (recording → transcription → paste flow)
-
-</div>
+<img width="1194" height="829" alt="image" src="https://github.com/user-attachments/assets/6fa41d10-8031-42c9-9bc5-d5a5aa4419ac" />
 
 ---
 
