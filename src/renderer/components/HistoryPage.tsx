@@ -364,29 +364,27 @@ export function HistoryPage() {
           <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">
             Footage Archive
           </h2>
-          <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5">
-            <div className="relative">
-              <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-600 pointer-events-none"
-                fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-              </svg>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={handleSearchChange}
-                placeholder="SEARCH FOOTAGE..."
-                aria-label="Search recordings"
-                className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 pl-9 pr-4 py-2 font-mono text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 transition-colors"
-              />
-            </div>
-            {!isLoading && (
-              <p className="mt-2 font-mono text-sm text-neutral-600">
-                {displayCount} recording{displayCount !== 1 ? 's' : ''}
-              </p>
-            )}
+          <div className="relative">
+            <svg
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-600 pointer-events-none"
+              fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              placeholder="SEARCH FOOTAGE..."
+              aria-label="Search recordings"
+              className="w-full rounded-xl border border-neutral-800 bg-[#141414] pl-9 pr-4 py-3 font-mono text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 transition-colors"
+            />
           </div>
+          {!isLoading && (
+            <p className="mt-2 font-mono text-sm text-neutral-600">
+              {displayCount} recording{displayCount !== 1 ? 's' : ''}
+            </p>
+          )}
         </section>
 
         {/* ── Content ── */}
