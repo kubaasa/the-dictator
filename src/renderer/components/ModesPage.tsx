@@ -1052,12 +1052,6 @@ export function ModesPage(props: ModelStatus) {
                     rows={6}
                     className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-4 py-3 text-sm text-neutral-300 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 resize-none leading-relaxed"
                   />
-                  <div className="flex justify-end mt-1">
-                    <span className={`font-mono text-[10px] ${customPrompt.length > 3600 ? 'text-amber-500' : 'text-neutral-600'}`}>
-                      {customPrompt.length}/4000
-                    </span>
-                  </div>
-
                   <div className="flex items-center justify-between mt-2">
                     <div className="flex items-center gap-3">
                       <button
