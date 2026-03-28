@@ -57,7 +57,7 @@ export class UpdateService {
       this.notify();
     });
 
-    setTimeout(() => this.checkForUpdates(), 30_000);
+    this.checkForUpdates();
     this.checkTimer = setInterval(() => this.checkForUpdates(), CHECK_INTERVAL_MS);
   }
 

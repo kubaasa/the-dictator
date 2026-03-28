@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, shell, clipboard, app, screen, net } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import * as Sentry from '@sentry/electron/main';
 import logger from './services/logger';
 import { IPC } from '../shared/constants';
 
@@ -349,6 +350,16 @@ export function registerIpcHandlers(
       return;
     }
     transcriptionInProgress = true;
+
+    const engine = (store.get('transcription.engine') as string) ?? 'local';
+    const language = (store.get('transcription.language') as string) ?? 'auto';
+    const aiEnabled = (store.get('dictation.aiPostProcessing') as boolean) ?? true;
+    const aiProvider = (store.get('ai.provider') as string) ?? 'openai';
+    Sentry.setTag('transcription.engine', engine);
+    Sentry.setTag('transcription.language', language);
+    Sentry.setTag('ai.enabled', String(aiEnabled));
+    Sentry.setTag('ai.provider', aiEnabled ? aiProvider : 'none');
+
     try {
     // Silence detection: skip transcription if audio is below speech threshold.
     // Prevents Whisper hallucinations like [muzyka], [music], [cisza] on silence.
@@ -730,6 +741,6 @@ export function registerIpcHandlers(
       if (allowed.some((d) => hostname === d || hostname.endsWith('.' + d))) {
         shell.openExternal(url);
       }
-    } catch { /* ignore invalid URLs */ }
+    } catch (err) { logger.warn('SHELL_OPEN_EXTERNAL: invalid URL "%s":', url, err); }
   });
 }

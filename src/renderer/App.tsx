@@ -1,4 +1,5 @@
 import { useState, useEffect, Component, type ReactNode, type ErrorInfo } from 'react';
+import * as Sentry from '@sentry/electron/renderer';
 import log from 'electron-log/renderer';
 import { OverlayWindow } from './components/OverlayWindow';
 import { Sidebar } from './components/Sidebar';
@@ -13,6 +14,7 @@ import { MicrophoneSelector } from './components/MicrophoneSelector';
 import { ScanLines, NoiseOverlay, Vignette, RecIndicator } from './components/RecEffects';
 import { ToastProvider } from './components/Toast';
 import { OnboardingWizard } from './components/OnboardingWizard';
+import { ForceUpdateModal } from './components/ForceUpdateModal';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
@@ -26,6 +28,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    Sentry.captureException(error, { extra: { componentStack: info.componentStack } });
     log.error('React ErrorBoundary caught:', error, info.componentStack);
   }
 
@@ -58,6 +61,17 @@ export function App() {
   const audioRecorder = useAudioRecorder(micSelector.selectedDeviceId);
   const [showFirstRun, setShowFirstRun] = useState(false);
   const [isFirstRun, setIsFirstRun] = useState(false);
+  const [updateState, setUpdateState] = useState<import('../shared/types').UpdateState | null>(null);
+
+  useEffect(() => {
+    window.dictator.update.getInfo().then((state) => {
+      if (state.status === 'downloaded') setUpdateState(state);
+    }).catch((err) => log.warn('Failed to get update info:', err));
+
+    return window.dictator.update.onStatusChange((state) => {
+      setUpdateState(state.status === 'downloaded' ? state : null);
+    });
+  }, []);
 
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
@@ -118,6 +132,7 @@ export function App() {
         </div>
       </div>
       {showFirstRun && <OnboardingWizard onComplete={(micId) => { if (micId) micSelector.setSelectedDeviceId(micId); setShowFirstRun(false); setActiveView('modes'); modelStatus.recheck(); }} onClose={isFirstRun ? undefined : () => setShowFirstRun(false)} />}
+      {updateState && <ForceUpdateModal updateState={updateState} />}
     </div>
     </ToastProvider>
     </ErrorBoundary>

@@ -235,7 +235,8 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
       return;
     }
     vizActiveRef.current = true;
-    startVisualization().catch(() => {
+    startVisualization().catch((err) => {
+      log.warn('[VoiceBar] startVisualization failed:', err);
       vizActiveRef.current = false;
       stopVisualization();
     });

@@ -30,10 +30,17 @@ log.hooks.push((message) => {
 
 log.hooks.push((message) => {
   if (message.level === 'error') {
-    Sentry.captureMessage(message.data.join(' '), 'error');
+    const errorObj = message.data.find((item): item is Error => item instanceof Error);
+    if (errorObj) {
+      Sentry.captureException(errorObj, {
+        extra: { logMessage: message.data.filter((item) => typeof item === 'string').join(' ') },
+      });
+    } else {
+      Sentry.captureMessage(message.data.join(' '), 'error');
+    }
   }
   Sentry.addBreadcrumb({
-    message: message.data.join(' '),
+    message: message.data.filter((item) => typeof item === 'string').join(' '),
     level: message.level === 'warn' ? 'warning' : message.level,
     category: message.scope || 'app',
   });

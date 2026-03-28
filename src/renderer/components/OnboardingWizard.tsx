@@ -537,7 +537,7 @@ function StepMicTest({
       stopMicTest();
       navigator.mediaDevices.removeEventListener('devicechange', refreshDevices);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleDeviceChange = (deviceId: string) => {
     setSelectedDeviceId(deviceId);

@@ -426,7 +426,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     setError('');
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+      try { mediaRecorderRef.current.stop(); } catch (err) { log.debug('MediaRecorder.stop() threw during cleanup:', err); }
       mediaRecorderRef.current = null;
     }
     mediaChunksRef.current = [];

@@ -168,7 +168,8 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
       return;
     }
     vizActiveRef.current = true;
-    startVisualization().catch(() => {
+    startVisualization().catch((err) => {
+      log.warn('[MaxiWidget] startVisualization failed:', err);
       vizActiveRef.current = false;
       stopVisualization();
     });

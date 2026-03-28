@@ -166,7 +166,7 @@ export class TranscriptionService {
     // Prevents EPERM on Windows when Cancel → Download is clicked rapidly
     // (rmSync / stream close races with new file open).
     if (this.downloadPromise) {
-      await this.downloadPromise.catch(() => {});
+      await this.downloadPromise.catch((err) => { logger.debug('Previous download promise rejected (already handled):', err); });
     }
 
     this.downloadPromise = this.executeDownload(onProgress);
