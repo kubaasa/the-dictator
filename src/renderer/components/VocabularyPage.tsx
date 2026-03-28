@@ -127,11 +127,11 @@ export function VocabularyPage() {
             <span><span className="text-neutral-400">&quot;cloud md&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;CLAUDE.md&quot;</span></span>
             <span><span className="text-neutral-400">&quot;K8s&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;Kubernetes&quot;</span></span>
             <span><span className="text-neutral-400">&quot;Next JS&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;Next.js&quot;</span></span>
-            <span><span className="text-neutral-400">&quot;Browar&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;Dzbanek&quot;</span></span>
-            <span><span className="text-neutral-400">&quot;readme md&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;README.md&quot;</span></span>
+            <span><span className="text-neutral-400">&quot;post gres&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;PostgreSQL&quot;</span></span>
+            <span><span className="text-neutral-400">&quot;graph QL&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;GraphQL&quot;</span></span>
             <span><span className="text-neutral-400">&quot;en 8 en&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;n8n&quot;</span></span>
             <span><span className="text-neutral-400">&quot;CI CD&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;CI/CD&quot;</span></span>
-            <span><span className="text-neutral-400">&quot;JIRA&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;Jira&quot;</span></span>
+            <span><span className="text-neutral-400">&quot;dev ops&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;DevOps&quot;</span></span>
           </div>
         </div>
 

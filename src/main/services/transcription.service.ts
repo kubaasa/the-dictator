@@ -310,11 +310,28 @@ export class TranscriptionService {
     return words.join(', ');
   }
 
+  /**
+   * Build Groq Whisper prompt: a style-formatted sentence (guides the model to
+   * produce consistent capitalization and punctuation) + vocabulary hints.
+   */
+  private buildGroqPrompt(): string {
+    const language = (this.store.get('transcription.language') as string) ?? 'auto';
+    const vocabHint = this.getVocabularyPromptHint();
+
+    const STYLE_HINTS: Record<string, string> = {
+      pl: 'Witaj. Dyktowanie tekstu po polsku, z poprawną interpunkcją.',
+      en: 'Hello. Dictating text with proper punctuation and capitalization.',
+    };
+    const styleHint = STYLE_HINTS[language] ?? STYLE_HINTS['en'];
+
+    return [styleHint, vocabHint].filter(Boolean).join(' ');
+  }
+
   private async transcribeGroqFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
-      const vocabHint = this.getVocabularyPromptHint();
+      const prompt = this.buildGroqPrompt();
 
       const float32 = ipcBufferToFloat32(audioBuffer);
       const wavBuffer = encodeWavFast(float32, sampleRate);
@@ -323,8 +340,8 @@ export class TranscriptionService {
       const response = await client.audio.transcriptions.create({
         model: 'whisper-large-v3',
         file,
+        prompt,
         ...(language !== 'auto' && { language }),
-        ...(vocabHint && { prompt: vocabHint }),
       });
 
       return response.text.trim();
@@ -335,7 +352,7 @@ export class TranscriptionService {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
-      const vocabHint = this.getVocabularyPromptHint();
+      const prompt = this.buildGroqPrompt();
 
       const buf = Buffer.isBuffer(compressedAudio) ? compressedAudio : Buffer.from(compressedAudio);
       const file = await toFile(buf, 'audio.webm', { type: 'audio/webm' });
@@ -343,8 +360,8 @@ export class TranscriptionService {
       const response = await client.audio.transcriptions.create({
         model: 'whisper-large-v3',
         file,
+        prompt,
         ...(language !== 'auto' && { language }),
-        ...(vocabHint && { prompt: vocabHint }),
       });
 
       return response.text.trim();
