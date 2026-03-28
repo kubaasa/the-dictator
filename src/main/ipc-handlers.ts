@@ -238,8 +238,8 @@ export function registerIpcHandlers(
       if (typeof settings.dictation.customPrompt !== 'string') {
         throw new Error('Invalid value for "customPrompt": expected string');
       }
-      if (settings.dictation.customPrompt.length > 2000) {
-        throw new Error('Custom prompt exceeds 2000 characters');
+      if (settings.dictation.customPrompt.length > 4000) {
+        throw new Error('Custom prompt exceeds 4000 characters');
       }
     }
     if (settings.vocabulary !== undefined) {

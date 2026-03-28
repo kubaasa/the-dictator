@@ -73,6 +73,7 @@ export function ModesPage(props: ModelStatus) {
   const [lastLoadedPrompt, setLastLoadedPrompt] = useState(DEFAULT_SETTINGS.dictation.customPrompt);
   const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
   const promptDropdownRef = useRef<HTMLDivElement>(null);
+  const skipBlurSaveRef = useRef(false);
 
   // Output settings (read-only for pipeline bar)
   const [autoPaste, setAutoPaste] = useState(DEFAULT_SETTINGS.dictation.autoPaste);
@@ -239,10 +240,14 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const handlePromptSave = async () => {
+    if (skipBlurSaveRef.current) {
+      skipBlurSaveRef.current = false;
+      return;
+    }
     try {
       const current = await window.dictator.getSettings();
       await window.dictator.setSettings({
-        dictation: { ...current.dictation, customPrompt },
+        dictation: { ...current.dictation, customPrompt, selectedPromptId },
       });
     } catch (err) {
       log.error('[ModesPage] Failed to save prompt:', err);
@@ -275,6 +280,7 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const handlePromptReset = async () => {
+    skipBlurSaveRef.current = true;
     setCustomPrompt(lastLoadedPrompt);
     try {
       const current = await window.dictator.getSettings();
@@ -287,6 +293,7 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const handleSelectPrompt = async (id: string) => {
+    skipBlurSaveRef.current = true;
     setSelectedPromptId(id);
     setIsCreatingNewPrompt(false);
     setNewPromptTempId(null);
@@ -307,6 +314,7 @@ export function ModesPage(props: ModelStatus) {
 
   const handleNewPrompt = () => {
     if (savingPrompt || enhancing) return;
+    skipBlurSaveRef.current = true;
     const tempId = `new-${Date.now()}`;
     setNewPromptTempId(tempId);
     setIsCreatingNewPrompt(true);
@@ -316,44 +324,30 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const handleSavePrompt = async () => {
-    if (savingRef.current || !isAiConfigured || !customPrompt.trim()) return;
+    if (savingRef.current || savedPrompts.length >= 5 || !isAiConfigured || !customPrompt.trim()) return;
     savingRef.current = true;
     setSavingPrompt(true);
     try {
-      if (isEditingExistingPrompt) {
-        const updated = savedPrompts.map(p =>
-          p.id === selectedPromptId ? { ...p, content: customPrompt } : p
-        );
-        const current = await window.dictator.getSettings();
-        await window.dictator.setSettings({
-          dictation: { ...current.dictation, savedPrompts: updated, customPrompt },
-        });
-        setSavedPrompts(updated);
-        setLastLoadedPrompt(customPrompt);
-        addToast('success', 'Prompt updated');
-      } else {
-        if (savedPrompts.length >= 5) return;
-        const res = await window.dictator.ai.generatePromptName(customPrompt);
-        const generatedName = res.success && res.name ? res.name.trim() : '';
-        const name = generatedName || `Prompt ${savedPrompts.length + 1}`;
-        if (!generatedName) addToast('info', 'Could not generate name — using fallback');
-        const newPrompt: SavedPrompt = {
-          id: crypto.randomUUID(),
-          name,
-          content: customPrompt,
-        };
-        const updated = [...savedPrompts, newPrompt];
-        const current = await window.dictator.getSettings();
-        await window.dictator.setSettings({
-          dictation: { ...current.dictation, savedPrompts: updated, customPrompt, selectedPromptId: newPrompt.id },
-        });
-        setSavedPrompts(updated);
-        setSelectedPromptId(newPrompt.id);
-        setLastLoadedPrompt(customPrompt);
-        setIsCreatingNewPrompt(false);
-        setNewPromptTempId(null);
-        addToast('success', `Prompt saved as "${name}"`);
-      }
+      const res = await window.dictator.ai.generatePromptName(customPrompt);
+      const generatedName = res.success && res.name ? res.name.trim() : '';
+      const name = generatedName || `Prompt ${savedPrompts.length + 1}`;
+      if (!generatedName) addToast('info', 'Could not generate name — using fallback');
+      const newPrompt: SavedPrompt = {
+        id: crypto.randomUUID(),
+        name,
+        content: customPrompt,
+      };
+      const updated = [...savedPrompts, newPrompt];
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        dictation: { ...current.dictation, savedPrompts: updated, customPrompt: customPrompt, selectedPromptId: newPrompt.id },
+      });
+      setSavedPrompts(updated);
+      setSelectedPromptId(newPrompt.id);
+      setLastLoadedPrompt(customPrompt);
+      setIsCreatingNewPrompt(false);
+      setNewPromptTempId(null);
+      addToast('success', `Prompt saved as "${name}"`);
     } catch (err) {
       log.error('[ModesPage] Failed to save prompt:', err);
       addToast('error', 'Failed to save prompt');
@@ -367,6 +361,7 @@ export function ModesPage(props: ModelStatus) {
     e.stopPropagation();
     const updated = savedPrompts.filter(p => p.id !== id);
     const isSelected = selectedPromptId === id;
+    if (isSelected) skipBlurSaveRef.current = true;
     try {
       const current = await window.dictator.getSettings();
       await window.dictator.setSettings({
@@ -495,17 +490,12 @@ export function ModesPage(props: ModelStatus) {
     aiProvider === 'anthropic' ? !!aiAnthropicKey :
     false;
 
-  const isPromptModified = customPrompt !== lastLoadedPrompt;
+  const isPromptModified = !isCreatingNewPrompt && customPrompt !== lastLoadedPrompt;
 
-  const isEditingExistingPrompt = selectedPromptId !== 'default' && savedPrompts.some(p => p.id === selectedPromptId);
-
-  const canSavePrompt = isAiConfigured && !!customPrompt.trim() && (
-    isEditingExistingPrompt
-      ? isPromptModified
-      : savedPrompts.length < 5 &&
-        customPrompt !== DEFAULT_SETTINGS.dictation.customPrompt &&
-        !savedPrompts.some(p => p.content === customPrompt)
-  );
+  const canSavePrompt = isAiConfigured && savedPrompts.length < 5 &&
+    !!customPrompt.trim() &&
+    customPrompt !== DEFAULT_SETTINGS.dictation.customPrompt &&
+    !savedPrompts.some(p => p.content === customPrompt);
 
   const currentAiModels = aiProvider === 'openai' ? openaiModels : aiProvider === 'anthropic' ? ANTHROPIC_MODELS : [];
   const currentAiModel = aiProvider === 'openai' ? aiOpenaiModel : aiProvider === 'anthropic' ? aiAnthropicModel : '';
@@ -1057,7 +1047,7 @@ export function ModesPage(props: ModelStatus) {
                     value={customPrompt}
                     onChange={(e) => handlePromptChange(e.target.value)}
                     onBlur={savingPrompt || enhancing ? undefined : handlePromptSave}
-                    placeholder={isCreatingNewPrompt ? 'Type your new prompt here...' : 'Enter system prompt...'}
+                    placeholder={isCreatingNewPrompt ? 'Write your instruction, then click ENHANCE PROMPT to refine it with AI!' : 'Enter system prompt...'}
                     maxLength={4000}
                     rows={6}
                     className="w-full rounded-lg border border-neutral-700/50 bg-neutral-900 px-4 py-3 text-sm text-neutral-300 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 resize-none leading-relaxed"
@@ -1092,11 +1082,7 @@ export function ModesPage(props: ModelStatus) {
                             : 'border-neutral-800 text-neutral-700 cursor-not-allowed'
                         }`}
                       >
-                        {savingPrompt
-                          ? (isEditingExistingPrompt ? 'Updating...' : 'Saving...')
-                          : isEditingExistingPrompt
-                            ? 'Update Prompt'
-                            : savedPrompts.length >= 5 ? 'Limit Reached' : 'Save Prompt'}
+                        {savingPrompt ? 'Saving...' : savedPrompts.length >= 5 ? 'Limit Reached' : 'Save Prompt'}
                       </button>
                       <button
                         onClick={handleNewPrompt}
