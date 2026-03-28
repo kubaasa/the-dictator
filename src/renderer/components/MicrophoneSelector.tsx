@@ -33,7 +33,6 @@ export function MicrophoneSelector({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, closeDropdown]);
 
-  // Truncate long device labels
   const truncate = (label: string, max = 28) =>
     label.length > max ? label.slice(0, max - 1) + '…' : label;
 
@@ -47,12 +46,10 @@ export function MicrophoneSelector({
         className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
         title={selectedLabel}
       >
-        {/* Mic icon */}
         <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
         </svg>
         <span className="max-w-[260px] truncate">{truncate(selectedLabel, 40)}</span>
-        {/* Chevron */}
         <svg
           className={`h-3 w-3 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
           fill="none"

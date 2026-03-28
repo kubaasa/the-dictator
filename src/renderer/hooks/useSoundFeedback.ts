@@ -48,7 +48,6 @@ export function useSoundFeedback(recordingState: RecordingState, isOverlay: bool
   const audioCtxRef = useRef<AudioContext | null>(null);
   const soundEnabledRef = useRef(true);
 
-  // Load soundEnabled setting on mount + listen for changes
   useEffect(() => {
     if (isOverlay) return;
 
@@ -62,7 +61,6 @@ export function useSoundFeedback(recordingState: RecordingState, isOverlay: bool
     return unsub;
   }, [isOverlay]);
 
-  // Detect state transitions and play sounds
   useEffect(() => {
     if (isOverlay) return;
 
@@ -84,7 +82,6 @@ export function useSoundFeedback(recordingState: RecordingState, isOverlay: bool
 
     if (!playFn) return;
 
-    // Lazy-create AudioContext
     if (!audioCtxRef.current) {
       audioCtxRef.current = new AudioContext();
     }
@@ -98,7 +95,6 @@ export function useSoundFeedback(recordingState: RecordingState, isOverlay: bool
     }
   }, [recordingState, isOverlay]);
 
-  // Cleanup AudioContext on unmount
   useEffect(() => {
     return () => {
       audioCtxRef.current?.close();

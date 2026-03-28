@@ -2,7 +2,6 @@ import { app, Menu, Tray, nativeImage, BrowserWindow } from 'electron';
 import path from 'node:path';
 import type { RecordingState, UpdateState } from '../shared/types';
 
-/** Resolve asset path — dev: project root, prod: extraResource in resources/ */
 function getAssetPath(filename: string): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, filename)

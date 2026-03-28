@@ -16,7 +16,6 @@ import { encryptSettingsKeys, decryptSettingsForRenderer, getApiKey } from './se
 import Store from 'electron-store';
 import { DEFAULT_SETTINGS } from '../shared/types';
 
-/** Only allow safe characters in recording IDs to prevent path traversal. */
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 function sanitizeId(id: string): string {
   if (!id || !SAFE_ID_RE.test(id)) {
@@ -25,10 +24,6 @@ function sanitizeId(id: string): string {
   return id;
 }
 
-/**
- * Extract a clean, user-friendly message from API errors (OpenAI, Anthropic, Groq SDKs).
- * SDK error objects often dump raw JSON into .message — this pulls out just the human-readable part.
- */
 function formatApiError(err: unknown): string {
   const status = (err as { status?: number }).status;
 
@@ -48,8 +43,7 @@ function formatApiError(err: unknown): string {
   return String(err);
 }
 
-/** Apply vocabulary find-and-replace (case-insensitive, whole-word). Last step in pipeline.
- *  Single-pass replacement prevents chains (A→B, B→C won't cascade). */
+// Single-pass replacement prevents chains (A→B, B→C won't cascade)
 function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]): string {
   if (!vocabulary || vocabulary.length === 0) return text;
 
@@ -85,10 +79,6 @@ export function getOverlaySize(widget: WidgetType): [number, number] {
   return [210, 62];
 }
 
-/**
- * Clamp widget position so it stays fully within the nearest display's work area.
- * Handles monitor disconnect — getDisplayNearestPoint always returns a valid display.
- */
 export function clampToVisibleArea(x: number, y: number, w: number, h: number): { x: number; y: number } {
   const display = screen.getDisplayNearestPoint({ x, y });
   const { x: wx, y: wy, width: ww, height: wh } = display.workArea;
@@ -120,7 +110,6 @@ export function registerIpcHandlers(
   const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
 
-  // Guard: prevent concurrent transcriptions from spamming the expensive pipeline
   let transcriptionInProgress = false;
 
   // Deduplicated idle-transition timeout — prevents stale setTimeout callbacks
@@ -134,9 +123,7 @@ export function registerIpcHandlers(
     }, delay);
   }
 
-  // Settings
   ipcMain.handle(IPC.SETTINGS_GET, () => {
-    // Migrate old hotkey.shortcut → hotkey.shortcuts format
     const hotkey = store.get('hotkey') as Record<string, unknown>;
     if (hotkey && !hotkey.shortcuts && typeof hotkey.shortcut === 'string') {
       const migrated = {
@@ -151,7 +138,6 @@ export function registerIpcHandlers(
       store.set('hotkey', migrated);
     }
 
-    // Migrate missing shortcuts added in later versions
     const shortcuts = (hotkey?.shortcuts ?? {}) as Record<string, unknown>;
     if (hotkey?.shortcuts && !shortcuts.showWindow) {
       store.set('hotkey.shortcuts.showWindow', DEFAULT_SETTINGS.hotkey.shortcuts.showWindow);
@@ -160,7 +146,6 @@ export function registerIpcHandlers(
       store.set('hotkey.shortcuts.pushToTalk', DEFAULT_SETTINGS.hotkey.shortcuts.pushToTalk);
     }
 
-    // Migrate old dictation format (modePrompts/currentMode) → new format (aiPostProcessing/customPrompt)
     const dictation = store.get('dictation') as Record<string, unknown>;
     if (dictation && ('modePrompts' in dictation || 'currentMode' in dictation)) {
       const migrated = {
@@ -174,7 +159,6 @@ export function registerIpcHandlers(
       store.set('dictation', migrated);
     }
 
-    // Migrate vocabulary: string[] → VocabularyEntry[]
     const vocab = store.get('vocabulary') as unknown[];
     if (Array.isArray(vocab) && vocab.length > 0 && typeof vocab[0] === 'string') {
       const migrated = (vocab as string[]).map((word, i) => ({
@@ -188,7 +172,6 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC.SETTINGS_SET, (_event, settings: Partial<AppSettings>) => {
-    // Runtime validation: only allow known top-level keys from AppSettings
     const ALLOWED_KEYS = new Set<string>([
       'transcription', 'ai', 'hotkey', 'dictation', 'audio', 'vocabulary', 'widget', 'general',
     ]);
@@ -199,7 +182,6 @@ export function registerIpcHandlers(
       }
     }
 
-    // Basic type validation for each known section
     if (settings.transcription !== undefined && (typeof settings.transcription !== 'object' || settings.transcription === null)) {
       throw new Error('Invalid value for "transcription": expected object');
     }
@@ -280,25 +262,21 @@ export function registerIpcHandlers(
       throw new Error('Invalid value for "audio": expected object');
     }
 
-    // Encrypt API keys before persisting to disk
     encryptSettingsKeys(settings);
     for (const [key, value] of Object.entries(settings)) {
       store.set(key as keyof AppSettings, value);
     }
-    // Notify all renderer windows about settings change (with decrypted keys for display)
     const decrypted = decryptSettingsForRenderer(store.store);
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
     }
 
-    // Update hotkey service if shortcuts or mode changed
     if (settings.hotkey) {
       const hotkey = store.get('hotkey');
       hotkeyService.updateShortcuts(hotkey.shortcuts);
       hotkeyService.setMode(hotkey.mode);
     }
 
-    // Resize overlay and handle visibility when widget settings change
     if (settings.widget) {
       const overlayWindow = getOverlayWindow();
       if (overlayWindow) {
@@ -321,12 +299,10 @@ export function registerIpcHandlers(
       }
     }
 
-    // Sync Windows login item when autoStart is toggled from renderer UI
     if (settings.general?.autoStart !== undefined) {
       onAutoStartChanged(store.get('general.autoStart') as boolean);
     }
 
-    // Sync tray checkbox when audio cues are toggled from renderer UI
     if (settings.audio?.soundEnabled !== undefined) {
       onAudioCuesChanged(store.get('audio.soundEnabled') as boolean);
     }
@@ -334,7 +310,6 @@ export function registerIpcHandlers(
     return decrypted;
   });
 
-  // Transcription readiness check (before recording starts)
   ipcMain.handle(IPC.TRANSCRIPTION_CHECK_READY, () => {
     const engine = (store.get('transcription.engine') as string) ?? 'local';
     let readyError: string | undefined;
@@ -368,8 +343,6 @@ export function registerIpcHandlers(
     return { ready: true };
   });
 
-  // Transcription — receives raw audio buffer + sampleRate + recordingId from renderer.
-  // compressedAudio: optional WebM/Opus blob from MediaRecorder (used for API upload — 8x smaller than WAV).
   ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, async (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer) => {
     if (transcriptionInProgress) {
       event.sender.send(IPC.TRANSCRIPTION_ERROR, 'Transcription already in progress');
@@ -407,7 +380,6 @@ export function registerIpcHandlers(
     }
 
     broadcastState('transcribing');
-    // Warmup AI connection in parallel with transcription (best-effort, fire-and-forget)
     aiService.warmup().catch((err) => { log.warn('AI warmup failed:', err); });
     try {
       // Adaptive timeout: max(30s, audioDuration * 3), capped at 120s
@@ -465,7 +437,6 @@ export function registerIpcHandlers(
         }
       }
 
-      // Vocabulary find-and-replace — last step before output
       const vocabEntries = (store.get('vocabulary') as VocabularyEntry[]) ?? [];
       text = applyVocabularyReplacements(text, vocabEntries);
 
@@ -481,14 +452,11 @@ export function registerIpcHandlers(
       scheduleIdle(400);
       log.info('Transcription done. autoPaste=%s, chars=%d', autoPaste, text.length);
 
-      // Always write to clipboard so the user can always Ctrl+V manually
       clipboard.writeText(text);
-      log.info('Text copied to clipboard');
 
       if (autoPaste && pasteService.hasTarget()) {
         try {
           await pasteService.simulatePaste();
-          // Re-write after paste so transcribed text stays in clipboard for manual use
           clipboard.writeText(text);
         } catch (pasteErr) {
           log.warn('Paste failed:', pasteErr);
@@ -503,7 +471,6 @@ export function registerIpcHandlers(
         }
       }
 
-      // Save to history — sanitize ID to prevent path traversal in downstream audio save
       const entryId = sanitizeId(recordingId ?? Date.now().toString());
       const durationSeconds = samples.length / sampleRate;
       const countWordsInline = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
@@ -536,7 +503,6 @@ export function registerIpcHandlers(
     }
   });
 
-  // Save audio file sent from renderer (WebM blob)
   ipcMain.handle(IPC.AUDIO_SAVE, async (_event, id: string, audioBuffer: ArrayBuffer) => {
     const safeId = sanitizeId(id);
     const filePath = path.join(recordingsDir, `${safeId}.webm`);
@@ -545,7 +511,6 @@ export function registerIpcHandlers(
     return filePath;
   });
 
-  // History handlers
   ipcMain.handle(IPC.HISTORY_GET_STATS, () => {
     try {
       const data = historyService.getStats();
@@ -640,7 +605,6 @@ export function registerIpcHandlers(
     }
   });
 
-  // AI: fetch available OpenAI models using the stored API key
   ipcMain.handle(IPC.AI_GET_OPENAI_MODELS, async () => {
     try {
       const models = await aiService.getOpenAIModels();
@@ -650,7 +614,6 @@ export function registerIpcHandlers(
     }
   });
 
-  // AI test prompt
   ipcMain.handle(IPC.AI_TEST_PROMPT, async (_event, text: string, systemPrompt: string) => {
     try {
       const result = await aiService.testPrompt(text, systemPrompt);
@@ -660,7 +623,6 @@ export function registerIpcHandlers(
     }
   });
 
-  // AI enhance prompt
   ipcMain.handle(IPC.AI_ENHANCE_PROMPT, async (_event, rawPrompt: string) => {
     try {
       const result = await aiService.enhancePrompt(rawPrompt);
@@ -670,7 +632,6 @@ export function registerIpcHandlers(
     }
   });
 
-  // AI generate prompt name
   ipcMain.handle(IPC.AI_GENERATE_PROMPT_NAME, async (_event, promptContent: string) => {
     try {
       const name = await aiService.generatePromptName(promptContent);
@@ -680,12 +641,10 @@ export function registerIpcHandlers(
     }
   });
 
-  // Open models cache folder in system file explorer
   ipcMain.on(IPC.APP_OPEN_MODELS_FOLDER, () => {
     shell.openPath(transcriptionService.getModelsCacheDir());
   });
 
-  // Model
   ipcMain.handle(IPC.MODEL_STATUS, () => {
     return { downloaded: transcriptionService.isModelDownloaded() };
   });
@@ -713,7 +672,6 @@ export function registerIpcHandlers(
     transcriptionService.cancelDownload();
   });
 
-  // Widget drag — main process tracks cursor globally so fast mouse movement can't escape the window
   let dragInterval: ReturnType<typeof setInterval> | null = null;
   let dragOffset = { x: 0, y: 0 };
   let cancelGlobalMouseUp: (() => void) | null = null;
@@ -749,18 +707,15 @@ export function registerIpcHandlers(
 
   ipcMain.on(IPC.WIDGET_DRAG_END, stopDrag);
 
-  // Update check
   ipcMain.handle(IPC.UPDATE_CHECK, () => updateService.checkForUpdates());
   ipcMain.handle(IPC.UPDATE_GET_INFO, () => updateService.getUpdateInfo());
   ipcMain.handle(IPC.UPDATE_INSTALL, () => updateService.quitAndInstall());
 
-  // Groq key validation
   ipcMain.handle(IPC.GROQ_VALIDATE_KEY, async (_event, apiKey: string) => {
     if (!apiKey || typeof apiKey !== 'string') return { valid: false, error: 'No API key provided' };
     return TranscriptionService.validateGroqApiKey(apiKey);
   });
 
-  // AI provider key validation (OpenAI / Anthropic)
   ipcMain.handle(IPC.AI_VALIDATE_KEY, async (_event, provider: string, apiKey: string) => {
     if (!apiKey || typeof apiKey !== 'string') return { valid: false, error: 'No API key provided' };
     if (provider === 'openai') return AIService.validateOpenAIKey(apiKey);
@@ -768,7 +723,6 @@ export function registerIpcHandlers(
     return { valid: false, error: `Unknown provider: ${provider}` };
   });
 
-  // Open external URL (whitelisted domains only)
   ipcMain.on(IPC.SHELL_OPEN_EXTERNAL, (_event, url: string) => {
     const allowed = ['console.groq.com', 'groq.com', 'github.com'];
     try {

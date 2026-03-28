@@ -83,17 +83,14 @@ export class PasteService {
       this.psReady = false;
       this.outputBuffer = '';
       const exitErr = new Error('PowerShell process exited');
-      // Reject current command
       if (this.currentCommand) {
         this.currentCommand.reject(exitErr);
         this.currentCommand = null;
       }
-      // Reject all queued commands
       for (const queued of this.commandQueue) {
         queued.reject(exitErr);
       }
       this.commandQueue = [];
-      // Auto-respawn unless app is shutting down or max attempts reached
       if (!this.destroyed && this.spawnAttempts < PasteService.MAX_SPAWN_ATTEMPTS) {
         log.info('Respawning persistent PowerShell in 1s (attempt %d/%d)...', this.spawnAttempts + 1, PasteService.MAX_SPAWN_ATTEMPTS);
         setTimeout(() => {
@@ -108,15 +105,12 @@ export class PasteService {
     });
 
     ps.stderr?.on('data', (data: Buffer) => {
-      // Log but don't fail — stderr often contains warnings, not errors
       const msg = data.toString().trim();
       if (msg) log.warn('PS stderr:', msg);
     });
 
     this.psProcess = ps;
     this.spawnAttempts++;
-
-    // Send init script to compile Add-Type definitions
     ps.stdin?.write(INIT_SCRIPT + '\n');
   }
 
@@ -193,12 +187,9 @@ export class PasteService {
     });
   }
 
-  // Captures the currently focused window as the paste target.
-  // Resolves after the target is set (or skipped). Caller should await before pasting.
   async captureTarget(): Promise<void> {
     if (process.platform !== 'win32') return;
 
-    // Reset previous target — caller awaits so there is no race
     this.targetHwnd = null;
     this.targetAppName = null;
 
@@ -255,9 +246,6 @@ export class PasteService {
     return this.targetHwnd !== null;
   }
 
-  // Focuses the captured window and types text from clipboard character-by-character.
-  // Target is cleared only AFTER a successful paste — on failure the caller gets the
-  // error (re-thrown) and the target stays available for diagnostics/retry.
   async simulatePaste(): Promise<void> {
     if (process.platform !== 'win32' || !this.targetHwnd) return;
     const hwnd = this.targetHwnd;
@@ -273,17 +261,15 @@ export class PasteService {
         await execFileAsync('powershell', args, { timeout: 10000, windowsHide: true });
       }
       log.info('Auto-typed successfully');
-      this.targetHwnd = null;
-      this.targetAppName = null;
     } catch (err) {
       log.warn('simulatePaste failed:', err instanceof Error ? err.message : err);
+      throw err;
+    } finally {
       this.targetHwnd = null;
       this.targetAppName = null;
-      throw err;
     }
   }
 
-  /** Gracefully shut down the persistent PowerShell process. Call on app quit. */
   destroy(): void {
     this.destroyed = true;
     if (this.psProcess) {

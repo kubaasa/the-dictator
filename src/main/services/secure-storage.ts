@@ -7,7 +7,6 @@ const log = logger.scope('SecureStorage');
 
 const ENCRYPTED_PREFIX = 'enc:';
 
-// All settings paths that contain sensitive API keys
 const API_KEY_PATHS = [
   'transcription.groqApiKey',
   'ai.openaiApiKey',
@@ -15,10 +14,6 @@ const API_KEY_PATHS = [
 ] as const;
 
 type ApiKeyPath = typeof API_KEY_PATHS[number];
-
-function isApiKeyPath(path: string): path is ApiKeyPath {
-  return (API_KEY_PATHS as readonly string[]).includes(path);
-}
 
 function encryptValue(value: string): string {
   if (!value || !safeStorage.isEncryptionAvailable()) return value;
@@ -38,10 +33,7 @@ function decryptValue(value: string): string {
   }
 }
 
-/**
- * Migrate existing plain-text API keys to encrypted form.
- * Call once after app.ready (safeStorage requires the app to be ready).
- */
+// Call once after app.ready (safeStorage requires the app to be ready)
 export function migrateApiKeys(store: Store<AppSettings>): void {
   if (!safeStorage.isEncryptionAvailable()) {
     log.warn('safeStorage not available — API keys will remain in plain text');
@@ -56,18 +48,11 @@ export function migrateApiKeys(store: Store<AppSettings>): void {
   }
 }
 
-/**
- * Read an API key from the store, decrypting if needed.
- */
 export function getApiKey(store: Store<AppSettings>, keyPath: ApiKeyPath): string {
   const value = (store.get(keyPath) as string) ?? '';
   return decryptValue(value);
 }
 
-/**
- * Encrypt API key fields in a nested settings object before storing.
- * Mutates the object in-place for top-level keys like 'ai' or 'transcription'.
- */
 export function encryptSettingsKeys(settings: Partial<AppSettings>): void {
   if (!safeStorage.isEncryptionAvailable()) return;
 
@@ -89,10 +74,6 @@ export function encryptSettingsKeys(settings: Partial<AppSettings>): void {
   }
 }
 
-/**
- * Return a shallow copy of the full settings with API keys decrypted.
- * Used when sending settings to renderer (SETTINGS_GET, SETTINGS_ON_CHANGE).
- */
 export function decryptSettingsForRenderer(raw: AppSettings): AppSettings {
   const settings = { ...raw };
 
@@ -114,5 +95,3 @@ export function decryptSettingsForRenderer(raw: AppSettings): AppSettings {
 
   return settings;
 }
-
-export { isApiKeyPath, decryptValue };

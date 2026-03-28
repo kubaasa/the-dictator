@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import log from 'electron-log/renderer';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
 import { RecIndicator } from './RecEffects';
-
 import { CopyButton } from './CopyButton';
 import { useToast } from './Toast';
 import type { RecordingEntry, RecordingState } from '../../shared/types';
@@ -41,7 +40,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
   const error = recorderError || transcriptionError;
   const { addToast } = useToast();
 
-  // Show errors as toasts with optional navigation action
   useEffect(() => {
     if (!error) return;
     const needsNav = errorType === 'missing-api-key' || errorType === 'model-not-downloaded';
@@ -54,8 +52,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
   const [toggleShortcut, setToggleShortcut] = useState(DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
 
   useEffect(() => {
-    // Clear stale recorder errors from previous attempts (e.g., "Model not downloaded")
-    // when user returns to Home after fixing the issue in Modes
     clearError();
 
     window.dictator.getSettings().then((s) => {
@@ -63,15 +59,11 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
     }).catch((err) => log.error('Failed to load settings in HomePage:', err));
     const unsub = window.dictator.onSettingsChange((s) => {
       setToggleShortcut(s.hotkey.shortcuts?.toggleRecording ?? DEFAULT_SETTINGS.hotkey.shortcuts.toggleRecording);
-      // Settings changed (e.g., model downloaded) — clear stale error so it doesn't
-      // persist after the user fixed the issue. If the problem remains, the next
-      // recording attempt will re-show the error.
       clearError();
     });
     return unsub;
   }, []);
 
-  // Stats loaded from SQLite via dedicated aggregate query (no row limit)
   const [stats, setStats] = useState<StatsDisplay>(EMPTY_STATS);
 
   const refreshStats = useCallback(async () => {
@@ -93,7 +85,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
 
   useEffect(() => { refreshStats(); }, [refreshStats]);
 
-  // Recent transcriptions for mini-history
   const [recentEntries, setRecentEntries] = useState<RecordingEntry[]>([]);
   const [newEntryId, setNewEntryId] = useState<number | null>(null);
   const prevTopIdRef = useRef<number | null>(null);
@@ -117,7 +108,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
 
   useEffect(() => { refreshRecent(); }, [refreshRecent]);
 
-  // Refresh stats and recent history when a new transcription result arrives
   useEffect(() => {
     if (result && result.trim()) {
       refreshStats();
@@ -170,7 +160,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
 
   return (
     <main className="flex flex-1 flex-col gap-6 pb-6 overflow-hidden animate-fade-in">
-      {/* Stats grid */}
       <div className="mx-6 mt-6 grid grid-cols-4" style={{ gap: 'clamp(0.5rem, 1vw, 0.75rem)' }}>
         {statCards.map((stat, i) => (
           <div
@@ -178,7 +167,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
             className="relative rounded-xl border border-neutral-800 bg-[#141414] flex flex-row items-center hover:border-neutral-700 hover:bg-[#1A1A1A] transition-all duration-200 cursor-default overflow-hidden"
             style={{ padding: 'clamp(0.5rem, 1.2vw, 1.25rem)', gap: 'clamp(0.5rem, 1vw, 1rem)' }}
           >
-            {/* Red top line */}
             <div className="absolute top-0 left-0 right-0 h-[2px] bg-red-600/20" />
             <span className="text-red-700 shrink-0" style={{ fontSize: 'clamp(0.875rem, 1.5vw, 1.25rem)' }}>{stat.icon}</span>
             <div className="flex flex-col min-w-0" style={{ gap: 'clamp(0.125rem, 0.3vw, 0.25rem)' }}>
@@ -189,7 +177,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
         ))}
       </div>
 
-      {/* Empty state callout */}
       {showEmptyState && (
         <div className="flex flex-col items-center gap-2 mt-4 animate-fade-in">
           <p className="font-mono text-sm tracking-[0.2em] uppercase text-neutral-500">
@@ -201,9 +188,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
         </div>
       )}
 
-      {/* Recording section */}
       <div className={`flex flex-col items-center gap-5 ${showEmptyState ? 'mt-4' : 'mt-10'}`}>
-        {/* REC indicator — above the button */}
         <div className="h-6 flex items-center">
           <RecIndicator isRecording={isRecording} recordingStartTime={recordingStartTime} />
         </div>
@@ -222,7 +207,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
               transition: 'border-color 300ms, opacity 300ms, box-shadow 500ms',
             }}
           >
-            {/* Idle — red circle */}
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
               !isRecording && recordingState !== 'transcribing' ? 'opacity-100' : 'opacity-0'
             }`}>
@@ -231,7 +215,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
               </svg>
             </div>
 
-            {/* Recording — stop square */}
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
               isRecording ? 'opacity-100' : 'opacity-0'
             }`}>
@@ -240,7 +223,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
               </svg>
             </div>
 
-            {/* Transcribing — spinner */}
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
               recordingState === 'transcribing' ? 'opacity-100' : 'opacity-0'
             }`}>
@@ -252,7 +234,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
           </button>
         </div>
 
-        {/* Status */}
         <div className="flex flex-col items-center gap-2" aria-live="polite" aria-atomic="true">
           <p key={`${recordingState}-${isRecording}`} className="font-mono text-base font-semibold tracking-[0.25em] uppercase text-neutral-300 animate-fade-in">
             {recordingState === 'transcribing'
@@ -267,8 +248,6 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
         </div>
       </div>
 
-
-      {/* Recent transcriptions mini-history */}
       {recentEntries.length > 0 && (
         <div className="mx-auto w-full max-w-xl px-6 flex-1 min-h-0 flex flex-col animate-fade-in">
           <p className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-neutral-600 mb-2 shrink-0">Recent</p>

@@ -41,7 +41,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     });
   }, [removeToast]);
 
-  // Listen for error notifications from main process
   useEffect(() => {
     const unsub = window.dictator.onErrorNotification((message) => {
       addToast('error', message);
@@ -62,8 +61,6 @@ export function useToast() {
   if (!ctx) throw new Error('useToast must be used within <ToastProvider>');
   return ctx;
 }
-
-/* ── Icons per type ── */
 
 function SuccessIcon() {
   return (
@@ -100,8 +97,6 @@ const STYLE_MAP: Record<ToastType, string> = {
   error: 'border-red-800/60 bg-red-950/90 text-red-300',
   info: 'border-neutral-700/60 bg-neutral-900/90 text-neutral-300',
 };
-
-/* ── Container ── */
 
 interface ToastContainerProps {
   toasts: Toast[];

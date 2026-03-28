@@ -5,7 +5,6 @@ import { IPC } from '../shared/constants';
 import type { AppSettings, RecordingState, TranscriptionResult, RecordingEntry, HistoryStats, UpdateState } from '../shared/types';
 
 export interface DictatorAPI {
-  // Recording
   initRecording: () => void;
   startRecording: () => void;
   stopRecording: (goIdle?: boolean) => void;
@@ -13,13 +12,11 @@ export interface DictatorAPI {
   getRecordingState: () => Promise<RecordingState>;
   onRecordingStateChanged: (callback: (state: RecordingState) => void) => () => void;
 
-  // Transcription
   checkTranscriptionReady: () => Promise<{ ready: boolean; error?: string; errorType?: string }>;
   transcribeBuffer: (audioBuffer: ArrayBuffer, sampleRate: number, id?: string, compressedAudio?: ArrayBuffer) => Promise<void>;
   onTranscriptionResult: (callback: (result: TranscriptionResult) => void) => () => void;
   onTranscriptionError: (callback: (message: string) => void) => () => void;
 
-  // Model
   checkModelStatus: () => Promise<{ downloaded: boolean }>;
   getDownloadedModels: () => Promise<string[]>;
   downloadModel: () => Promise<void>;
@@ -28,23 +25,19 @@ export interface DictatorAPI {
   onModelDone: (callback: () => void) => () => void;
   onModelError: (callback: (msg: string) => void) => () => void;
 
-  // Settings
   getSettings: () => Promise<AppSettings>;
   setSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>;
   onSettingsChange: (callback: (settings: AppSettings) => void) => () => void;
 
-  // Voice Activity
   sendVoiceActivity: (level: number) => void;
   onVoiceActivity: (callback: (level: number) => void) => () => void;
 
-  // Hotkey
   onHotkeyToggle: (callback: () => void) => () => void;
   onHotkeyCancel: (callback: () => void) => () => void;
-  // Overlay
+
   requestToggleRecording: () => void;
   requestCancelRecording: () => void;
 
-  // History
   history: {
     getAll: (limit?: number, offset?: number) => Promise<{ success: boolean; data: RecordingEntry[]; error?: string }>;
     getCount: () => Promise<{ success: boolean; count: number; error?: string }>;
@@ -55,7 +48,6 @@ export interface DictatorAPI {
     migrate: (entries: RecordingEntry[]) => Promise<{ success: boolean; added?: number; skipped?: number; error?: string }>;
   };
 
-  // AI
   ai: {
     testPrompt: (text: string, systemPrompt: string) => Promise<{ success: boolean; result?: string; error?: string }>;
     enhancePrompt: (rawPrompt: string) => Promise<{ success: boolean; result?: string; error?: string }>;
@@ -64,25 +56,20 @@ export interface DictatorAPI {
     validateKey: (provider: string, apiKey: string) => Promise<{ valid: boolean; error?: string }>;
   };
 
-  // Groq
   groq: {
     validateKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>;
   };
 
-  // Shell
   openExternal: (url: string) => void;
 
-  // Audio
   audio: {
     save: (id: string, buffer: ArrayBuffer) => Promise<string>;
   };
 
-  // App
   quit: () => void;
   showSettings: () => void;
   openModelsFolder: () => void;
 
-  // Updates
   update: {
     check: () => Promise<UpdateState>;
     getInfo: () => Promise<UpdateState>;
@@ -90,20 +77,16 @@ export interface DictatorAPI {
     onStatusChange: (callback: (state: UpdateState) => void) => () => void;
   };
 
-  // Notifications
   onErrorNotification: (callback: (message: string) => void) => () => void;
 
-  // Window controls
   minimize: () => void;
   closeWindow: () => void;
 
-  // Widget drag
   widgetDragStart: (offsetX: number, offsetY: number) => void;
   widgetDragEnd: () => void;
 }
 
 const api: DictatorAPI = {
-  // Recording
   initRecording: () => ipcRenderer.send(IPC.RECORDING_INIT),
   startRecording: () => ipcRenderer.send(IPC.RECORDING_START),
   stopRecording: (goIdle?: boolean) => ipcRenderer.send(IPC.RECORDING_STOP, goIdle !== false),
@@ -115,7 +98,6 @@ const api: DictatorAPI = {
     return () => ipcRenderer.removeListener(IPC.RECORDING_STATE_CHANGED, handler);
   },
 
-  // Transcription
   checkTranscriptionReady: () => ipcRenderer.invoke(IPC.TRANSCRIPTION_CHECK_READY),
   transcribeBuffer: (audioBuffer, sampleRate, id, compressedAudio) =>
     ipcRenderer.invoke(IPC.TRANSCRIPTION_START_BUFFER, audioBuffer, sampleRate, id, compressedAudio),
@@ -130,7 +112,6 @@ const api: DictatorAPI = {
     return () => ipcRenderer.removeListener(IPC.TRANSCRIPTION_ERROR, handler);
   },
 
-  // Model
   checkModelStatus: () => ipcRenderer.invoke(IPC.MODEL_STATUS),
   getDownloadedModels: () => ipcRenderer.invoke(IPC.MODEL_ALL_DOWNLOADED),
   downloadModel: () => ipcRenderer.invoke(IPC.MODEL_DOWNLOAD),
@@ -151,7 +132,6 @@ const api: DictatorAPI = {
     return () => ipcRenderer.removeListener(IPC.MODEL_DOWNLOAD_ERROR, handler);
   },
 
-  // Settings
   getSettings: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
   setSettings: (settings) => ipcRenderer.invoke(IPC.SETTINGS_SET, settings),
   onSettingsChange: (callback) => {
@@ -160,7 +140,6 @@ const api: DictatorAPI = {
     return () => ipcRenderer.removeListener(IPC.SETTINGS_ON_CHANGE, handler);
   },
 
-  // Voice Activity
   sendVoiceActivity: (level) => ipcRenderer.send(IPC.VOICE_ACTIVITY, level),
   onVoiceActivity: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, level: number) => callback(level);
@@ -168,7 +147,6 @@ const api: DictatorAPI = {
     return () => ipcRenderer.removeListener(IPC.VOICE_ACTIVITY, handler);
   },
 
-  // Hotkey
   onHotkeyToggle: (callback) => {
     const handler = () => callback();
     ipcRenderer.on(IPC.HOTKEY_TOGGLE, handler);
@@ -179,11 +157,10 @@ const api: DictatorAPI = {
     ipcRenderer.on(IPC.HOTKEY_CANCEL, handler);
     return () => ipcRenderer.removeListener(IPC.HOTKEY_CANCEL, handler);
   },
-  // Overlay
+
   requestToggleRecording: () => ipcRenderer.send(IPC.OVERLAY_TOGGLE),
   requestCancelRecording: () => ipcRenderer.send(IPC.OVERLAY_CANCEL),
 
-  // History
   history: {
     getAll: (limit?: number, offset?: number) => ipcRenderer.invoke(IPC.HISTORY_GET_ALL, limit, offset),
     getCount: () => ipcRenderer.invoke(IPC.HISTORY_GET_COUNT),
@@ -194,7 +171,6 @@ const api: DictatorAPI = {
     migrate: (entries) => ipcRenderer.invoke(IPC.HISTORY_MIGRATE, entries),
   },
 
-  // AI
   ai: {
     testPrompt: (text, systemPrompt) => ipcRenderer.invoke(IPC.AI_TEST_PROMPT, text, systemPrompt),
     enhancePrompt: (rawPrompt) => ipcRenderer.invoke(IPC.AI_ENHANCE_PROMPT, rawPrompt),
@@ -203,25 +179,20 @@ const api: DictatorAPI = {
     validateKey: (provider, apiKey) => ipcRenderer.invoke(IPC.AI_VALIDATE_KEY, provider, apiKey),
   },
 
-  // Groq
   groq: {
     validateKey: (apiKey) => ipcRenderer.invoke(IPC.GROQ_VALIDATE_KEY, apiKey),
   },
 
-  // Audio
   audio: {
     save: (id, buffer) => ipcRenderer.invoke(IPC.AUDIO_SAVE, id, buffer),
   },
 
-  // Shell
   openExternal: (url) => ipcRenderer.send(IPC.SHELL_OPEN_EXTERNAL, url),
 
-  // App
   quit: () => ipcRenderer.send(IPC.APP_QUIT),
   showSettings: () => ipcRenderer.send(IPC.APP_SHOW_SETTINGS),
   openModelsFolder: () => ipcRenderer.send(IPC.APP_OPEN_MODELS_FOLDER),
 
-  // Updates
   update: {
     check: () => ipcRenderer.invoke(IPC.UPDATE_CHECK),
     getInfo: () => ipcRenderer.invoke(IPC.UPDATE_GET_INFO),
@@ -233,18 +204,15 @@ const api: DictatorAPI = {
     },
   },
 
-  // Notifications
   onErrorNotification: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, message: string) => callback(message);
     ipcRenderer.on(IPC.NOTIFICATION_ERROR, handler);
     return () => ipcRenderer.removeListener(IPC.NOTIFICATION_ERROR, handler);
   },
 
-  // Window controls
   minimize: () => ipcRenderer.send(IPC.WINDOW_MINIMIZE),
   closeWindow: () => ipcRenderer.send(IPC.WINDOW_CLOSE),
 
-  // Widget drag
   widgetDragStart: (offsetX, offsetY) => ipcRenderer.send(IPC.WIDGET_DRAG_START, offsetX, offsetY),
   widgetDragEnd: () => ipcRenderer.send(IPC.WIDGET_DRAG_END),
 };

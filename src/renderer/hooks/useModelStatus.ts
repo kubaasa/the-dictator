@@ -8,7 +8,6 @@ export function useModelStatus() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
 
-  // Holds cleanup functions for active IPC listeners so cancel() can remove them
   const cleanupRef = useRef<(() => void) | null>(null);
 
   const recheck = useCallback(async () => {

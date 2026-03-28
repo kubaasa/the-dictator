@@ -240,7 +240,6 @@ export function ShortcutsPage() {
 
   const shakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Clean up shake timer on unmount
   useEffect(() => {
     return () => { if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current); };
   }, []);
@@ -340,7 +339,6 @@ export function ShortcutsPage() {
         }
       `}</style>
 
-      {/* Recording Mode */}
       <section>
         <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Recording Mode</h2>
         <div className="flex gap-3">
@@ -367,7 +365,6 @@ export function ShortcutsPage() {
         </div>
       </section>
 
-      {/* Recording Shortcuts */}
       <section>
         <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Recording Shortcuts</h2>
         <div className="space-y-3">
@@ -375,7 +372,6 @@ export function ShortcutsPage() {
         </div>
       </section>
 
-      {/* App Shortcuts */}
       <section>
         <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">App Shortcuts</h2>
         <div className="space-y-3">

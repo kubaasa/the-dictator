@@ -1,9 +1,8 @@
 import log from 'electron-log/main';
 import * as Sentry from '@sentry/electron/main';
 
-// File transport: app.getPath('logs') → %APPDATA%/The Dictator/logs/main.log
 log.transports.file.level = 'info';
-log.transports.file.maxSize = 5 * 1024 * 1024; // 5 MB, auto-rotation
+log.transports.file.maxSize = 5 * 1024 * 1024;
 log.transports.console.level = 'debug';
 
 log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}] [{level}]{scope} {text}';
@@ -29,7 +28,6 @@ log.hooks.push((message) => {
   return message;
 });
 
-// Sentry transport — forward errors and add breadcrumbs
 log.hooks.push((message) => {
   if (message.level === 'error') {
     Sentry.captureMessage(message.data.join(' '), 'error');
@@ -42,7 +40,6 @@ log.hooks.push((message) => {
   return message;
 });
 
-// IPC bridge for renderer — electron-log/preload connects automatically
 log.initialize();
 
 export default log;

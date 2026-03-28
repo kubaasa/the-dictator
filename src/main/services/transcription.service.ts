@@ -78,7 +78,6 @@ export class TranscriptionService {
     env.cacheDir = MODELS_CACHE_DIR;
   }
 
-  /** Validate a Groq API key by calling the lightweight /models endpoint. */
   static async validateGroqApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
     try {
       const client = new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' });
@@ -92,7 +91,6 @@ export class TranscriptionService {
     }
   }
 
-  /** Preload model into memory on app startup (background, non-blocking). */
   async preloadModel(): Promise<void> {
     const engine = (this.store.get('transcription.engine') as string) ?? 'local';
     if (engine !== 'local') return;
@@ -131,12 +129,10 @@ export class TranscriptionService {
     return Object.keys(MODEL_MAP).filter((size) => this.isModelDownloaded(size));
   }
 
-  // Ordered from largest/best to smallest — used for fallback selection
   private static readonly MODEL_SIZE_PRIORITY = [
     'distil-large-v3', 'large-v3-turbo', 'large-v3', 'large', 'distil-medium.en', 'medium', 'small', 'base', 'base.en', 'tiny', 'tiny.en',
   ];
 
-  /** Find the largest downloaded model key, or null if none downloaded. */
   private findBestDownloadedModel(): string | null {
     for (const size of TranscriptionService.MODEL_SIZE_PRIORITY) {
       if (this.isModelDownloaded(size)) return size;
@@ -144,7 +140,6 @@ export class TranscriptionService {
     return null;
   }
 
-  /** Resolve model to use: selected if downloaded, otherwise best available fallback. */
   private resolveModelId(): { modelId: string; fallback: boolean } {
     const selectedId = this.getModelId();
     const selectedSize = (this.store.get('transcription.localModelSize') as string) ?? 'base';
@@ -238,7 +233,6 @@ export class TranscriptionService {
         }
       },
     });
-    this.resolvedDevice = 'cpu';
     this.loadedModelId = modelId;
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -259,13 +253,10 @@ export class TranscriptionService {
       global.fetch = originalFetch;
       this.cancelController = null;
     }
-
   }
 
   cancelDownload(): void {
     this.cancelController?.abort();
-    // Reset internal state so a stale partial pipeline isn't used for transcription.
-    // Partial file cleanup happens in downloadModel() catch block on AbortError.
     this.pipe = null;
     this.loadedModelId = null;
   }
@@ -299,7 +290,6 @@ export class TranscriptionService {
       : this.transcribeLocalFromBuffer(preprocessed, sampleRate);
   }
 
-  /** Returns a cached Groq client (OpenAI-compatible SDK with Groq base URL). */
   private getGroqClient(): OpenAI {
     const apiKey = getApiKey(this.store, 'transcription.groqApiKey');
     if (!apiKey) throw new Error('Groq API key is not set. Go to Modes and enter your key.');
@@ -369,8 +359,7 @@ export class TranscriptionService {
       await this.loadFromCache(modelId);
     }
 
-    const float32 = ipcBufferToFloat32(audioBuffer); // already preprocessed (trimmed + normalized)
-    // Skip resampling if audio is already at 16kHz (renderer records at 16kHz)
+    const float32 = ipcBufferToFloat32(audioBuffer);
     const audio = sampleRate === 16000 ? float32 : resampleFloat32(float32, sampleRate, 16000);
 
     const durationSeconds = float32.length / sampleRate;
@@ -508,13 +497,11 @@ function normalizeAudio(samples: Float32Array, targetPeak = 0.9): Float32Array {
   return out;
 }
 
-/** Converts IPC-transferred ArrayBuffer (arrives as Node.js Buffer) to Float32Array. */
 function ipcBufferToFloat32(buffer: ArrayBuffer): Float32Array {
   const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
   return new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
 }
 
-/** Linear interpolation resample. */
 function resampleFloat32(samples: Float32Array, fromRate: number, toRate: number): Float32Array {
   if (fromRate === toRate) return samples;
   const ratio = fromRate / toRate;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { RecordingState, TranscriptionResult } from '../../shared/types';
+import type { RecordingState } from '../../shared/types';
 
 interface UseTranscriptionResultReturn {
   result: string;
@@ -13,7 +13,6 @@ export function useTranscriptionResult(recordingState: RecordingState): UseTrans
   const [appName, setAppName] = useState<string | undefined>(undefined);
   const [error, setError] = useState('');
 
-  // Clear previous result when a new recording starts
   useEffect(() => {
     if (recordingState === 'recording') {
       setResult('');
@@ -23,12 +22,12 @@ export function useTranscriptionResult(recordingState: RecordingState): UseTrans
   }, [recordingState]);
 
   useEffect(() => {
-    const unsubResult = window.dictator.onTranscriptionResult((data: TranscriptionResult) => {
+    const unsubResult = window.dictator.onTranscriptionResult((data) => {
       setResult(data.text);
       setAppName(data.appName);
       setError('');
     });
-    const unsubError = window.dictator.onTranscriptionError((msg: string) => {
+    const unsubError = window.dictator.onTranscriptionError((msg) => {
       setError(msg);
     });
     return () => {

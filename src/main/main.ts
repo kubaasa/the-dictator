@@ -28,7 +28,6 @@ process.on('unhandledRejection', (reason) => {
   log.error('Unhandled promise rejection:', reason);
 });
 
-/** Resolve asset path — dev: project root, prod: extraResource in resources/ */
 function getAssetPath(filename: string): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, filename)
@@ -39,8 +38,6 @@ if (started) {
   app.quit();
 }
 
-// Single instance lock — prevent multiple app windows from running simultaneously.
-// Second instance focuses the existing window instead of opening a duplicate.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -53,7 +50,6 @@ app.setAppUserModelId('com.squirrel.TheDictator.TheDictator');
 app.commandLine.appendSwitch('disk-cache-dir', path.join(app.getPath('userData'), 'Cache'));
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
-// Must be called before app 'ready'
 protocol.registerSchemesAsPrivileged([
   { scheme: 'recording', privileges: { stream: true, supportFetchAPI: true } },
 ]);
@@ -79,7 +75,6 @@ const pasteService = new PasteService();
 const aiService = new AIService(store);
 const updateService = new UpdateService(getAssetPath('icon.png'));
 
-// Hotkey sends toggle to the main renderer window (which owns getUserMedia)
 function sendToggleToRenderer(): void {
   if (mainWindow) {
     mainWindow.webContents.send(IPC.HOTKEY_TOGGLE);
@@ -200,9 +195,7 @@ function createMainWindow(): BrowserWindow {
     );
   }
 
-  // Prevent Chromium from throttling JS when the window is hidden (tray mode)
   win.webContents.setBackgroundThrottling(false);
-
 
   win.once('ready-to-show', () => {
     const firstRun = !(store.get('general.firstRunComplete') as boolean);
@@ -316,7 +309,6 @@ function broadcastState(state: RecordingState): void {
   }
 }
 
-// Recording control via IPC from renderer
 function setupRecordingIpc(): void {
   ipcMain.on(IPC.RECORDING_INIT, () => {
     if (currentState === 'initializing' || currentState === 'recording') return;
@@ -359,14 +351,12 @@ function setupRecordingIpc(): void {
   });
 
   ipcMain.on(IPC.OVERLAY_TOGGLE, () => {
-    // captureTarget is called after transcription completes (just before paste)
     sendToggleToRenderer();
   });
 
   ipcMain.on(IPC.OVERLAY_CANCEL, () => {
     sendCancelToRenderer();
   });
-
 }
 
 function setupWindowControlIpc(): void {
@@ -448,10 +438,8 @@ app.on('ready', () => {
   historyService = new HistoryService(path.join(app.getPath('userData'), 'history.db'));
   historyService.setRecordingsDir(recordingsDir);
 
-  // Encrypt any existing plain-text API keys (one-time migration)
   migrateApiKeys(store);
 
-  // Auto-start: sync stored preference with Windows login item registry
   const autoStartEnabled = store.get('general.autoStart') as boolean;
   syncAutoStart(autoStartEnabled);
 
@@ -496,7 +484,6 @@ app.on('ready', () => {
     trayManager.setAudioCues(enabled);
   });
 
-  // Start periodic update checks
   updateService.start();
   setupRecordingIpc();
   setupWindowControlIpc();

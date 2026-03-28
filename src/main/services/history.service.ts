@@ -51,11 +51,8 @@ export class HistoryService {
     return db;
   }
 
-  /**
-   * Ensure the database connection is open — auto-reconnect if it was closed
-   * (e.g. by Vite HMR restart calling close() via before-quit, while IPC handlers
-   * still hold a reference to this instance).
-   */
+  // Auto-reconnect if db was closed (e.g. by Vite HMR restart calling close()
+  // via before-quit, while IPC handlers still hold a reference to this instance)
   private ensureOpen(): void {
     if (!this.db.open) {
       log.warn('Database was closed, reopening...');
@@ -63,14 +60,12 @@ export class HistoryService {
     }
   }
 
-  /** Add raw_word_count column if missing (existing databases from before this change). */
   private migrateSchema(db?: Database.Database): void {
     const target = db ?? this.db;
     const columns = target.pragma('table_info(recordings)') as { name: string }[];
     const hasRawWordCount = columns.some((c) => c.name === 'raw_word_count');
     if (!hasRawWordCount) {
       target.exec('ALTER TABLE recordings ADD COLUMN raw_word_count INTEGER DEFAULT 0');
-      // Backfill: for old entries without raw_word_count, copy word_count as best-effort fallback
       target.exec('UPDATE recordings SET raw_word_count = word_count WHERE raw_word_count = 0');
     }
   }
@@ -96,14 +91,12 @@ export class HistoryService {
     );
   }
 
-  /** Total number of recordings in the database. */
   getCount(): number {
     this.ensureOpen();
     const row = this.db.prepare('SELECT COUNT(*) as cnt FROM recordings').get() as { cnt: number };
     return row.cnt;
   }
 
-  /** Aggregate stats across ALL recordings (no limit). */
   getStats(): HistoryStats {
     this.ensureOpen();
     const row = this.db.prepare(`
@@ -159,7 +152,6 @@ export class HistoryService {
     let audioError: string | undefined;
 
     if (row.audio_path) {
-      // Only delete files inside the recordings directory to prevent arbitrary file deletion
       if (this.isPathInsideRecordingsDir(row.audio_path)) {
         try {
           fs.unlinkSync(row.audio_path);
@@ -233,12 +225,10 @@ export class HistoryService {
     return deleteAll();
   }
 
-  /** Set the trusted recordings directory for path validation. */
   setRecordingsDir(dir: string): void {
     this.recordingsDir = path.resolve(dir);
   }
 
-  /** Validate that a file path is inside the recordings directory to prevent arbitrary file access. */
   private isPathInsideRecordingsDir(filePath: string): boolean {
     if (!this.recordingsDir) return false;
     const resolved = path.resolve(filePath);
@@ -253,12 +243,6 @@ export class HistoryService {
       throw new Error('Audio path must be inside the recordings directory');
     }
     this.db.prepare('UPDATE recordings SET audio_path = ? WHERE id = ?').run(audioPath, id);
-  }
-
-  count(): number {
-    this.ensureOpen();
-    const row = this.db.prepare('SELECT COUNT(*) as cnt FROM recordings').get() as { cnt: number };
-    return row.cnt;
   }
 
   close(): void {

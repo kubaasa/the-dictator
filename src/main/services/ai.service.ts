@@ -7,7 +7,6 @@ import logger from './logger';
 
 const log = logger.scope('AI');
 
-/** Per-method timeout for AI streaming — clean cancellation if a stream hangs. */
 const AI_METHOD_TIMEOUT_MS = 25_000;
 
 /** Retry on transient network/server errors (5xx, timeout). Auth errors (401/403) are never retried. */
@@ -37,7 +36,6 @@ export class AIService {
 
   constructor(private store: Store<AppSettings>) {}
 
-  /** Validate an OpenAI API key by calling the lightweight /models endpoint. */
   static async validateOpenAIKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
     try {
       const client = new OpenAI({ apiKey });
@@ -51,7 +49,6 @@ export class AIService {
     }
   }
 
-  /** Validate an Anthropic API key by calling the lightweight count_tokens endpoint. */
   static async validateAnthropicKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
     try {
       const client = new Anthropic({ apiKey });
@@ -68,11 +65,6 @@ export class AIService {
     }
   }
 
-  /**
-   * Pre-establish TCP+TLS connection with the configured AI provider.
-   * Call this when transcription starts so the connection is ready when AI processing begins.
-   * Failures are silently ignored — warmup is a best-effort optimization.
-   */
   async warmup(): Promise<void> {
     const aiEnabled = (this.store.get('dictation.aiPostProcessing') as boolean) ?? true;
     if (!aiEnabled) return;
@@ -83,14 +75,11 @@ export class AIService {
       switch (provider) {
         case 'openai': {
           const client = this.getOpenAIClient();
-          // Tiny models.list() call — just enough to establish the connection
           await client.models.list({ timeout: 5000 });
           break;
         }
         case 'anthropic': {
           const client = this.getAnthropicClient();
-          // Send a minimal request that establishes the TLS connection.
-          // count_tokens is the lightest Anthropic endpoint.
           await client.messages.countTokens({
             model: (this.store.get('ai.anthropicModel') as string) ?? 'claude-haiku-4-5-20251001',
             messages: [{ role: 'user', content: 'warmup' }],
@@ -99,7 +88,7 @@ export class AIService {
         }
       }
     } catch {
-      // Warmup failure is non-critical — the real request will establish the connection
+      // Non-critical — the real request will establish the connection
     }
   }
 
@@ -134,13 +123,6 @@ ${basePrompt}${vocabSection}
 - If the processing rules do not require any changes, return the input text unchanged`;
 
     const wrappedText = `<input>\n${rawText}\n</input>`;
-
-    log.info('--- AI PROCESS DEBUG ---');
-    log.info('Provider:', provider);
-    log.info('Base prompt (first 200 chars):', basePrompt.substring(0, 200));
-    log.info('Full system prompt (first 500 chars):', systemPrompt.substring(0, 500));
-    log.info('Wrapped user text:', wrappedText);
-    log.info('--- END DEBUG ---');
 
     switch (provider) {
       case 'openai':
@@ -197,9 +179,7 @@ ${basePrompt}${vocabSection}
           const delta = chunk.choices[0]?.delta?.content;
           if (delta) chunks.push(delta);
         }
-        const result = chunks.join('').trim() || text;
-        log.info('OpenAI result:', result);
-        return result;
+        return chunks.join('').trim() || text;
       } finally {
         clearTimeout(timeout);
       }
@@ -230,9 +210,7 @@ ${basePrompt}${vocabSection}
             chunks.push(event.delta.text);
           }
         }
-        const result = chunks.join('').trim() || text;
-        log.info('Anthropic result:', result);
-        return result;
+        return chunks.join('').trim() || text;
       } finally {
         clearTimeout(timeout);
       }
@@ -244,7 +222,6 @@ ${basePrompt}${vocabSection}
       const client = this.getOpenAIClient();
       const response = await client.models.list();
 
-      // Keep only chat-capable GPT/O-series models, skip fine-tuned, embedding, audio, etc.
       const ALLOWED_PREFIXES = ['gpt-4', 'gpt-3.5', 'o1', 'o3', 'o4'];
       const SKIP_KEYWORDS = ['instruct', 'embed', 'audio', 'realtime', 'tts', 'dall-e', 'whisper', 'babbage', 'davinci'];
 

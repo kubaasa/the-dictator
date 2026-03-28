@@ -76,15 +76,12 @@ export function App() {
     <ErrorBoundary>
     <ToastProvider>
     <div className="flex h-screen text-neutral-200 select-none font-sans bg-[#0A0A0A]">
-      {/* Global [REC] effects */}
       <ScanLines />
       <NoiseOverlay />
       <Vignette />
 
-      {/* Sidebar — full height */}
       <Sidebar activeView={activeView} onNavigate={setActiveView} onSetupGuide={() => setShowFirstRun(true)} />
 
-      {/* Right column: header + content */}
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
         <header className="drag-region flex items-center px-5 py-3 border-b border-neutral-800/50">
           {activeView !== 'home' && <RecIndicator compact isRecording={audioRecorder.isRecording} recordingStartTime={audioRecorder.recordingStartTime} />}

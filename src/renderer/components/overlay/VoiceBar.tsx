@@ -16,34 +16,26 @@ const ERROR_COLOR = '#DC2626';
 const MIN_BAR_H = 2;
 const MAX_BAR_H = 24;
 
-// LERP smoothing factors — tuned for 6 bars (more responsive than MAXI's 40-bar defaults)
 const LERP_ATTACK  = 0.75;
 const LERP_RELEASE = 0.18;
 
-// Flat envelope — all 6 bars react at full amplitude
 const HANNING_WEIGHTS = Array.from({ length: BAR_COUNT }, () => 1.0);
 
-// Idle height per bar
 const IDLE_SCALES = HANNING_WEIGHTS.map(w =>
   ((MIN_BAR_H + w * 3) / MAX_BAR_H).toFixed(4)
 );
 
-// Cascade intro: peak height (70% of max) and per-bar stagger (50ms each)
 const CASCADE_PEAK_SCALE = (MAX_BAR_H * 0.7 / MAX_BAR_H).toFixed(4);
-// Left→right for recording start
 const CASCADE_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) =>
   (i * 0.05).toFixed(3)
 );
-// Right→left for processing
 const CASCADE_DELAYS_REV = Array.from({ length: BAR_COUNT }, (_, i) =>
   ((BAR_COUNT - 1 - i) * 0.05).toFixed(3)
 );
 
-// Proximity zone padding around the pill (px)
 const PROX_V = 20;
 const PROX_H = 30;
 
-// Pre-computed per-bar properties — stable across renders
 const BARS = Array.from({ length: BAR_COUNT }, (_, i) => {
   const norm = i / (BAR_COUNT - 1);
   const dist = Math.abs(norm - 0.5) * 2;
@@ -110,18 +102,17 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
   const [isDragging, setIsDragging] = useState(false);
   const [errorFlash, setErrorFlash] = useState(false);
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
-  // Counter to force CSS cascade animation restart on each initializing cycle
   const [cascadeKey, setCascadeKey] = useState(0);
+
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragMouseUpRef = useRef<(() => void) | null>(null);
   const errorFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevIsActiveRef = useRef(false);
   const animTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── Enter / exit animation state machine ─────────────────────────────
   const isActive = isInitializing || isRecording || isTranscribing || isError;
 
-  // Sticky state refs — prevent content flash during exit animation
+  // Sticky state: remember last content during exit animation to prevent flash
   const wasErrorRef = useRef(false);
   const wasProcessingRef = useRef(false);
 
@@ -136,7 +127,6 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
   const showError = isError || (wasErrorRef.current && isExiting);
   const showProcessing = isTranscribing || (!showError && wasProcessingRef.current && isExiting);
 
-  // Fix Bug #2: clear any pending timer on every isActive change, handle re-activation during exiting
   useEffect(() => {
     const wasActive = prevIsActiveRef.current;
     prevIsActiveRef.current = isActive;
@@ -162,7 +152,6 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
     };
   }, [isActive]);
 
-  // Fix Bug #3: increment cascadeKey to force CSS animation restart
   useEffect(() => {
     if (isInitializing) setCascadeKey(k => k + 1);
   }, [isInitializing]);
@@ -183,7 +172,6 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
     if (isDone) setIsProximate(false);
   }, [isDone]);
 
-  // ─── Audio visualization refs (no React state — updated in RAF loop) ────
   const barElemsRef   = useRef<(HTMLDivElement | null)[]>([]);
   const smoothedRef   = useRef<Float32Array>(new Float32Array(BAR_COUNT).fill(MIN_BAR_H));
   const voiceLevelRef = useRef(0);
@@ -240,7 +228,6 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
     document.addEventListener('mouseup', onUp);
   }, []);
 
-  // ─── Start / stop visualization based on recording state ────────────────
   useEffect(() => {
     if (!isRecording) {
       vizActiveRef.current = false;
@@ -336,7 +323,6 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
     rafRef.current = requestAnimationFrame(tick);
   }
 
-  // Fix Bug #1: clear stale RAF inline styles so React CSS animations/transitions work
   function stopVisualization() {
     cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach(t => t.stop());
@@ -347,7 +333,6 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
     smoothedRef.current.fill(MIN_BAR_H);
   }
 
-  // Fix Bug #4: include isDone briefly to prevent gap-frame collapse
   const isExpanded = isProximate || isInitializing || isRecording || isTranscribing || isDone || errorFlash;
 
   const collapsedH = 12;
@@ -359,10 +344,7 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
     <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <style>{KEYFRAMES}</style>
 
-      {/*
-        Proximity wrapper: slightly larger than the pill (PROX_V / PROX_H padding).
-        background: rgba(0,0,0,0.01) — forces Windows to route mouse events.
-      */}
+      {/* Proximity wrapper: rgba bg forces mouse events on Electron transparent window */}
       <div
         onMouseEnter={handleEnter}
         onMouseLeave={handleLeave}
@@ -378,7 +360,6 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
           cursor: 'default',
         } as React.CSSProperties}
       >
-        {/* Pill container */}
         <div
           style={{
             position: 'relative',
@@ -469,44 +450,40 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
               </svg>
             </div>
           ) : showProcessing ? (
-            BARS.map((_, i) => {
-              return (
-                <div
-                  key={`proc-${i}-${cascadeKey}`}
-                  ref={el => { barElemsRef.current[i] = el; }}
-                  style={{
-                    width: barWidth,
-                    height: MAX_BAR_H,
-                    borderRadius: barWidth / 2,
-                    background: BASE_COLOR,
-                    transformOrigin: 'center',
-                    flexShrink: 0,
-                    willChange: 'transform',
-                    backfaceVisibility: 'hidden',
-                    transform: 'scaleY(0.05) translateZ(0)',
-                    animation: `vb-cascade 350ms ease-out ${CASCADE_DELAYS_REV[i]}s both`,
-                    transition: 'none',
-                    opacity: isExpanded ? 0.92 : 0,
-                    '--init-idle': IDLE_SCALES[i],
-                    '--cascade-peak': CASCADE_PEAK_SCALE,
-                  } as React.CSSProperties}
-                />
-              );
-            })
+            BARS.map((_, i) => (
+              <div
+                key={`proc-${i}-${cascadeKey}`}
+                ref={el => { barElemsRef.current[i] = el; }}
+                style={{
+                  width: barWidth,
+                  height: MAX_BAR_H,
+                  borderRadius: barWidth / 2,
+                  background: BASE_COLOR,
+                  transformOrigin: 'center',
+                  flexShrink: 0,
+                  willChange: 'transform',
+                  backfaceVisibility: 'hidden',
+                  transform: 'scaleY(0.05) translateZ(0)',
+                  animation: `vb-cascade 350ms ease-out ${CASCADE_DELAYS_REV[i]}s both`,
+                  transition: 'none',
+                  opacity: isExpanded ? 0.92 : 0,
+                  '--init-idle': IDLE_SCALES[i],
+                  '--cascade-peak': CASCADE_PEAK_SCALE,
+                } as React.CSSProperties}
+              />
+            ))
           ) : (
             BARS.map((bar, i) => {
                 const { idleScale } = bar;
 
                 let transform: string | undefined;
                 let animation = 'none';
-                // Fix Bug #7: allow opacity fade during recording (for buttonVisible toggle)
                 let transition = 'transform 0.3s ease-out, opacity 180ms ease-out';
                 let barOpacity: number;
                 const barColor = BASE_COLOR;
 
                 if (isInitializing) {
                   transform = `scaleY(0.05) translateZ(0)`;
-                  // Fix Bug #3: cascadeKey in key forces element remount → animation restarts
                   animation = `vb-cascade 350ms ease-out ${CASCADE_DELAYS[i]}s both`;
                   transition = 'none';
                   barOpacity = 0.92;
@@ -535,7 +512,6 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
 
                 return (
                   <div
-                    // Fix Bug #3: cascadeKey changes on each init cycle → forces remount → CSS animation restarts
                     key={isInitializing ? `${i}-${cascadeKey}` : i}
                     ref={el => { barElemsRef.current[i] = el; }}
                     style={{

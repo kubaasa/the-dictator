@@ -25,7 +25,6 @@ export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
 
   const setSelectedDeviceId = useCallback((id: string) => {
     setSelectedDeviceIdState(id);
-    // Persist to electron-store so overlay widgets + next session use the same mic
     window.dictator.getSettings().then((current) => {
       window.dictator.setSettings({ ...current, audio: { ...current.audio, deviceId: id } });
     }).catch((err) => log.error('Failed to persist device selection:', err));
@@ -52,7 +51,6 @@ export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
   useEffect(() => {
     mountedRef.current = true;
 
-    // Load saved deviceId from electron-store, then refresh device list
     window.dictator.getSettings().then((settings) => {
       if (!mountedRef.current) return;
       const savedId = settings.audio?.deviceId;
@@ -65,7 +63,6 @@ export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
       return refreshDevices();
     }).then(async () => {
       if (!mountedRef.current) return;
-      // If labels are still empty (no prior permission), request lazily
       const allDevices = await navigator.mediaDevices.enumerateDevices();
       const hasLabels = allDevices.some((d) => d.kind === 'audioinput' && d.label);
       if (!hasLabels && mountedRef.current) {

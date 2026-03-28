@@ -130,12 +130,9 @@ export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) 
         );
       })}
 
-      {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Bottom actions — icon-only with tooltip */}
       <div className="flex items-center justify-center gap-1 px-2 py-2">
-        {/* Setup Guide */}
         {onSetupGuide && (
           <button
             onClick={onSetupGuide}
@@ -149,7 +146,6 @@ export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) 
           </button>
         )}
 
-        {/* Collapse/Expand toggle */}
         <button
           onClick={() => setCollapsed((c) => !c)}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -168,7 +164,6 @@ export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) 
         </button>
       </div>
 
-      {/* App name + timecode */}
       {!collapsed && (
         <div className="px-3 py-1 flex flex-col items-center gap-1">
           <span className="font-mono text-sm font-bold tracking-[0.35em] text-red-600 uppercase whitespace-nowrap">

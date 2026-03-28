@@ -42,7 +42,6 @@ export function ModesPage(props: ModelStatus) {
   const { downloaded, downloadedModels, downloading, progress, error, download, cancel, recheck } = props;
   const { addToast } = useToast();
 
-  // Transcription state
   const [engine, setEngine] = useState<TranscriptionEngine>('cloud');
   const [modelSize, setModelSize] = useState('base');
   const [language, setLanguage] = useState('en');
@@ -50,7 +49,6 @@ export function ModesPage(props: ModelStatus) {
   const [groqValidation, setGroqValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
   const [groqValidationError, setGroqValidationError] = useState('');
 
-  // AI + Dictation state
   const [aiPostProcessing, setAiPostProcessing] = useState(DEFAULT_SETTINGS.dictation.aiPostProcessing);
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_SETTINGS.dictation.customPrompt);
   const [aiProvider, setAiProvider] = useState<AIProviderType>('openai');
@@ -63,19 +61,17 @@ export function ModesPage(props: ModelStatus) {
   const [anthropicKeySaved, setAnthropicKeySaved] = useState(false);
   const [aiKeyValidation, setAiKeyValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
   const [aiKeyValidationError, setAiKeyValidationError] = useState('');
-  // Saved prompts
   const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useState<string>('default');
   const [savingPrompt, setSavingPrompt] = useState(false);
   const savingRef = useRef(false);
   const [isCreatingNewPrompt, setIsCreatingNewPrompt] = useState(false);
-  const [newPromptTempId, setNewPromptTempId] = useState<string | null>(null);
+  const [, setNewPromptTempId] = useState<string | null>(null);
   const [lastLoadedPrompt, setLastLoadedPrompt] = useState(DEFAULT_SETTINGS.dictation.customPrompt);
   const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
   const promptDropdownRef = useRef<HTMLDivElement>(null);
   const skipBlurSaveRef = useRef(false);
 
-  // Output settings (read-only for pipeline bar)
   const [autoPaste, setAutoPaste] = useState(DEFAULT_SETTINGS.dictation.autoPaste);
 
   const fetchOpenAIModels = useCallback(async () => {
@@ -105,7 +101,6 @@ export function ModesPage(props: ModelStatus) {
     setAiAnthropicKey(s.ai.anthropicApiKey);
     setAiAnthropicModel(s.ai.anthropicModel);
     setAnthropicKeySaved(!!s.ai.anthropicApiKey);
-    // Set validation state based on whether the active provider has a saved key
     const activeKey = s.ai.provider === 'openai' ? s.ai.openaiApiKey : s.ai.anthropicApiKey;
     setAiKeyValidation(activeKey ? 'valid' : 'idle');
     setAiKeyValidationError('');
@@ -233,10 +228,6 @@ export function ModesPage(props: ModelStatus) {
     } catch (err) {
       log.error('[ModesPage] Failed to toggle AI:', err);
     }
-  };
-
-  const handlePromptChange = (value: string) => {
-    setCustomPrompt(value);
   };
 
   const handlePromptSave = async () => {
@@ -389,7 +380,6 @@ export function ModesPage(props: ModelStatus) {
 
   const handleProviderChange = async (provider: AIProviderType) => {
     setAiProvider(provider);
-    // Reset validation to match new provider's saved key state
     const activeKey = provider === 'openai' ? aiOpenaiKey : aiAnthropicKey;
     const isSaved = provider === 'openai' ? openaiKeySaved : anthropicKeySaved;
     setAiKeyValidation(isSaved && activeKey ? 'valid' : 'idle');
@@ -500,7 +490,6 @@ export function ModesPage(props: ModelStatus) {
   const currentAiModels = aiProvider === 'openai' ? openaiModels : aiProvider === 'anthropic' ? ANTHROPIC_MODELS : [];
   const currentAiModel = aiProvider === 'openai' ? aiOpenaiModel : aiProvider === 'anthropic' ? aiAnthropicModel : '';
 
-  // ── Pipeline status bar helpers ──
   const transcriptionSummary = engine === 'cloud' ? 'Cloud' : `Local (${modelSize.charAt(0).toUpperCase() + modelSize.slice(1)})`;
   const languageLabel = LANGUAGE_OPTIONS.find(o => o.value === language)?.value.toUpperCase() ?? 'EN';
 
@@ -528,10 +517,8 @@ export function ModesPage(props: ModelStatus) {
     <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
       <div className="flex flex-col gap-8">
 
-        {/* ── Pipeline Status Bar ── */}
         <div className="rounded-xl border border-neutral-800 bg-[#0f0f0f] p-4">
           <div className="flex items-center">
-            {/* Stage 01: Transcribe */}
             <div className="flex-1 flex flex-col items-center gap-1.5 px-3 py-2">
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">Stage 01</span>
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-400">Transcribe</span>
@@ -539,12 +526,10 @@ export function ModesPage(props: ModelStatus) {
               <div className={`mt-1 h-1 w-full rounded-full ${statusColor(transcriptionStatus)}`} />
             </div>
 
-            {/* Connector */}
             <svg className="h-4 w-4 shrink-0 text-neutral-700" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
             </svg>
 
-            {/* Stage 02: AI Process */}
             <div className="flex-1 flex flex-col items-center gap-1.5 px-3 py-2">
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">Stage 02</span>
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-400">AI Process</span>
@@ -552,12 +537,10 @@ export function ModesPage(props: ModelStatus) {
               <div className={`mt-1 h-1 w-full rounded-full ${statusColor(aiStatus)}`} />
             </div>
 
-            {/* Connector */}
             <svg className="h-4 w-4 shrink-0 text-neutral-700" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
             </svg>
 
-            {/* Stage 03: Output */}
             <div className="flex-1 flex flex-col items-center gap-1.5 px-3 py-2">
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">Stage 03</span>
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-400">Output</span>
@@ -567,14 +550,12 @@ export function ModesPage(props: ModelStatus) {
           </div>
         </div>
 
-        {/* ── Section 1: Transcription ── */}
         <section>
           <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
             Transcription
           </h2>
           <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-5">
 
-            {/* Engine pills */}
             <div>
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
                 Engine
@@ -633,7 +614,6 @@ export function ModesPage(props: ModelStatus) {
               </div>
             </div>
 
-            {/* Groq API Key — shown when Cloud engine selected */}
             {engine === 'cloud' && (
               <div>
                 <div className="flex items-center gap-2 mb-1">
@@ -683,7 +663,6 @@ export function ModesPage(props: ModelStatus) {
               </div>
             )}
 
-            {/* Whisper model cards — only relevant for local engine */}
             {engine === 'local' && (
             <div>
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
@@ -754,7 +733,6 @@ export function ModesPage(props: ModelStatus) {
                   );
                 })}
 
-                {/* Download button — in grid, under Small (3rd column, 2nd row) */}
                 {!downloaded && !downloading && (
                   <button
                     onClick={download}
@@ -774,7 +752,6 @@ export function ModesPage(props: ModelStatus) {
             </div>
             )}
 
-            {/* Language pills — shared by both engines */}
             <div>
               <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
                 Language
@@ -799,14 +776,12 @@ export function ModesPage(props: ModelStatus) {
           </div>
         </section>
 
-        {/* ── Section 2: AI Processing ── */}
         <section>
           <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
             AI Processing
           </h2>
 
           <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-5">
-            {/* Toggle row */}
             <div className="flex items-center justify-between">
               <div className="flex flex-col gap-0.5">
                 <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">
@@ -833,7 +808,6 @@ export function ModesPage(props: ModelStatus) {
               </button>
             </div>
 
-            {/* [IDLE] banner — hidden only after successful key validation */}
             {aiPostProcessing && aiKeyValidation !== 'valid' && (
               <div className="flex items-center gap-3 rounded-lg border border-green-800/40 bg-green-950/20 px-4 py-3">
                 <div className="flex items-center gap-2 shrink-0">
@@ -849,10 +823,8 @@ export function ModesPage(props: ModelStatus) {
               </div>
             )}
 
-            {/* All AI config — visible only when toggle is ON */}
             {aiPostProcessing && (
               <>
-                {/* Provider pills */}
                 <div>
                   <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
                     Provider
@@ -874,7 +846,6 @@ export function ModesPage(props: ModelStatus) {
                   </div>
                 </div>
 
-                {/* AI Model cards */}
                 {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
                   <div>
                     <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600 block mb-2">
@@ -906,7 +877,6 @@ export function ModesPage(props: ModelStatus) {
                   </div>
                 )}
 
-                {/* API Key — AI Processing */}
                 {(aiProvider === 'openai' || aiProvider === 'anthropic') && (
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -967,7 +937,6 @@ export function ModesPage(props: ModelStatus) {
                   </div>
                 )}
 
-                {/* ── System Prompt ── */}
                 <div className="border-t border-neutral-800 pt-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -983,7 +952,6 @@ export function ModesPage(props: ModelStatus) {
                     A set of instructions the AI uses to clean up, correct, and reformat your dictated text.
                   </p>
 
-                  {/* Saved prompts dropdown */}
                   <div className="relative mb-3" ref={promptDropdownRef}>
                     <button
                       onClick={() => setPromptDropdownOpen(!promptDropdownOpen)}
@@ -1045,7 +1013,7 @@ export function ModesPage(props: ModelStatus) {
 
                   <textarea
                     value={customPrompt}
-                    onChange={(e) => handlePromptChange(e.target.value)}
+                    onChange={(e) => setCustomPrompt(e.target.value)}
                     onBlur={savingPrompt || enhancing ? undefined : handlePromptSave}
                     placeholder={isCreatingNewPrompt ? 'Write your instruction, then click ENHANCE PROMPT to refine it with AI!' : 'Enter system prompt...'}
                     maxLength={4000}

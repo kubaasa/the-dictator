@@ -3,9 +3,9 @@ import log from 'electron-log/renderer';
 import type { ReactNode } from 'react';
 import type { WidgetType } from '../../shared/types';
 
-const WIDGETS: { id: WidgetType; label: string; tag: string; description: string }[] = [
-  { id: 'voicebar', label: 'Mini', tag: 'COMPACT', description: 'Floating pill — hover to interact' },
-  { id: 'maxi', label: 'Maxi', tag: 'FULL', description: 'Detailed card with waveform & shortcuts' },
+const WIDGETS: { id: WidgetType; label: string; description: string }[] = [
+  { id: 'voicebar', label: 'Mini', description: 'Floating pill — hover to interact' },
+  { id: 'maxi', label: 'Maxi', description: 'Detailed card with waveform & shortcuts' },
 ];
 
 function WhiteWaveBars() {
@@ -83,7 +83,6 @@ export function WidgetPage() {
     <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
       <div className="flex flex-col gap-8">
 
-        {/* ── First-use tooltip ── */}
         {showTooltip && (
           <div className="flex items-start gap-3 rounded-xl border border-green-600/30 bg-green-600/5 px-4 py-3">
             <svg className="mt-0.5 h-5 w-5 shrink-0 text-green-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -105,7 +104,6 @@ export function WidgetPage() {
           </div>
         )}
 
-        {/* ── Section 1: Widget Selector ── */}
         <section>
           <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
             Overlay Widget
@@ -124,14 +122,12 @@ export function WidgetPage() {
                       : 'border-neutral-800 bg-[#141414] hover:border-neutral-700'
                   }`}
                 >
-                  {/* Active badge */}
                   {isActive && (
                     <span className="absolute top-3 right-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-red-500">
                       Active
                     </span>
                   )}
 
-                  {/* Preview */}
                   <div className="flex items-center justify-center h-12">
                     {w.id === 'voicebar' ? (
                       <MiniPreview active={isActive} />
@@ -140,7 +136,6 @@ export function WidgetPage() {
                     )}
                   </div>
 
-                  {/* Label + description */}
                   <div className="flex flex-col items-center gap-1">
                     <span className={`font-mono text-lg font-semibold ${
                       isActive ? 'text-red-400' : 'text-neutral-200'
@@ -158,7 +153,6 @@ export function WidgetPage() {
 
         </section>
 
-        {/* ── Section 2: Comparison Table ── */}
         <section>
           <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
             Comparison
@@ -237,15 +231,11 @@ function MiniPreview({ active }: { active: boolean }) {
 
   return (
     <svg width="82" height="34" viewBox="0 0 82 34">
-      {/* Drop shadow */}
       <rect x="3" y="4" width="78" height="28" rx="14" fill="rgba(0,0,0,0.2)" />
-      {/* Pill body — matches real VoiceBar glassmorphic style */}
       <rect x="1" y="2" width="78" height="28" rx="14"
         fill="#0a0a0a" stroke={borderColor} strokeWidth="1" />
-      {/* Inner catch-light */}
       <rect x="2" y="3" width="76" height="26" rx="13"
         fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
-      {/* Audio bars with envelope shape */}
       {heights.map((h, i) => (
         <rect
           key={i}
@@ -273,29 +263,23 @@ function MaxiPreview({ active }: { active: boolean }) {
   const barCount = 30;
   const barW = 2;
   const barGap = 1.5;
-  const maxBarH = 18;
   const totalBarsW = barCount * barW + (barCount - 1) * barGap;
   const barsStartX = 1 + (128 - totalBarsW) / 2;
 
   return (
     <svg width="132" height="48" viewBox="0 0 132 48">
-      {/* Drop shadow */}
       <rect x="3" y="3" width="128" height="44" rx="8" fill="rgba(0,0,0,0.2)" />
-      {/* Card body — matches real MaxiWidget glassmorphic style */}
       <rect x="1" y="1" width="128" height="44" rx="8"
         fill="#0a0a0a" stroke={borderColor} strokeWidth="1" />
-      {/* Inner catch-light */}
       <rect x="2" y="2" width="126" height="42" rx="7"
         fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
 
-      {/* [●REC] indicator */}
       <text x="9" y="12" fontFamily="'Courier New', monospace" fontSize="6" fontWeight="700"
         fill={accentColor} letterSpacing="0.5">[</text>
       <circle cx="15.5" cy="10" r="2" fill={accentColor} opacity={active ? 1 : 0.5} />
       <text x="19" y="12" fontFamily="'Courier New', monospace" fontSize="6" fontWeight="700"
         fill={accentColor} letterSpacing="0.5">REC]</text>
 
-      {/* Waveform bars — realistic irregular audio shape */}
       {[2, 3, 5, 8, 14, 7, 16, 11, 18, 9, 15, 17, 6, 14, 18, 16, 8, 17, 12, 15, 10, 18, 7, 13, 16, 9, 6, 4, 3, 1.5].map((h, i) => (
         <rect
           key={i}
@@ -308,7 +292,6 @@ function MaxiPreview({ active }: { active: boolean }) {
         />
       ))}
 
-      {/* Keyboard shortcut badges — styled like real KeyBadge component */}
       <text x="30" y="42" fontFamily="'Courier New', monospace" fontSize="5"
         fill={labelColor}>Stop</text>
       <rect x="46" y="37" width="12" height="7" rx="1.5"

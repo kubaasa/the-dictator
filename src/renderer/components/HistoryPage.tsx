@@ -101,7 +101,6 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
 
   return (
     <div className="rounded-xl border border-neutral-800 bg-[#141414] overflow-hidden">
-      {/* Collapsed row */}
       <button
         onClick={onToggle}
         aria-expanded={isExpanded}
@@ -109,7 +108,6 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
           isExpanded ? 'bg-red-600/5' : 'hover:bg-[#1A1A1A]'
         }`}
       >
-        {/* Status dot */}
         <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isExpanded ? 'bg-red-500' : 'bg-neutral-700'}`} />
 
         <span className="font-mono text-sm text-neutral-400 shrink-0 w-12">{formatTime(entry.date)}</span>
@@ -122,28 +120,24 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
         <span className="text-sm text-neutral-300 truncate flex-1">{preview}</span>
       </button>
 
-      {/* Expanded accordion body */}
       <div
         className="grid transition-[grid-template-rows] duration-200 ease-in-out"
         style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden">
         <div className="bg-[#0f0f0f]/60 pb-1">
-          {/* Transcription text */}
           <div className="mx-5 border-t border-neutral-800/30 py-3">
             <p className="text-sm text-neutral-200 leading-relaxed max-h-48 overflow-y-auto select-text whitespace-pre-wrap">
               {entry.text}
             </p>
           </div>
 
-          {/* Delete error */}
           {deleteError && (
             <div className="mx-5 px-0 py-1.5 text-sm text-red-400" role="alert">
               {deleteError}
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex items-center justify-center gap-2 mx-5 border-t border-neutral-800/30 py-2">
             {confirmingDelete ? (
               <div className="flex items-center gap-2 w-full justify-center">
@@ -206,7 +200,6 @@ export function HistoryPage() {
   const searchQueryRef = useRef('');
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup debounce + load timeout on unmount
   useEffect(() => {
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -219,11 +212,9 @@ export function HistoryPage() {
       setIsLoading(true);
       setLoadTimedOut(false);
 
-      // Loading timeout
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
       loadTimeoutRef.current = setTimeout(() => setLoadTimedOut(true), LOAD_TIMEOUT_MS);
 
-      // Migrate localStorage data to SQLite once
       const raw = localStorage.getItem('dictator_recordings');
       const migrated = localStorage.getItem('dictator_history_migrated');
       if (raw && migrated !== 'true') {
@@ -251,7 +242,6 @@ export function HistoryPage() {
         setLoadError(result.error ?? 'Unknown error');
       }
 
-      // Fetch real total count from DB
       try {
         const countResult = await window.dictator.history.getCount();
         if (countResult.success) setTotalCount(countResult.count);
@@ -283,12 +273,10 @@ export function HistoryPage() {
     }
   }, [isLoadingMore, hasMore, recordings.length]);
 
-  // Initial load
   useEffect(() => {
     loadAll();
   }, [loadAll]);
 
-  // Reload list when a new transcription arrives — preserve expanded state
   useEffect(() => {
     const unsub = window.dictator.onTranscriptionResult(() => {
       if (!searchQueryRef.current.trim()) {
@@ -352,14 +340,12 @@ export function HistoryPage() {
 
   const groups = groupByDate(recordings);
 
-  // When searching: show loaded result count; otherwise: show real total from DB
   const displayCount = searchQuery.trim() ? recordings.length : (totalCount ?? recordings.length);
 
   return (
     <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
       <div className="flex flex-col gap-8">
 
-        {/* ── Search Section ── */}
         <section>
           <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">
             Footage Archive
@@ -387,7 +373,6 @@ export function HistoryPage() {
           )}
         </section>
 
-        {/* ── Content ── */}
         {isLoading ? (
           <section>
             <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">

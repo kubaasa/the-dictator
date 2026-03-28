@@ -7,10 +7,8 @@ export function initSentry(): void {
     environment: app.isPackaged ? 'production' : 'development',
     release: `the-dictator@${app.getVersion()}`,
 
-    // Don't send events in dev mode
     enabled: app.isPackaged,
 
-    // Filter sensitive data
     beforeSend(event) {
       if (event.message) {
         event.message = event.message

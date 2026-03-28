@@ -22,18 +22,15 @@ function WizardStepper({ currentStep }: { currentStep: WizardStep }) {
       {STEP_LABELS.map((label, i) => {
         const isCompleted = i < currentStep;
         const isActive = i === currentStep;
-        const isUpcoming = i > currentStep;
 
         return (
           <div key={label} className="flex items-center">
-            {/* Connector line before dot (skip for first) */}
-            {i > 0 && (
+                {i > 0 && (
               <div className={`h-0.5 w-12 transition-colors duration-300 ${
                 i <= currentStep ? 'bg-red-600' : 'bg-neutral-700'
               }`} />
             )}
 
-            {/* Dot + label */}
             <div className="flex flex-col items-center">
               <div className={`flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all duration-300 ${
                 isCompleted
@@ -180,8 +177,6 @@ function StepConfig({
   validation: ValidationStatus;
   validationError: string;
 }) {
-  // verifyButtonLabel removed — handled inline by ApiKeyInput saved state
-
   if (engine === 'local') {
     return (
       <div>
@@ -189,7 +184,6 @@ function StepConfig({
           Choose Whisper model
         </label>
 
-        {/* Models table */}
         <div className="mb-4 overflow-hidden rounded-lg border border-neutral-800">
           <table className="w-full text-left text-sm">
             <thead>
@@ -247,7 +241,6 @@ function StepConfig({
           </table>
         </div>
 
-        {/* Download info */}
         <div className="flex items-start gap-2 rounded-md border border-neutral-700/40 bg-neutral-800/40 px-3 py-2">
           <svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
@@ -487,7 +480,6 @@ function StepMicTest({
         smoothedRef.current[i] = current + (targetH - current) * factor;
       }
 
-      // Update bars via DOM refs
       for (let i = 0; i < MIC_BAR_COUNT; i++) {
         const el = barElemsRef.current[i];
         if (el) {
@@ -495,7 +487,6 @@ function StepMicTest({
         }
       }
 
-      // Update volume bar via DOM ref
       const volPct = Math.round(maxPeak * 100);
       if (volumeBarRef.current) {
         volumeBarRef.current.style.width = `${volPct}%`;
@@ -506,7 +497,6 @@ function StepMicTest({
         setVolumePercent(volPct);
       }
 
-      // Audio detection
       if (maxPeak > MIC_AUDIO_THRESHOLD) {
         detectCountRef.current++;
         if (detectCountRef.current === MIC_DETECT_FRAMES) {
@@ -530,7 +520,6 @@ function StepMicTest({
     smoothedRef.current.fill(MIC_MIN_BAR_H);
   }, []);
 
-  // Enumerate devices on mount, then start test with default mic
   useEffect(() => {
     refreshDevices().then(() => {
       // selectedDeviceId is set inside refreshDevices via setState,
@@ -571,7 +560,6 @@ function StepMicTest({
         Speak or make noise to verify your mic works.
       </p>
 
-      {/* Microphone selector */}
       {devices.length > 0 && (
         <div className="mb-4">
           <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
@@ -598,7 +586,6 @@ function StepMicTest({
 
       {micPermission === 'granted' && (
         <>
-          {/* Waveform bars */}
           <div className="mb-4 flex items-end justify-center gap-1.5" style={{ height: MIC_MAX_BAR_H + 8 }}>
             {Array.from({ length: MIC_BAR_COUNT }, (_, i) => (
               <div
@@ -615,7 +602,6 @@ function StepMicTest({
             ))}
           </div>
 
-          {/* Volume bar */}
           <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-neutral-700">
             <div
               ref={volumeBarRef}
@@ -627,7 +613,6 @@ function StepMicTest({
             Volume: {volumePercent}%
           </p>
 
-          {/* Audio detected feedback */}
           {audioDetected && (
             <div className="flex items-center justify-center gap-2 animate-fade-in">
               <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -773,12 +758,10 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
 
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Auto-focus dialog on mount
   useEffect(() => {
     dialogRef.current?.focus();
   }, []);
 
-  // Focus trap: Tab cycles within the modal
   const handleKeyDown = (e: ReactKeyboardEvent) => {
     if (e.key === 'Escape' && onClose) {
       onClose();
@@ -818,7 +801,6 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
         onKeyDown={handleKeyDown}
         className="relative w-full max-w-lg rounded-2xl border border-neutral-800 bg-[#141414] p-8 shadow-2xl outline-none"
       >
-        {/* Close button (only when opened from sidebar, not on first run) */}
         {onClose && (
           <button
             onClick={onClose}
@@ -832,7 +814,6 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
           </button>
         )}
 
-        {/* Header */}
         <div className="mb-6 text-center">
           <img src={appIcon} alt="The Dictator" className="mx-auto mb-2 h-20 w-20 rounded-xl" />
           <h2 className="font-mono text-lg font-bold tracking-wider text-white uppercase">
@@ -843,10 +824,8 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
           </p>
         </div>
 
-        {/* Stepper */}
         <WizardStepper currentStep={currentStep} />
 
-        {/* Step content */}
         <div key={currentStep} className="animate-fade-in">
           {currentStep === 0 && (
             <StepEngine engine={engine} onEngineChange={handleEngineChange} />
@@ -874,7 +853,6 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
           )}
         </div>
 
-        {/* Navigation buttons */}
         <div className="mt-6 flex gap-3">
           {currentStep > 0 && (
             <button

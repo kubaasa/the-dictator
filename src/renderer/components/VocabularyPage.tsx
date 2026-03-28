@@ -135,7 +135,6 @@ export function VocabularyPage() {
           </div>
         </div>
 
-        {/* Add new entry form */}
         <div className="rounded-lg border border-neutral-800 bg-[#141414] px-5 py-4 mb-6">
           <span className="block font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-3">Input</span>
           <div className="flex items-center gap-3">
@@ -167,7 +166,6 @@ export function VocabularyPage() {
           </div>
         </div>
 
-        {/* Entry list */}
         {entries.length > 0 && (
           <div className="space-y-2">
             {entries.map((entry) => (
@@ -176,7 +174,6 @@ export function VocabularyPage() {
                 className="flex items-center justify-between rounded-lg border border-neutral-800 bg-[#141414] px-5 py-3"
               >
                 {editingId === entry.id ? (
-                  /* Inline edit mode */
                   <div className="flex flex-1 items-center gap-3">
                     <input
                       type="text"
@@ -212,7 +209,6 @@ export function VocabularyPage() {
                     </button>
                   </div>
                 ) : (
-                  /* Display mode */
                   <>
                     <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
                       <span className="truncate font-mono text-neutral-200">{entry.input}</span>

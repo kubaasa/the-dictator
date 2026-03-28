@@ -42,7 +42,6 @@ export function ApiKeyInput({
 
   const label = buttonLabel ?? 'Save';
 
-  // Reset focused state when transitioning from saved → editable
   useEffect(() => {
     if (!saved) {
       setFocused(false);
@@ -56,7 +55,6 @@ export function ApiKeyInput({
     }
   }, [focused]);
 
-  // Clean up confirm timer on unmount
   useEffect(() => {
     return () => {
       if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
@@ -75,7 +73,6 @@ export function ApiKeyInput({
     }
   };
 
-  // Saved state: non-interactive mask + Delete button
   if (saved) {
     return (
       <div className="flex gap-2">
@@ -99,7 +96,6 @@ export function ApiKeyInput({
     );
   }
 
-  // Default state: editable input + Save/Verify button
   return (
     <div className="flex gap-2">
       <div

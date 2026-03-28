@@ -57,7 +57,6 @@ export class UpdateService {
       this.notify();
     });
 
-    // First check after 30s, then every 4 hours
     setTimeout(() => this.checkForUpdates(), 30_000);
     this.checkTimer = setInterval(() => this.checkForUpdates(), CHECK_INTERVAL_MS);
   }

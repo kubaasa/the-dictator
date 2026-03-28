@@ -15,12 +15,9 @@ const BAR_COUNT  = 60;
 const BAR_WIDTH  = 3;
 const BAR_GAP    = 3;
 const MAX_BAR_H  = 88;
-const MIN_BAR_H  = 2.5; // baseline height in pixels — always visible in silence
+const MIN_BAR_H  = 2.5;
 
-// ─── LERP smoothing factors ────────────────────────────────────────────────
-// Range: 0 = frozen, 1 = instant. Tweakable here.
-// ATTACK: how fast bars rise toward a loud peak (higher = more responsive)
-// RELEASE: how fast bars fall back to silence (lower = slower, smoother decay)
+// LERP smoothing: 0 = frozen, 1 = instant
 const LERP_ATTACK  = 0.75;
 const LERP_RELEASE = 0.18;
 
@@ -37,45 +34,27 @@ function formatKey(k: string): string {
   return KEY_ALIASES[k] ?? k;
 }
 
-// ─── Hanning window envelope ───────────────────────────────────────────────
-// Creates the "spindle / diamond" shape: center bars reach full amplitude,
-// edge bars are attenuated to zero regardless of how loud the user speaks.
-//
-// Formula: w(i) = sin²( π * i / (N - 1) )
-//   i = 0      → sin(0)   = 0.0  → fully attenuated (left edge)
-//   i = N/2    → sin(π/2) = 1.0  → full amplitude   (center)
-//   i = N-1    → sin(π)   = 0.0  → fully attenuated (right edge)
+// Hanning window: w(i) = sin²(π * i / (N-1)) — spindle/diamond shape
 const HANNING_WEIGHTS = Array.from({ length: BAR_COUNT }, (_, i) =>
   Math.pow(Math.sin(Math.PI * i / (BAR_COUNT - 1)), 2)
 );
 
-// Idle height per bar — tiny spindle silhouette while waiting
 const IDLE_SCALES = HANNING_WEIGHTS.map(w =>
   ((MIN_BAR_H + w * 6) / MAX_BAR_H).toFixed(4)
 );
 
-// Init animation: uniform peak height for wave effect
 const INIT_PEAK_SCALE = ((MIN_BAR_H + MAX_BAR_H * 0.2) / MAX_BAR_H).toFixed(4);
 
-// Init animation: 3 simultaneous waves flowing right-to-left
-// Negative delays = all bars start immediately but at different phases spanning 3 full cycles
-const INIT_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) => {
-  return (-((BAR_COUNT - 1 - i) / (BAR_COUNT - 1)) * 3).toFixed(3);
-});
+// Negative delays create 3 simultaneous wave phases flowing right-to-left
+const INIT_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) =>
+  (-((BAR_COUNT - 1 - i) / (BAR_COUNT - 1)) * 3).toFixed(3)
+);
 
-// Pre-computed per-bar properties for organic variation during recording
+// Per-bar pseudo-random variation for organic movement
 const BAR_PROPS = Array.from({ length: BAR_COUNT }, (_, i) => {
-  // Stable pseudo-random seed per bar
   const seed = Math.sin(i * 127.1 + 311.7) * 43758.5453;
   const rand = seed - Math.floor(seed);
-
-  // Each bar reacts at slightly different gain (0.80–1.0)
-  const multiplier = 0.80 + rand * 0.20;
-
-  // Micro-jitter factor per bar (±5%)
-  const jitter = 0.95 + rand * 0.1;
-
-  return { multiplier, jitter };
+  return { multiplier: 0.80 + rand * 0.20, jitter: 0.95 + rand * 0.1 };
 });
 
 const KEYFRAMES = `
@@ -130,20 +109,16 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
   const prevIsActiveRef = useRef(false);
   const dragMouseUpRef = useRef<(() => void) | null>(null);
 
-  // ─── Audio visualization refs (no React state — updated in RAF loop) ────
-  const vizActiveRef   = useRef(false); // guards async getUserMedia against cleanup races
+  // Audio visualization refs — updated in RAF loop, not React state
+  const vizActiveRef   = useRef(false);
   const audioCtxRef    = useRef<AudioContext | null>(null);
   const analyserRef    = useRef<AnalyserNode | null>(null);
   const streamRef      = useRef<MediaStream | null>(null);
   const rafRef         = useRef<number>(0);
-  // Latest voiceLevel from prop — updated via effect so the RAF closure can read it
   const voiceLevelRef  = useRef(0);
-  // Smoothed bar heights in pixels — persists across animation frames
   const smoothedRef    = useRef<Float32Array>(new Float32Array(BAR_COUNT).fill(MIN_BAR_H));
-  // Direct DOM refs for each bar — bypasses React render cycle in hot RAF loop
   const barElemsRef    = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Keep voiceLevelRef in sync with the prop (no re-render needed)
   useEffect(() => { voiceLevelRef.current = voiceLevel; }, [voiceLevel]);
 
   const isInitializing = state === 'initializing';
@@ -152,19 +127,13 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
   const isDone         = state === 'done';
   const isError        = state === 'error';
 
-  // ─── Processing dots sequential animation (pure CSS) ────────────────────────
-
-  // ─── Enter / exit animation state machine ────────────────────────────────
   // 'done' is NOT active — widget starts fading out immediately when transcription completes
   const isActive = isInitializing || isRecording || isTranscribing || isError;
 
-  // Track what content the widget was showing — sticky until next activation.
-  // Prevents bars from flashing during the exit animation after processing or error.
+  // Sticky state: remember last content during exit animation to prevent flash
   const wasErrorRef = useRef(false);
   const wasProcessingRef = useRef(false);
 
-  // Clear stickiness synchronously during render (before computing show* flags)
-  // to prevent a one-frame flash of stale content on new activation
   if (isActive && !prevIsActiveRef.current) {
     wasErrorRef.current = false;
     wasProcessingRef.current = false;
@@ -192,7 +161,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
     }
   }, [isActive]);
 
-  // ─── Start / stop visualization based on recording state ────────────────
   useEffect(() => {
     if (!isRecording) {
       vizActiveRef.current = false;
@@ -211,9 +179,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
   }, [isRecording]);
 
   async function startVisualization() {
-    // Try to get a real audio stream for per-bar amplitude data.
-    // If getUserMedia fails (e.g. exclusive-access device), fall back to the
-    // voiceLevel prop — bars will still pulse with a Hanning-shaped envelope.
     let localAnalyser: AnalyserNode | null = null;
     let dataArray: Uint8Array | null = null;
     let samplesPerBar = 0;
@@ -224,7 +189,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
         : {};
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { ...audioConstraints }, video: false });
 
-      // Guard: cleanup ran while we were awaiting — release stream immediately
       if (!vizActiveRef.current) {
         stream.getTracks().forEach(t => t.stop());
         return;
@@ -234,7 +198,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
       const ctx = new AudioContext();
       await ctx.resume();
 
-      // Guard: check again after second await
       if (!vizActiveRef.current) {
         stream.getTracks().forEach(t => t.stop());
         ctx.close();
@@ -256,37 +219,30 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
       log.warn('[MaxiWidget] getUserMedia failed, falling back to voiceLevel prop:', err);
     }
 
-    // Final guard before starting RAF loop
     if (!vizActiveRef.current) return;
 
     const tick = () => {
       if (localAnalyser && dataArray) {
-        // Real audio path: per-bar peak amplitude from time-domain buffer
         localAnalyser.getByteTimeDomainData(dataArray);
 
         for (let i = 0; i < BAR_COUNT; i++) {
           let peak = 0;
           const offset = i * samplesPerBar;
           for (let s = 0; s < samplesPerBar; s++) {
-            const amplitude = Math.abs(dataArray[offset + s] - 128) / 128; // 0–1
+            const amplitude = Math.abs(dataArray[offset + s] - 128) / 128;
             if (amplitude > peak) peak = amplitude;
           }
 
-          // Speech amplitudes are typically 0.05–0.15 — boost ×4 so bars fill the widget
           const boosted = Math.min(1, peak * 4);
-          // Per-bar variation: multiplier + jitter for organic movement
           const varied = boosted * BAR_PROPS[i].multiplier * BAR_PROPS[i].jitter;
-          // Apply Hanning window — spindle / diamond shape
           const enveloped = varied * HANNING_WEIGHTS[i];
           const targetH   = MIN_BAR_H + enveloped * (MAX_BAR_H - MIN_BAR_H);
 
-          // LERP smoothing: new = old + (target - old) * factor
           const current = smoothedRef.current[i];
           const factor  = targetH > current ? LERP_ATTACK : LERP_RELEASE;
           smoothedRef.current[i] = current + (targetH - current) * factor;
         }
       } else {
-        // Fallback path: single scalar distributed across bars via Hanning envelope.
         const level = Math.min(1, Math.pow(Math.min(1, Math.max(0, voiceLevelRef.current)), 0.3) * 1.5);
         for (let i = 0; i < BAR_COUNT; i++) {
           const varied = level * BAR_PROPS[i].multiplier * BAR_PROPS[i].jitter;
@@ -299,7 +255,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
         }
       }
 
-      // Write directly to DOM — avoids React re-render at 60fps
       for (let i = 0; i < BAR_COUNT; i++) {
         const el = barElemsRef.current[i];
         if (el) {
@@ -329,7 +284,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
     smoothedRef.current.fill(MIN_BAR_H);
   }
 
-  // ─── Drag logic ──────────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       if (dragMouseUpRef.current) {
@@ -354,7 +308,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
     document.addEventListener('mouseup', onUp);
   }, []);
 
-  // ─── Rendering ───────────────────────────────────────────────────────────
   const indicator = isRecording
     ? { dot: true,  text: 'REC',   color: ERROR_RED }
     : isError
@@ -386,7 +339,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
             'none',
         }}
       >
-        {/* Pill card */}
         <div
           style={{
             display: 'flex',
@@ -402,9 +354,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
             animation: 'none',
           } as React.CSSProperties}
         >
-          <>
-              {/* Row 1: Status indicator */}
-              <div style={{ height: 22, display: 'flex', alignItems: 'center' }}>
+            <div style={{ height: 22, display: 'flex', alignItems: 'center' }}>
                 {indicator && (
                   <span style={{
                     fontFamily: 'monospace', fontSize: 14, fontWeight: 700,
@@ -424,7 +374,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
                 )}
               </div>
 
-              {/* Row 2: Waveform bars / Processing text */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -539,7 +488,6 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
                 )}
               </div>
 
-              {/* Row 3: Keyboard shortcuts */}
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 gap: 0, paddingTop: 7, whiteSpace: 'nowrap',
@@ -551,8 +499,7 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
                     <ShortcutEntry label="Cancel"    raw={shortcuts.cancelRecording} />
                   </>
                 )}
-              </div>
-            </>
+            </div>
         </div>
       </div>
     </div>

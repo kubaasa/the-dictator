@@ -1,9 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import log from 'electron-log/renderer';
 
-// AudioWorklet processor — runs in a dedicated audio thread (immune to main-thread jank).
-// Accumulates 4096-sample chunks (~256ms at 16kHz) before posting to the main thread,
-// matching the old ScriptProcessorNode cadence but without dropped frames.
+// AudioWorklet processor: accumulates 4096-sample chunks (~256ms at 16kHz) in a dedicated
+// audio thread, immune to main-thread jank. Posts chunks + RMS level to the main thread.
 const WORKLET_PROCESSOR_CODE = `
 class RecorderProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -74,7 +73,6 @@ class RecorderProcessor extends AudioWorkletProcessor {
 registerProcessor('recorder-processor', RecorderProcessor);
 `;
 
-/** Map getUserMedia DOMException names to user-friendly recovery messages. */
 function classifyMicError(err: unknown): string {
   if (err instanceof DOMException) {
     switch (err.name) {
@@ -119,26 +117,22 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const chunksRef = useRef<Float32Array[]>([]);
 
-  // Persistent AudioContext + worklet — created once, reused across recordings
   const persistentCtxRef = useRef<AudioContext | null>(null);
   const workletReadyRef = useRef(false);
 
-  // Race condition guards for push-to-talk.
-  // sessionIdRef is a monotonic counter — each startRecording increments it.
-  // After every await, we check if the session is still current. If not, the
-  // setup was superseded (e.g. cancel during getUserMedia) and we bail out.
+  // Race condition guards for push-to-talk — sessionIdRef is a monotonic counter.
+  // After every await in startRecording, we check if the session is still current.
+  // If not, the setup was superseded (e.g. cancel during getUserMedia) and we bail out.
   const isSettingUpRef = useRef(false);
   const pendingStopRef = useRef(false);
   const sessionIdRef = useRef(0);
 
-  // MediaRecorder for WebM audio (saved to history)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaChunksRef = useRef<Blob[]>([]);
 
-  // Coordination between MediaRecorder.onstop and onTranscriptionResult.
-  // Two async sources (onstop → buffer, transcription → result ID) arrive independently.
-  // We match them by snapshotted recording ID — NOT recordingIdRef.current, which may
-  // already point to a new recording if the user started one quickly.
+  // Coordination: MediaRecorder.onstop (→ buffer) and onTranscriptionResult (→ result ID)
+  // arrive independently. We match them by snapshotted recording ID — NOT recordingIdRef.current,
+  // which may already point to a new recording if the user started one quickly.
   const recordingIdRef = useRef<string>('');
   const pendingAudioRef = useRef<{ id: string; buffer: ArrayBuffer } | null>(null);
   const pendingResultIdRef = useRef<string | null>(null);
@@ -157,7 +151,6 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     }
   }, []);
 
-  // Listen for transcription result to coordinate audio save
   useEffect(() => {
     const unsub = window.dictator.onTranscriptionResult((result) => {
       if (result.id) {
@@ -167,8 +160,6 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     return unsub;
   }, [trySendAudio]);
 
-  // Get or create a persistent AudioContext with worklet already registered.
-  // First call: ~15–30ms (create + addModule). Subsequent calls: ~0–1ms (resume only).
   const getOrCreateAudioContext = useCallback(async (): Promise<AudioContext> => {
     if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
       if (persistentCtxRef.current.state === 'suspended') {
@@ -197,11 +188,10 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     pendingStopRef.current = false;
 
     try {
-      // Show overlay immediately with loading animation (before slow getUserMedia)
       window.dictator.initRecording();
 
       const { ready, error: readyError, errorType: readyErrorType } = await window.dictator.checkTranscriptionReady();
-      if (sessionIdRef.current !== thisSession) return; // session superseded
+      if (sessionIdRef.current !== thisSession) return;
       if (!ready) {
         isSettingUpRef.current = false;
         pendingStopRef.current = false;
@@ -222,19 +212,16 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         },
       });
 
-      // Guard: session cancelled during getUserMedia (e.g. PTT released or cancel pressed)
       if (sessionIdRef.current !== thisSession) {
         stream.getTracks().forEach(t => t.stop());
         window.dictator.stopRecording();
         return;
       }
 
-      // Generate unique id for this recording before transcription starts
       recordingIdRef.current = Date.now().toString();
       pendingAudioRef.current = null;
       pendingResultIdRef.current = null;
 
-      // Start MediaRecorder to collect WebM audio for history
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/webm')
@@ -249,13 +236,10 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         mr.ondataavailable = (e) => {
           if (e.data.size > 0) mediaChunksRef.current.push(e.data);
         };
-        // onstop is set dynamically in stopRecording() — it collects the WebM blob
-        // for both API upload (compressed audio) and history save
         mr.start();
         mediaRecorderRef.current = mr;
       }
 
-      // Mic acquired — now tell main process
       isRecordingRef.current = true;
       const startTime = Date.now();
       recordingStartTimeRef.current = startTime;
@@ -265,7 +249,6 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
       mediaStreamRef.current = stream;
 
-      // Reuse persistent AudioContext + worklet (created once, ~0ms on subsequent calls)
       const audioContext = await getOrCreateAudioContext();
       if (sessionIdRef.current !== thisSession) {
         stream.getTracks().forEach(t => t.stop());
@@ -290,8 +273,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         }
       };
 
-      // Route through a silent gain node — worklet needs a destination connection
-      // to keep the audio graph alive
+      // Silent gain node keeps the audio graph alive so the worklet keeps processing
       const silentGain = audioContext.createGain();
       silentGain.gain.value = 0;
       source.connect(workletNode);
@@ -300,13 +282,12 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
       isSettingUpRef.current = false;
 
-      // If stop was requested during setup, execute it now
       if (pendingStopRef.current) {
         pendingStopRef.current = false;
         stopRecording();
       }
     } catch (err) {
-      if (sessionIdRef.current !== thisSession) return; // stale session, ignore
+      if (sessionIdRef.current !== thisSession) return;
       log.error('Failed to start recording:', err);
       isSettingUpRef.current = false;
       pendingStopRef.current = false;
@@ -317,13 +298,11 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       const message = classifyMicError(err);
       setError(message);
       setErrorType('');
-      // Broadcast error state + message to overlay (shows error for 2.5s, then idle)
       window.dictator.reportMicError(message);
     }
   }, [deviceId, getOrCreateAudioContext]);
 
   const stopRecording = useCallback(async () => {
-    // Bug #2: if still setting up, defer the stop
     if (isSettingUpRef.current) {
       pendingStopRef.current = true;
       return;
@@ -338,11 +317,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     }
     setRecordingStartTime(null);
 
-    // Snapshot recordingId before onstop callback — prevents race if a new recording starts quickly
     const snapshotRecordingId = recordingIdRef.current;
 
-    // Stop MediaRecorder and collect compressed WebM/Opus blob for API upload.
-    // The blob is available once onstop fires (~<10ms flush).
     let compressedBlobPromise: Promise<ArrayBuffer> | null = null;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       const mr = mediaRecorderRef.current;
@@ -352,10 +328,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
           const blob = new Blob(mediaChunksRef.current, { type: mr.mimeType });
           mediaChunksRef.current = [];
           const buffer = await blob.arrayBuffer();
-          // Use snapshotted id — recordingIdRef.current may have changed by now
           trySendAudio(snapshotRecordingId, buffer);
           resolve(buffer);
-          // Call previous onstop if any (defensive)
           if (prevOnStop) prevOnStop.call(mr, ev);
         };
       });
@@ -363,16 +337,13 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       mediaRecorderRef.current = null;
     }
 
-    // Signal the worklet processor to flush remaining audio and stop.
-    // IMPORTANT: MediaStream tracks are stopped AFTER the worklet finishes,
-    // so the audio pipeline keeps delivering frames until the worklet has flushed.
-    // Wait for the 'done' confirmation so in-flight audio messages are not dropped.
+    // Signal worklet to flush remaining audio, then wait for 'done' before stopping mic.
+    // Tracks must stay alive until worklet finishes so in-flight frames aren't dropped.
     if (workletNodeRef.current) {
       await new Promise<void>((resolve) => {
         const port = workletNodeRef.current!.port;
         const prevHandler = port.onmessage;
         port.onmessage = (ev) => {
-          // Keep processing audio/level messages that arrive before 'done'
           if (prevHandler) prevHandler.call(port, ev);
           if (ev.data?.type === 'done') {
             port.onmessage = null;
@@ -380,19 +351,15 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
           }
         };
         port.postMessage('stop');
-        // Safety timeout — don't hang forever if worklet never responds
-        setTimeout(() => { port.onmessage = null; resolve(); }, 1000);
+        setTimeout(() => { port.onmessage = null; resolve(); }, 1000); // safety timeout
       });
     }
 
-    // Now that the worklet is done, stop the microphone stream
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
 
-    // Snapshot chunks and null immediately to prevent race with rapid re-start.
-    // AudioContext is NOT closed — it's reused across recordings (persistentCtxRef).
     const audioContext = audioContextRef.current;
     audioContextRef.current = null;
     const chunks = chunksRef.current;
@@ -407,14 +374,12 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       workletNodeRef.current = null;
     }
 
-    // Notify main process. Skip idle broadcast when audio exists — the
-    // transcription handler manages state (transcribing → done → idle),
-    // preventing a brief idle flash that causes widget flickering.
+    // Skip idle broadcast when audio exists — transcription handler manages
+    // state transitions (transcribing → done → idle), preventing widget flickering
     const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
     const hasAudio = totalLength > 0 && !!audioContext;
     window.dictator.stopRecording(!hasAudio);
 
-    // Send buffer for transcription BEFORE closing context — minimize latency
     if (hasAudio) {
       const merged = new Float32Array(totalLength);
       let offset = 0;
@@ -424,10 +389,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       }
 
       const sampleRate = audioContext.sampleRate;
-      // Collect compressed WebM/Opus blob if available (~<10ms wait for MediaRecorder flush).
-      // API transcription uses this instead of re-encoding to WAV (~8x smaller upload).
-      // Timeout guard: if MediaRecorder.onstop never fires (browser bug, resource exhaustion),
-      // we proceed without compressed audio instead of hanging forever.
+      // Wait for compressed WebM/Opus blob (~8x smaller than WAV for API upload).
+      // Timeout guard: proceed without compressed audio if onstop never fires.
       let compressedAudio: ArrayBuffer | undefined;
       if (compressedBlobPromise) {
         try {
@@ -439,7 +402,6 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
           log.warn('Compressed audio unavailable, proceeding with raw buffer:', e);
         }
       }
-      // Use snapshotted id — recordingIdRef.current may have changed if a new recording started
       window.dictator.transcribeBuffer(merged.buffer, sampleRate, snapshotRecordingId, compressedAudio)
         .catch((err: unknown) => {
           log.error('transcribeBuffer failed:', err);
@@ -450,15 +412,11 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
           setError(err instanceof Error ? err.message : 'Transcription failed — please try again');
         });
     }
-
-    // AudioContext stays alive in persistentCtxRef — no close() here
-
   }, []);
 
   const cancelRecording = useCallback(() => {
     if (!isRecordingRef.current && !isSettingUpRef.current) return;
 
-    // Invalidate current session so any in-flight startRecording() awaits bail out
     sessionIdRef.current++;
     isRecordingRef.current = false;
     isSettingUpRef.current = false;
@@ -488,13 +446,11 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       workletNodeRef.current.disconnect();
       workletNodeRef.current = null;
     }
-    // AudioContext stays alive in persistentCtxRef — only null the working ref
     audioContextRef.current = null;
     chunksRef.current = [];
     window.dictator.stopRecording();
   }, []);
 
-  // Listen for global hotkey toggle from main process
   useEffect(() => {
     const unsub = window.dictator.onHotkeyToggle(() => {
       if (isRecordingRef.current || isSettingUpRef.current) {
@@ -506,15 +462,11 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     return unsub;
   }, [startRecording, stopRecording]);
 
-  // Listen for cancel hotkey
   useEffect(() => {
-    const unsub = window.dictator.onHotkeyCancel(() => {
-      cancelRecording();
-    });
+    const unsub = window.dictator.onHotkeyCancel(cancelRecording);
     return unsub;
   }, [cancelRecording]);
 
-  // Cleanup persistent AudioContext on unmount
   useEffect(() => {
     return () => {
       if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {

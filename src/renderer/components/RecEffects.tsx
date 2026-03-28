@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 
-/* ─── ScanLines ─── */
 export function ScanLines() {
   return (
     <div
@@ -12,7 +11,6 @@ export function ScanLines() {
   );
 }
 
-/* ─── NoiseOverlay ─── */
 export function NoiseOverlay() {
   return (
     <div className="fixed inset-0 z-[49] pointer-events-none opacity-[0.04] mix-blend-overlay">
@@ -26,7 +24,6 @@ export function NoiseOverlay() {
   );
 }
 
-/* ─── Vignette ─── */
 export function Vignette() {
   return (
     <div
@@ -38,7 +35,6 @@ export function Vignette() {
   );
 }
 
-/* ─── ViewfinderCorners ─── */
 interface ViewfinderCornersProps {
   color?: string;
   size?: number;
@@ -51,22 +47,18 @@ export function ViewfinderCorners({ color = '#166534', size = 24, animated = fal
 
   return (
     <>
-      {/* Top-left */}
       <div
         className={`absolute top-0 left-0 pointer-events-none ${cls}`}
         style={{ width: size, height: size, borderTop: borderStyle, borderLeft: borderStyle }}
       />
-      {/* Top-right */}
       <div
         className={`absolute top-0 right-0 pointer-events-none ${cls}`}
         style={{ width: size, height: size, borderTop: borderStyle, borderRight: borderStyle }}
       />
-      {/* Bottom-left */}
       <div
         className={`absolute bottom-0 left-0 pointer-events-none ${cls}`}
         style={{ width: size, height: size, borderBottom: borderStyle, borderLeft: borderStyle }}
       />
-      {/* Bottom-right */}
       <div
         className={`absolute bottom-0 right-0 pointer-events-none ${cls}`}
         style={{ width: size, height: size, borderBottom: borderStyle, borderRight: borderStyle }}
@@ -75,7 +67,6 @@ export function ViewfinderCorners({ color = '#166534', size = 24, animated = fal
   );
 }
 
-/* ─── RecIndicator ─── */
 interface RecIndicatorProps {
   isRecording: boolean;
   recordingStartTime?: number | null;
@@ -88,7 +79,6 @@ export function RecIndicator({ isRecording, recordingStartTime, compact = false 
 
   useEffect(() => {
     if (isRecording) {
-      // Use the canonical start time from the hook so remounts don't reset the timer
       const startTime = recordingStartTime ?? Date.now();
       const tick = () => {
         setElapsed(Date.now() - startTime);
@@ -134,7 +124,6 @@ export function RecIndicator({ isRecording, recordingStartTime, compact = false 
   );
 }
 
-/* ─── TimecodeDisplay ─── */
 export function TimecodeDisplay() {
   const [time, setTime] = useState('');
   const rafRef = useRef<number>(0);

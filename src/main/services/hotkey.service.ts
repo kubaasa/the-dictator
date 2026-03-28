@@ -88,7 +88,6 @@ export class HotkeyService {
       { action: 'showWindow', keys: this.parseShortcut(shortcuts.showWindow), callback: callbacks.onShowWindow },
     ];
 
-    // Remove previous listeners to prevent duplicates if start() is called multiple times
     if (this.keydownHandler) uIOhook.off('keydown', this.keydownHandler);
     if (this.keyupHandler) uIOhook.off('keyup', this.keyupHandler);
 
@@ -163,14 +162,10 @@ export class HotkeyService {
     this.mode = mode;
   }
 
-  // Called when recording starts from a non-hotkey source (e.g. overlay button click).
-  // Syncs isRecordingActive so keyboard shortcuts (toggle/PTT) work correctly.
   notifyRecordingStarted(): void {
     this.isRecordingActive = true;
   }
 
-  // Called when the renderer confirms recording has stopped (e.g. after an error).
-  // Keeps HotkeyService in sync so a stuck isRecordingActive=true can't block new PTT presses.
   notifyRecordingStopped(): void {
     this.isRecordingActive = false;
 
@@ -184,9 +179,6 @@ export class HotkeyService {
     }
   }
 
-  // Registers a one-shot global mouse-button-release listener via uiohook.
-  // Returns an unsubscribe function. Used by the widget drag handler to detect
-  // mouse-up events that occur outside the (small, transparent) overlay window.
   onGlobalMouseUp(callback: () => void): () => void {
     const handler = () => {
       uIOhook.off('mouseup', handler);
@@ -210,7 +202,6 @@ export class HotkeyService {
   }
 
   private checkBindings(): void {
-    // Match the most specific binding (most keys) first to avoid partial triggers
     const sorted = [...this.bindings]
       .filter((b) => b.keys.length > 0)
       .sort((a, b) => b.keys.length - a.keys.length);
