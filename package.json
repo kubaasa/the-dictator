@@ -1,7 +1,7 @@
 {
   "name": "the-dictator",
   "productName": "The Dictator",
-  "version": "1.0.1-beta",
+  "version": "1.1.0-beta",
   "description": "Voice dictation app with AI-powered transcription for Windows",
   "main": ".vite/build/main.js",
   "private": true,

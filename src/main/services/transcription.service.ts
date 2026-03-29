@@ -207,8 +207,8 @@ export class TranscriptionService {
     try {
     // Download with CPU first — reliable, and caches model files for DML reuse.
     const dtype = getDtypeForModel(modelId);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.pipe = await pipeline('automatic-speech-recognition', modelId, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       device: 'cpu' as any,
       ...(dtype && { dtype }),
       progress_callback: (info: { status: string; file?: string; loaded?: number; total?: number }) => {

@@ -99,7 +99,7 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
   const isIdle         = !isInitializing && !isRecording && !isTranscribing && !isDone && !isError;
 
   const [isProximate, setIsProximate] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+
   const [errorFlash, setErrorFlash] = useState(false);
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
   const [cascadeKey, setCascadeKey] = useState(0);
@@ -215,11 +215,9 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
     const offsetX = e.screenX - window.screenX;
     const offsetY = e.screenY - window.screenY;
     window.dictator.widgetDragStart(offsetX, offsetY);
-    setIsDragging(true);
 
     const onUp = () => {
       window.dictator.widgetDragEnd();
-      setIsDragging(false);
       document.removeEventListener('mouseup', onUp);
       dragMouseUpRef.current = null;
     };

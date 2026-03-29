@@ -5,5 +5,5 @@ import '../index.css';
 
 Sentry.init({});
 
-const root = createRoot(document.getElementById('app')!);
-root.render(<App />);
+const container = document.getElementById('app');
+if (container) createRoot(container).render(<App />);

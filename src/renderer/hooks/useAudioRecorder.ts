@@ -370,7 +370,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     // Tracks must stay alive until worklet finishes so in-flight frames aren't dropped.
     if (workletNodeRef.current) {
       await new Promise<void>((resolve) => {
-        const port = workletNodeRef.current!.port;
+        const port = workletNodeRef.current?.port;
+        if (!port) { resolve(); return; }
         const prevHandler = port.onmessage;
         port.onmessage = (ev) => {
           if (prevHandler) prevHandler.call(port, ev);

@@ -139,7 +139,8 @@ export class PasteService {
 
   private drainQueue(): void {
     if (this.currentCommand || this.commandQueue.length === 0) return;
-    const next = this.commandQueue.shift()!;
+    const next = this.commandQueue.shift();
+    if (!next) return;
     this.execImmediate(next.cmd, next.resolve, next.reject);
   }
 

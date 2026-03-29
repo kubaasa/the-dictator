@@ -61,8 +61,9 @@ function groupByDate(entries: RecordingEntry[]): { label: string; entries: Recor
   const groups: Map<string, RecordingEntry[]> = new Map();
   for (const entry of entries) {
     const label = getDateGroupLabel(entry.date);
-    if (!groups.has(label)) groups.set(label, []);
-    groups.get(label)!.push(entry);
+    const group = groups.get(label) ?? [];
+    if (!groups.has(label)) groups.set(label, group);
+    group.push(entry);
   }
   return Array.from(groups.entries()).map(([label, entries]) => ({ label, entries }));
 }
