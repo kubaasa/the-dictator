@@ -405,7 +405,7 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
                 onMouseDown={(e) => { e.preventDefault(); onToggleRecording?.(); }}
                 style={{
                   WebkitAppRegion: 'no-drag',
-                  cursor: 'pointer',
+                  cursor: 'default',
                   background: 'transparent',
                   border: 'none',
                   padding: 0,
