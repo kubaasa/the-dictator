@@ -1,4 +1,3 @@
-import { pipeline, env } from '@huggingface/transformers';
 import OpenAI, { toFile } from 'openai';
 import type { AppSettings, VocabularyEntry } from '../../shared/types';
 import Store from 'electron-store';
@@ -8,6 +7,22 @@ import { getApiKey } from './secure-storage';
 import logger from './logger';
 
 const log = logger.scope('Transcription');
+
+// Lazy-loaded @huggingface/transformers — the library eagerly loads onnxruntime-node
+// native bindings at import time, which crashes on systems without DirectML support
+// (e.g. VirtualBox VMs). Dynamic import() defers loading until local transcription
+// is actually needed, allowing the app to start even without ONNX runtime.
+type TransformersModule = typeof import('@huggingface/transformers');
+let _transformers: TransformersModule | null = null;
+
+async function getTransformers(): Promise<TransformersModule> {
+  if (!_transformers) {
+    _transformers = await import('@huggingface/transformers');
+    _transformers.env.allowLocalModels = false;
+    _transformers.env.cacheDir = MODELS_CACHE_DIR;
+  }
+  return _transformers;
+}
 
 /** Retry on transient network/server errors (5xx, timeout). Auth errors (401/403) are never retried. */
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 1000): Promise<T> {
@@ -54,9 +69,8 @@ function getDtypeForModel(modelId: string): Record<string, string> | undefined {
   return undefined;
 }
 
-env.allowLocalModels = false;
-
 // Explicitly pin the cache dir so both download and detection always use the same path.
+// require.resolve() only resolves the file path — it does NOT load the native module.
 const MODELS_CACHE_DIR = path.join(
   path.dirname(require.resolve('@huggingface/transformers')),
   '../.cache',
@@ -74,9 +88,7 @@ export class TranscriptionService {
   private transcriptionCount = 0;
   private static readonly PIPELINE_RESET_INTERVAL = 8;
 
-  constructor(private store: Store<AppSettings>) {
-    env.cacheDir = MODELS_CACHE_DIR;
-  }
+  constructor(private store: Store<AppSettings>) {}
 
   static async validateGroqApiKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
     try {
@@ -207,6 +219,7 @@ export class TranscriptionService {
     try {
     // Download with CPU first — reliable, and caches model files for DML reuse.
     const dtype = getDtypeForModel(modelId);
+    const { pipeline } = await getTransformers();
     this.pipe = await pipeline('automatic-speech-recognition', modelId, {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       device: 'cpu' as any,
@@ -435,6 +448,7 @@ export class TranscriptionService {
     const modelId = overrideModelId ?? this.getModelId();
     const dtype = getDtypeForModel(modelId);
     this.loadingPromise = (async () => {
+      const { pipeline } = await getTransformers();
       this.pipe = await pipeline('automatic-speech-recognition', modelId, {
         ...(dtype && { dtype }),
       });

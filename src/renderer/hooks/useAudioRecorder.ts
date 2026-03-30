@@ -224,15 +224,28 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-          channelCount: 1,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+            channelCount: 1,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+        });
+      } catch (micErr) {
+        if (sessionIdRef.current !== thisSession) return;
+        log.error('getUserMedia failed:', micErr);
+        isSettingUpRef.current = false;
+        pendingStopRef.current = false;
+        const message = classifyMicError(micErr);
+        setError(message);
+        setErrorType('');
+        window.dictator.reportMicError(message);
+        return;
+      }
 
       if (sessionIdRef.current !== thisSession) {
         stream.getTracks().forEach(t => t.stop());
@@ -330,14 +343,20 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       }
     } catch (err) {
       if (sessionIdRef.current !== thisSession) return;
-      log.error('Failed to start recording:', err);
+      log.error('Failed to start recording (audio pipeline):', err);
       isSettingUpRef.current = false;
       pendingStopRef.current = false;
       isRecordingRef.current = false;
       setIsRecording(false);
       setRecordingStartTime(null);
 
-      const message = classifyMicError(err);
+      // Clean up mic stream if it was already obtained
+      mediaStreamRef.current?.getTracks().forEach(t => t.stop());
+      mediaStreamRef.current = null;
+
+      const message = (err instanceof DOMException && err.name === 'AbortError')
+        ? 'Audio engine failed to initialize. Restart the app and try again.'
+        : classifyMicError(err);
       setError(message);
       setErrorType('');
       window.dictator.reportMicError(message);

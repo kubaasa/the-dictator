@@ -50,6 +50,12 @@ app.setAppUserModelId('com.squirrel.TheDictator.TheDictator');
 app.commandLine.appendSwitch('disk-cache-dir', path.join(app.getPath('userData'), 'Cache'));
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
+// Bypass Chromium's internal permission system for camera/microphone capture.
+// In packaged builds (file:// origin), Chromium 134 may reject getUserMedia with AbortError
+// even when Electron permission handlers grant access — this switch ensures the internal
+// permission gate is skipped entirely. Safe because this is a standalone desktop app.
+app.commandLine.appendSwitch('auto-accept-camera-and-microphone-capture');
+
 protocol.registerSchemesAsPrivileged([
   { scheme: 'recording', privileges: { stream: true, supportFetchAPI: true } },
 ]);
@@ -388,18 +394,20 @@ app.on('ready', () => {
         responseHeaders: {
           ...details.responseHeaders,
           'Content-Security-Policy': [
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' recording:; img-src 'self' data:",
+            "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' recording:; img-src 'self' data:",
           ],
         },
       });
     });
   }
 
-  // Auto-grant microphone permission requests from renderer (core app functionality).
-  // Without this, Chromium in packaged builds may deny getUserMedia with AbortError.
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(permission === 'media');
+  // Auto-grant all permissions (standalone desktop app — only loads our own renderer code).
+  // Three layers needed for full coverage: synchronous check, async request, device access.
+  session.defaultSession.setPermissionCheckHandler(() => true);
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(true);
   });
+  session.defaultSession.setDevicePermissionHandler(() => true);
 
   // Serve local audio files via recording:// with proper Range request support.
   // The HTML5 audio element requires Range responses (HTTP 206) for buffering/seeking.
