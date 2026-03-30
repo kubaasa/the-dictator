@@ -83,7 +83,7 @@ function classifyMicError(err: unknown): string {
       case 'NotReadableError':
         return 'Microphone is in use by another application. Close the other app and try again.';
       case 'AbortError':
-        return 'Microphone access was interrupted. Try again.';
+        return 'Microphone access was blocked. Check Windows Settings > Privacy & Security > Microphone.';
       case 'OverconstrainedError':
         return 'Selected microphone is unavailable. Check device in settings and try again.';
     }
@@ -210,6 +210,19 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       }
       setError('');
       setErrorType('');
+
+      const micStatus = await window.dictator.checkMicSystemPermission();
+      if (sessionIdRef.current !== thisSession) return;
+      if (micStatus === 'denied') {
+        isSettingUpRef.current = false;
+        pendingStopRef.current = false;
+        const msg = 'Microphone access blocked by Windows. Enable it in Settings > Privacy & Security > Microphone.';
+        setError(msg);
+        setErrorType('system-denied');
+        window.dictator.reportMicError(msg);
+        window.dictator.stopRecording();
+        return;
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -395,6 +408,12 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     const chunks = chunksRef.current;
     chunksRef.current = [];
 
+    // Broadcast state change IMMEDIATELY after stopping tracks so the overlay
+    // releases its own mic stream without waiting for the rest of cleanup.
+    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+    const hasAudio = totalLength > 0 && !!audioContext;
+    window.dictator.stopRecording(!hasAudio);
+
     if (sourceRef.current) {
       sourceRef.current.disconnect();
       sourceRef.current = null;
@@ -404,11 +423,13 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       workletNodeRef.current = null;
     }
 
-    // Skip idle broadcast when audio exists — transcription handler manages
-    // state transitions (transcribing → done → idle), preventing widget flickering
-    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
-    const hasAudio = totalLength > 0 && !!audioContext;
-    window.dictator.stopRecording(!hasAudio);
+    // Close persistent AudioContext so Windows fully releases the microphone device.
+    // A new context + worklet will be created on the next recording start.
+    if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
+      persistentCtxRef.current.close().catch(() => { /* ignore */ });
+      persistentCtxRef.current = null;
+      workletReadyRef.current = false;
+    }
 
     if (hasAudio) {
       const merged = new Float32Array(totalLength);
@@ -467,6 +488,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
+    window.dictator.stopRecording();
     if (sourceRef.current) {
       sourceRef.current.disconnect();
       sourceRef.current = null;
@@ -478,7 +500,11 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
     }
     audioContextRef.current = null;
     chunksRef.current = [];
-    window.dictator.stopRecording();
+    if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
+      persistentCtxRef.current.close().catch(() => { /* ignore */ });
+      persistentCtxRef.current = null;
+      workletReadyRef.current = false;
+    }
   }, []);
 
   useEffect(() => {

@@ -60,6 +60,7 @@ export interface DictatorAPI {
     validateKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>;
   };
 
+  checkMicSystemPermission: () => Promise<string>;
   openExternal: (url: string) => void;
 
   audio: {
@@ -187,6 +188,7 @@ const api: DictatorAPI = {
     save: (id, buffer) => ipcRenderer.invoke(IPC.AUDIO_SAVE, id, buffer),
   },
 
+  checkMicSystemPermission: () => ipcRenderer.invoke(IPC.MIC_CHECK_SYSTEM_PERMISSION),
   openExternal: (url) => ipcRenderer.send(IPC.SHELL_OPEN_EXTERNAL, url),
 
   quit: () => ipcRenderer.send(IPC.APP_QUIT),

@@ -735,6 +735,10 @@ export function registerIpcHandlers(
   });
 
   ipcMain.on(IPC.SHELL_OPEN_EXTERNAL, (_event, url: string) => {
+    if (typeof url === 'string' && url.startsWith('ms-settings:')) {
+      shell.openExternal(url);
+      return;
+    }
     const allowed = ['console.groq.com', 'groq.com', 'github.com'];
     try {
       const hostname = new URL(url).hostname;

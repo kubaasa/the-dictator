@@ -66,6 +66,8 @@ export const IPC = {
   UPDATE_STATUS_CHANGED: 'update:status-changed',
 
   NOTIFICATION_ERROR: 'notification:error',
+
+  MIC_CHECK_SYSTEM_PERMISSION: 'mic:check-system-permission',
 } as const;
 
 export const WHISPER_MODEL_DESCRIPTIONS: Record<string, string> = {

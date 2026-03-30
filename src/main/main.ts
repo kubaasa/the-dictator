@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage, protocol, screen, session } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeImage, protocol, screen, session, systemPreferences } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -323,10 +323,13 @@ function setupRecordingIpc(): void {
   });
 
   ipcMain.on(IPC.RECORDING_STOP, (_event, goIdle = true) => {
-    // Only transition to idle when there's no pending transcription.
-    // When audio exists, the transcription handler manages state transitions
-    // (transcribing → processing → done → idle), avoiding a brief idle flicker.
-    if (goIdle) broadcastState('idle');
+    if (goIdle) {
+      broadcastState('idle');
+    } else {
+      // Audio exists — transition to 'transcribing' immediately so the overlay
+      // releases its mic stream right away (instead of waiting for transcribeBuffer IPC).
+      broadcastState('transcribing');
+    }
     hotkeyService.notifyRecordingStopped();
   });
 
@@ -359,6 +362,12 @@ function setupRecordingIpc(): void {
   });
 }
 
+function setupMicPermissionIpc(): void {
+  ipcMain.handle(IPC.MIC_CHECK_SYSTEM_PERMISSION, () => {
+    return systemPreferences.getMediaAccessStatus('microphone');
+  });
+}
+
 function setupWindowControlIpc(): void {
   ipcMain.on(IPC.WINDOW_MINIMIZE, () => mainWindow?.minimize());
   ipcMain.on(IPC.WINDOW_CLOSE, () => mainWindow?.hide());
@@ -385,6 +394,13 @@ app.on('ready', () => {
       });
     });
   }
+
+  // Auto-grant microphone permission requests from renderer (core app functionality).
+  // Without this, Chromium in packaged builds may deny getUserMedia with AbortError.
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === 'media');
+  });
+
   // Serve local audio files via recording:// with proper Range request support.
   // The HTML5 audio element requires Range responses (HTTP 206) for buffering/seeking.
   // Uses streaming (fs.createReadStream) instead of loading entire file into memory —
@@ -486,6 +502,7 @@ app.on('ready', () => {
 
   updateService.start();
   setupRecordingIpc();
+  setupMicPermissionIpc();
   setupWindowControlIpc();
 
   const hotkey = store.get('hotkey');

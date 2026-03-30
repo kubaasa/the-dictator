@@ -413,6 +413,14 @@ function StepMicTest({
     let samplesPerBar = 0;
 
     try {
+      const micStatus = await window.dictator.checkMicSystemPermission();
+      if (!activeRef.current) return;
+      if (micStatus === 'denied') {
+        setMicPermission('denied');
+        setMicError('Microphone access blocked by Windows. Enable it in Settings > Privacy & Security > Microphone.');
+        return;
+      }
+
       const audioConstraints: MediaTrackConstraints = {
         ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
         channelCount: 1,
