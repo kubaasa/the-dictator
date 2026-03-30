@@ -1,5 +1,5 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
+import { MakerWix } from '@electron-forge/maker-wix';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { PublisherGithub } from '@electron-forge/publisher-github';
 import { VitePlugin } from '@electron-forge/plugin-vite';
@@ -7,6 +7,10 @@ import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import fs from 'fs';
 import path from 'path';
+
+const wixUiTemplate = fs.readFileSync(path.resolve('assets/installer-ui.xml'), 'utf-8')
+  .replace('Value="license.rtf"', `Value="${path.resolve('assets/license.rtf')}"`);
+
 
 const EXTERNAL_MODULES = [
   'uiohook-napi',
@@ -71,12 +75,28 @@ const config: ForgeConfig = {
     },
   },
   makers: [
-    new MakerSquirrel({
-      setupIcon: path.resolve('assets/icon.ico'),
-      // Code signing: reads certificate from environment variables.
-      // Set WINDOWS_CERTIFICATE_FILE (path to .pfx) and WINDOWS_CERTIFICATE_PASSWORD
-      // to sign the installer. Without these, the build works but Windows SmartScreen
-      // will show "Unknown publisher".
+    new MakerWix({
+      name: 'The Dictator',
+      manufacturer: 'Jakub Bruniecki',
+      description: 'Voice dictation app with AI-powered transcription for Windows',
+      icon: path.resolve('assets/icon.ico'),
+      language: 1033,
+      shortcutFolderName: 'The Dictator',
+      programFilesFolderName: 'The Dictator',
+      defaultInstallMode: 'perUser',
+      autoRun: true,
+      features: {
+        autoLaunch: true,
+        autoUpdate: false,
+      },
+      ui: {
+        chooseDirectory: true,
+        template: wixUiTemplate,
+        images: {
+          background: path.resolve('assets/installer-background.bmp'),
+          banner: path.resolve('assets/installer-banner.bmp'),
+        },
+      },
       ...(process.env.WINDOWS_CERTIFICATE_FILE
         ? {
             certificateFile: process.env.WINDOWS_CERTIFICATE_FILE,

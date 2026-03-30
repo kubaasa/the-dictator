@@ -2,7 +2,6 @@ import { app, BrowserWindow, ipcMain, nativeImage, protocol, screen, session, sy
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
-import started from 'electron-squirrel-startup';
 import Store from 'electron-store';
 import { initSentry } from './services/sentry';
 import log from './services/logger';
@@ -34,17 +33,12 @@ function getAssetPath(filename: string): string {
     : path.join(app.getAppPath(), 'assets', filename);
 }
 
-if (started) {
-  app.quit();
-}
-
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 }
 
-// Windows AppUserModelId — must match Squirrel shortcut for correct toast notification branding
-app.setAppUserModelId('com.squirrel.TheDictator.TheDictator');
+app.setAppUserModelId('com.jakubbruniecki.the-dictator');
 
 // Fix GPU/disk cache "Access Denied" errors on Windows
 app.commandLine.appendSwitch('disk-cache-dir', path.join(app.getPath('userData'), 'Cache'));
