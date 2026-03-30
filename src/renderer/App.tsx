@@ -59,7 +59,8 @@ export function App() {
   const modelStatus = useModelStatus();
   const [activeView, setActiveView] = useState<ActiveView>('home');
   const micSelector = useMicrophoneSelector();
-  const audioRecorder = useAudioRecorder(micSelector.selectedDeviceId);
+  const [callMode, setCallMode] = useState(false);
+  const audioRecorder = useAudioRecorder(micSelector.selectedDeviceId, callMode);
   const [showFirstRun, setShowFirstRun] = useState(false);
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [updateState, setUpdateState] = useState<import('../shared/types').UpdateState | null>(null);
@@ -85,7 +86,12 @@ export function App() {
         setIsFirstRun(true);
         setShowFirstRun(true);
       }
+      setCallMode(!!s.audio?.callMode);
     }).catch((err) => log.error('Failed to load initial settings:', err));
+
+    return window.dictator.onSettingsChange((s) => {
+      setCallMode(!!s.audio?.callMode);
+    });
   }, []);
 
   if (isOverlay) {

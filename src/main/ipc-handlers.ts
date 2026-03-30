@@ -360,6 +360,11 @@ export function registerIpcHandlers(
     Sentry.setTag('ai.enabled', String(aiEnabled));
     Sentry.setTag('ai.provider', aiEnabled ? aiProvider : 'none');
 
+    // Snapshot clipboard NOW — before the multi-second transcription pipeline runs.
+    // If we read it later, the user may have copied something new in the meantime.
+    const shouldRestore = (store.get('dictation.restoreClipboard') as boolean) ?? true;
+    const previousClipboard = shouldRestore ? clipboard.readText() : '';
+
     try {
     // Silence detection: skip transcription if audio is below speech threshold.
     // Prevents Whisper hallucinations like [muzyka], [music], [cisza] on silence.
@@ -468,7 +473,12 @@ export function registerIpcHandlers(
       if (autoPaste && pasteService.hasTarget()) {
         try {
           await pasteService.simulatePaste();
-          clipboard.writeText(text);
+          // Restore original clipboard content after successful paste
+          if (shouldRestore) {
+            clipboard.writeText(previousClipboard);
+          } else {
+            clipboard.writeText(text);
+          }
         } catch (pasteErr) {
           log.warn('Paste failed:', pasteErr);
           for (const win of BrowserWindow.getAllWindows()) {

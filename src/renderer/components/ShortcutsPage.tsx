@@ -138,6 +138,7 @@ function formatSingleOrComboKey(e: KeyboardEvent): string | null {
 export function ShortcutsPage() {
   const [shortcuts, setShortcuts] = useState(DEFAULT_SETTINGS.hotkey.shortcuts);
   const [hotkeyMode, setHotkeyMode] = useState<HotkeyMode>(DEFAULT_SETTINGS.hotkey.mode);
+  const [callMode, setCallMode] = useState(DEFAULT_SETTINGS.audio.callMode);
   const [listeningFor, setListeningFor] = useState<ShortcutKey | null>(null);
   const [pendingKeys, setPendingKeys] = useState('');
   const [error, setError] = useState('');
@@ -150,6 +151,7 @@ export function ShortcutsPage() {
       const stored = s.hotkey?.shortcuts ?? DEFAULT_SETTINGS.hotkey.shortcuts;
       setShortcuts({ ...DEFAULT_SETTINGS.hotkey.shortcuts, ...stored });
       setHotkeyMode(s.hotkey?.mode ?? DEFAULT_SETTINGS.hotkey.mode);
+      setCallMode(s.audio?.callMode ?? DEFAULT_SETTINGS.audio.callMode);
     }).catch((err) => log.error('Failed to load settings in ShortcutsPage:', err));
   }, []);
 
@@ -167,6 +169,14 @@ export function ShortcutsPage() {
       hotkey: { ...settings.hotkey, mode: newMode },
     });
     setHotkeyMode(newMode);
+  }, []);
+
+  const saveCallMode = useCallback(async (enabled: boolean) => {
+    const settings = await window.dictator.getSettings();
+    await window.dictator.setSettings({
+      audio: { ...settings.audio, callMode: enabled },
+    });
+    setCallMode(enabled);
   }, []);
 
   const startListening = useCallback((key: ShortcutKey) => {
@@ -363,6 +373,34 @@ export function ShortcutsPage() {
             </button>
           ))}
         </div>
+      </section>
+
+      <section>
+        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Call Mode</h2>
+        <button
+          onClick={() => saveCallMode(!callMode)}
+          className={`w-full flex items-center justify-between rounded-lg border px-5 py-4 transition-colors ${
+            callMode
+              ? 'border-red-700 bg-red-900/20'
+              : 'border-neutral-800 bg-[#141414] hover:border-neutral-700'
+          }`}
+        >
+          <div className="flex flex-col gap-0.5 text-left">
+            <span className={`font-mono text-xs font-semibold uppercase tracking-[0.25em] ${callMode ? 'text-red-400' : 'text-neutral-200'}`}>
+              {callMode ? 'Enabled' : 'Disabled'}
+            </span>
+            <span className="text-xs text-neutral-500">
+              Filters out voices from calls (Slack, Teams, Zoom). Slightly reduces audio quality in quiet rooms.
+            </span>
+          </div>
+          <div className={`relative ml-4 flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+            callMode ? 'bg-red-600' : 'bg-neutral-700'
+          }`}>
+            <div className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${
+              callMode ? 'translate-x-6' : 'translate-x-1'
+            }`} />
+          </div>
+        </button>
       </section>
 
       <section>

@@ -79,6 +79,10 @@ export interface AppSettings {
   audio: {
     deviceId: string;
     soundEnabled: boolean;
+    /** When true, enables echo cancellation, noise suppression, and auto gain — filters out
+     *  the other person's voice during Slack/Teams/Zoom calls at the cost of slightly lower
+     *  dictation fidelity in quiet rooms. */
+    callMode: boolean;
   };
   vocabulary: VocabularyEntry[];
   widget: {
@@ -171,6 +175,7 @@ Respond with ONLY the reformatted message wrapped in the required tags.`,
   audio: {
     deviceId: '',
     soundEnabled: true,
+    callMode: false,
   },
   vocabulary: [],
   widget: {

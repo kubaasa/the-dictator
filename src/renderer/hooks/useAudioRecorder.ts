@@ -103,7 +103,7 @@ interface UseAudioRecorderReturn {
   clearError: () => void;
 }
 
-export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderReturn {
+export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): UseAudioRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState('');
   const [errorType, setErrorType] = useState('');
@@ -136,6 +136,47 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
   const recordingIdRef = useRef<string>('');
   const pendingAudioRef = useRef<{ id: string; buffer: ArrayBuffer } | null>(null);
   const pendingResultIdRef = useRef<string | null>(null);
+
+  // Shared cleanup — resets all recording state and releases hardware resources.
+  // Used by both cancelRecording and the no-input handler to avoid duplicated logic.
+  function teardownRecording() {
+    sessionIdRef.current++;
+    isRecordingRef.current = false;
+    isSettingUpRef.current = false;
+    pendingStopRef.current = false;
+    setIsRecording(false);
+    setRecordingStartTime(null);
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+      mediaRecorderRef.current = null;
+    }
+    mediaChunksRef.current = [];
+    pendingAudioRef.current = null;
+    pendingResultIdRef.current = null;
+
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    window.dictator.stopRecording();
+    if (sourceRef.current) {
+      sourceRef.current.disconnect();
+      sourceRef.current = null;
+    }
+    if (workletNodeRef.current) {
+      workletNodeRef.current.port.postMessage('stop');
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
+    }
+    audioContextRef.current = null;
+    chunksRef.current = [];
+    if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
+      persistentCtxRef.current.close().catch(() => { /* ignore */ });
+      persistentCtxRef.current = null;
+      workletReadyRef.current = false;
+    }
+  }
 
   const trySendAudio = useCallback((id: string, buffer?: ArrayBuffer) => {
     if (buffer) pendingAudioRef.current = { id, buffer };
@@ -230,9 +271,9 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
           audio: {
             ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
             channelCount: 1,
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
+            echoCancellation: !!callMode,
+            noiseSuppression: !!callMode,
+            autoGainControl: !!callMode,
           },
         });
       } catch (micErr) {
@@ -324,7 +365,14 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
         } else if (e.data.type === 'level') {
           window.dictator.sendVoiceActivity(e.data.level);
         } else if (e.data.type === 'no-input') {
-          log.warn('AudioWorklet: no audio input detected — mic may be disconnected or context suspended');
+          log.warn('AudioWorklet: no audio input detected — mic may have been taken by another app');
+          if (isRecordingRef.current) {
+            teardownRecording();
+            const message = 'Microphone stopped responding — it may have been taken by another application.';
+            setError(message);
+            setErrorType('');
+            window.dictator.reportMicError(message);
+          }
         }
       };
 
@@ -361,7 +409,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
       setErrorType('');
       window.dictator.reportMicError(message);
     }
-  }, [deviceId, getOrCreateAudioContext]);
+  }, [deviceId, callMode, getOrCreateAudioContext]);
 
   const stopRecording = useCallback(async () => {
     if (isSettingUpRef.current) {
@@ -486,44 +534,8 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
   const cancelRecording = useCallback(() => {
     if (!isRecordingRef.current && !isSettingUpRef.current) return;
-
-    sessionIdRef.current++;
-    isRecordingRef.current = false;
-    isSettingUpRef.current = false;
-    pendingStopRef.current = false;
-    setIsRecording(false);
-    setRecordingStartTime(null);
+    teardownRecording();
     setError('');
-
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop(); } catch (err) { log.debug('MediaRecorder.stop() threw during cleanup:', err); }
-      mediaRecorderRef.current = null;
-    }
-    mediaChunksRef.current = [];
-    pendingAudioRef.current = null;
-    pendingResultIdRef.current = null;
-
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      mediaStreamRef.current = null;
-    }
-    window.dictator.stopRecording();
-    if (sourceRef.current) {
-      sourceRef.current.disconnect();
-      sourceRef.current = null;
-    }
-    if (workletNodeRef.current) {
-      workletNodeRef.current.port.postMessage('stop');
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current = null;
-    }
-    audioContextRef.current = null;
-    chunksRef.current = [];
-    if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
-      persistentCtxRef.current.close().catch(() => { /* ignore */ });
-      persistentCtxRef.current = null;
-      workletReadyRef.current = false;
-    }
   }, []);
 
   useEffect(() => {
