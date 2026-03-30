@@ -213,7 +213,7 @@ export function useAudioRecorder(deviceId?: string | null): UseAudioRecorderRetu
 
       const micStatus = await window.dictator.checkMicSystemPermission();
       if (sessionIdRef.current !== thisSession) return;
-      if (micStatus === 'denied') {
+      if (micStatus === 'denied' || micStatus === 'restricted') {
         isSettingUpRef.current = false;
         pendingStopRef.current = false;
         const msg = 'Microphone access blocked by Windows. Enable it in Settings > Privacy & Security > Microphone.';

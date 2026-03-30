@@ -415,7 +415,7 @@ function StepMicTest({
     try {
       const micStatus = await window.dictator.checkMicSystemPermission();
       if (!activeRef.current) return;
-      if (micStatus === 'denied') {
+      if (micStatus === 'denied' || micStatus === 'restricted') {
         setMicPermission('denied');
         setMicError('Microphone access blocked by Windows. Enable it in Settings > Privacy & Security > Microphone.');
         return;
@@ -457,6 +457,12 @@ function StepMicTest({
       } else if (name === 'NotReadableError') {
         setMicPermission('error');
         setMicError('Microphone is being used by another application.');
+      } else if (name === 'AbortError') {
+        setMicPermission('denied');
+        setMicError('Microphone access blocked by Windows. Enable it in Settings > Privacy & Security > Microphone.');
+      } else if (name === 'OverconstrainedError') {
+        setMicPermission('error');
+        setMicError('Selected microphone is unavailable. Try a different device.');
       } else {
         setMicPermission('error');
         setMicError('Could not access microphone.');
