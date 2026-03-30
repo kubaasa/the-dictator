@@ -13,6 +13,7 @@ export class UpdateService {
   private checkTimer: ReturnType<typeof setInterval> | null = null;
   private statusListeners: Array<(state: UpdateState) => void> = [];
   private iconPath: string;
+  private manualCheck = false;
 
   constructor(iconPath: string) {
     this.iconPath = iconPath;
@@ -37,7 +38,12 @@ export class UpdateService {
     });
 
     autoUpdater.on('update-not-available', () => {
-      this.setState('idle');
+      if (this.manualCheck) {
+        this.manualCheck = false;
+        this.setUpToDate();
+      } else {
+        this.setState('idle');
+      }
     });
 
     autoUpdater.on('update-downloaded', (_event, releaseNotes, releaseName) => {
@@ -53,6 +59,10 @@ export class UpdateService {
 
     autoUpdater.on('error', (err) => {
       log.warn('Auto-update error:', err.message);
+      if (this.manualCheck) {
+        this.showErrorNotification(err.message);
+        this.manualCheck = false;
+      }
       this.state = { ...this.state, status: 'error', error: err.message };
       this.notify();
     });
@@ -68,8 +78,9 @@ export class UpdateService {
     }
   }
 
-  checkForUpdates(): UpdateState {
-    log.info('checkForUpdates() called, isPackaged:', app.isPackaged);
+  checkForUpdates(manual = false): UpdateState {
+    log.info('checkForUpdates() called, isPackaged:', app.isPackaged, 'manual:', manual);
+    this.manualCheck = manual;
     if (!app.isPackaged) {
       this.devCheckForUpdates().catch((err) => {
         log.error('devCheckForUpdates unhandled error:', err);
@@ -112,8 +123,7 @@ export class UpdateService {
 
       if (response.status === 404) {
         log.info('Dev: no releases found on GitHub');
-        this.showUpToDateNotification();
-        this.setState('idle');
+        this.setUpToDate();
         return;
       }
 
@@ -139,8 +149,7 @@ export class UpdateService {
         this.showNativeNotification();
       } else {
         log.info('Dev: already up to date');
-        this.showUpToDateNotification();
-        this.setState('idle');
+        this.setUpToDate();
       }
     } catch (err) {
       log.warn('Dev update check failed:', err instanceof Error ? err.message : err);
@@ -158,6 +167,13 @@ export class UpdateService {
     return lPatch > cPatch;
   }
 
+  private setUpToDate(): void {
+    this.setState('up-to-date');
+    setTimeout(() => {
+      if (this.state.status === 'up-to-date') this.setState('idle');
+    }, 5000);
+  }
+
   private setState(status: UpdateStatus): void {
     this.state = { ...this.state, status, error: undefined };
     this.notify();
@@ -169,10 +185,10 @@ export class UpdateService {
     }
   }
 
-  private showUpToDateNotification(): void {
+  private showErrorNotification(errorMessage: string): void {
     const notification = new Notification({
       title: 'The Dictator',
-      body: `You're up to date! (v${app.getVersion()})`,
+      body: `Update check failed: ${errorMessage}`,
       icon: nativeImage.createFromPath(this.iconPath),
     });
     notification.show();

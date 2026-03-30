@@ -185,7 +185,7 @@ Respond with ONLY the reformatted message wrapped in the required tags.`,
   },
 };
 
-export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
+export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'up-to-date' | 'error';
 
 export interface UpdateState {
   status: UpdateStatus;

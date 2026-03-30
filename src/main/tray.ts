@@ -97,6 +97,8 @@ export class TrayManager {
           click: () => this.callbacks?.onInstallUpdate(),
         };
       }
+      case 'up-to-date':
+        return { label: `Up to date (v${this.updateState?.currentVersion ?? ''})`, enabled: false };
       case 'error':
       case 'idle':
       default:

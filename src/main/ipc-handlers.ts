@@ -718,7 +718,7 @@ export function registerIpcHandlers(
 
   ipcMain.on(IPC.WIDGET_DRAG_END, stopDrag);
 
-  ipcMain.handle(IPC.UPDATE_CHECK, () => updateService.checkForUpdates());
+  ipcMain.handle(IPC.UPDATE_CHECK, () => updateService.checkForUpdates(true));
   ipcMain.handle(IPC.UPDATE_GET_INFO, () => updateService.getUpdateInfo());
   ipcMain.handle(IPC.UPDATE_INSTALL, () => updateService.quitAndInstall());
 

@@ -15,6 +15,7 @@ import { ScanLines, NoiseOverlay, Vignette, RecIndicator } from './components/Re
 import { ToastProvider } from './components/Toast';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { ForceUpdateModal } from './components/ForceUpdateModal';
+import { UpToDatePopup } from './components/UpToDatePopup';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
@@ -62,6 +63,7 @@ export function App() {
   const [showFirstRun, setShowFirstRun] = useState(false);
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [updateState, setUpdateState] = useState<import('../shared/types').UpdateState | null>(null);
+  const [upToDateVersion, setUpToDateVersion] = useState<string | null>(null);
 
   useEffect(() => {
     window.dictator.update.getInfo().then((state) => {
@@ -69,7 +71,11 @@ export function App() {
     }).catch((err) => log.warn('Failed to get update info:', err));
 
     return window.dictator.update.onStatusChange((state) => {
-      setUpdateState(state.status === 'downloaded' ? state : null);
+      if (state.status === 'up-to-date') {
+        setUpToDateVersion(state.currentVersion);
+      } else {
+        setUpdateState(state.status === 'downloaded' ? state : null);
+      }
     });
   }, []);
 
@@ -133,6 +139,7 @@ export function App() {
       </div>
       {showFirstRun && <OnboardingWizard onComplete={(micId) => { if (micId) micSelector.setSelectedDeviceId(micId); setShowFirstRun(false); setActiveView('modes'); modelStatus.recheck(); }} onClose={isFirstRun ? undefined : () => setShowFirstRun(false)} />}
       {updateState && <ForceUpdateModal updateState={updateState} />}
+      {upToDateVersion && <UpToDatePopup version={upToDateVersion} onClose={() => setUpToDateVersion(null)} />}
     </div>
     </ToastProvider>
     </ErrorBoundary>

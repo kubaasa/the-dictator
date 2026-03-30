@@ -473,7 +473,7 @@ app.on('ready', () => {
   }
 
   trayManager.create(mainWindow, {
-    onCheckForUpdates: () => updateService.checkForUpdates(),
+    onCheckForUpdates: () => updateService.checkForUpdates(true),
     onInstallUpdate: () => updateService.quitAndInstall(),
     onAutoStartToggle: (enabled) => {
       store.set('general.autoStart', enabled);
@@ -496,6 +496,11 @@ app.on('ready', () => {
 
   updateService.onStatusChange((state) => {
     trayManager.setUpdateState(state);
+    // Show main window so the user sees the in-app popup after manual check from tray
+    if (state.status === 'up-to-date' && mainWindow && !mainWindow.isVisible()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(IPC.UPDATE_STATUS_CHANGED, state);
     }
