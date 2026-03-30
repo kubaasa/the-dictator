@@ -33,12 +33,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const addToast = useCallback((type: ToastType, message: string, options?: { durationMs?: number; action?: ToastAction }) => {
     const { durationMs = AUTO_DISMISS_MS, action } = options ?? {};
+    const id = ++nextId;
     setToasts((prev) => {
       if (prev.some((t) => t.message === message)) return prev;
-      const id = ++nextId;
-      setTimeout(() => removeToast(id), durationMs);
       return [...prev, { id, type, message, action }];
     });
+    setTimeout(() => removeToast(id), durationMs);
   }, [removeToast]);
 
   useEffect(() => {

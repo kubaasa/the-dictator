@@ -24,15 +24,28 @@ const EXTERNAL_MODULES = [
   '@sentry/electron',
 ];
 
-function copyModuleWithDeps(moduleName: string, buildPath: string, copied: Set<string>) {
+/**
+ * Resolve a module's source path, checking root node_modules first,
+ * then falling back to nested node_modules inside the parent package.
+ */
+function resolveModuleSrc(moduleName: string, parentSrc?: string): string | null {
+  const rootPath = path.resolve('node_modules', moduleName);
+  if (fs.existsSync(rootPath)) return rootPath;
+  if (parentSrc) {
+    const nestedPath = path.join(parentSrc, 'node_modules', moduleName);
+    if (fs.existsSync(nestedPath)) return nestedPath;
+  }
+  return null;
+}
+
+function copyModuleWithDeps(moduleName: string, buildPath: string, copied: Set<string>, parentSrc?: string) {
   if (copied.has(moduleName)) return;
   copied.add(moduleName);
 
-  const src = path.resolve('node_modules', moduleName);
+  const src = resolveModuleSrc(moduleName, parentSrc);
+  if (!src) return;
+
   const dest = path.join(buildPath, 'node_modules', moduleName);
-
-  if (!fs.existsSync(src)) return;
-
   fs.cpSync(src, dest, { recursive: true });
 
   const pkgPath = path.join(src, 'package.json');
@@ -43,7 +56,7 @@ function copyModuleWithDeps(moduleName: string, buildPath: string, copied: Set<s
       ...Object.keys(pkg.optionalDependencies || {}),
     ];
     for (const dep of deps) {
-      copyModuleWithDeps(dep, buildPath, copied);
+      copyModuleWithDeps(dep, buildPath, copied, src);
     }
   }
 }
@@ -60,7 +73,7 @@ const config: ForgeConfig = {
     ],
     name: 'The Dictator',
     icon: 'assets/icon',
-    extraResource: ['assets/icon.png'],
+    extraResource: ['assets/icon.png', 'assets/icon.ico'],
   },
   rebuildConfig: {
     onlyModules: ['better-sqlite3', 'uiohook-napi'],

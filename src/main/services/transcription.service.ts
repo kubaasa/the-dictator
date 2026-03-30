@@ -76,6 +76,10 @@ const MODELS_CACHE_DIR = path.join(
   '../.cache',
 );
 
+// Capture the pristine global.fetch once at module load — never lost even if overrides overlap.
+const pristineFetch = global.fetch;
+let fetchOverrideCount = 0;
+
 export class TranscriptionService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private pipe: any = null;
@@ -205,15 +209,15 @@ export class TranscriptionService {
 
     // Scoped fetch override: inject AbortSignal ONLY into HuggingFace model download
     // requests. Other fetch calls (Groq API, etc.) pass through untouched.
-    // This prevents cancelling unrelated requests when the user cancels a model download.
+    // Uses ref-counted pristineFetch captured at module load — safe even if downloads overlap.
     this.cancelController = new AbortController();
     const { signal } = this.cancelController;
-    const originalFetch = global.fetch;
+    fetchOverrideCount++;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     global.fetch = (input: any, init?: any) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as { url?: string })?.url ?? '';
       const isHfRequest = url.includes('huggingface.co') || url.includes('hf.co');
-      return originalFetch(input, { ...init, ...(isHfRequest ? { signal } : {}) });
+      return pristineFetch(input, { ...init, ...(isHfRequest ? { signal } : {}) });
     };
 
     try {
@@ -263,7 +267,11 @@ export class TranscriptionService {
       }
       throw err;
     } finally {
-      global.fetch = originalFetch;
+      fetchOverrideCount--;
+      if (fetchOverrideCount <= 0) {
+        global.fetch = pristineFetch;
+        fetchOverrideCount = 0;
+      }
       this.cancelController = null;
     }
   }

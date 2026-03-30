@@ -1,11 +1,10 @@
-import { app, autoUpdater, net, Notification, nativeImage } from 'electron';
+import { app, net, Notification, nativeImage, shell } from 'electron';
 import type { UpdateState, UpdateStatus } from '../../shared/types';
 import logger from './logger';
 
 const log = logger.scope('Update');
 
 const GITHUB_REPO = 'kubaasa/the-dictator';
-const UPDATE_SERVER = 'https://update.electronjs.org';
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 export class UpdateService {
@@ -21,52 +20,9 @@ export class UpdateService {
   }
 
   start(): void {
-    if (!app.isPackaged) {
-      log.info('Auto-updater disabled in dev mode');
-      return;
-    }
-
-    const feedURL = `${UPDATE_SERVER}/${GITHUB_REPO}/${process.platform}-${process.arch}/${app.getVersion()}`;
-    autoUpdater.setFeedURL({ url: feedURL });
-
-    autoUpdater.on('checking-for-update', () => {
-      this.setState('checking');
-    });
-
-    autoUpdater.on('update-available', () => {
-      this.setState('downloading');
-    });
-
-    autoUpdater.on('update-not-available', () => {
-      if (this.manualCheck) {
-        this.manualCheck = false;
-        this.setUpToDate();
-      } else {
-        this.setState('idle');
-      }
-    });
-
-    autoUpdater.on('update-downloaded', (_event, releaseNotes, releaseName) => {
-      this.state = {
-        ...this.state,
-        status: 'downloaded',
-        latestVersion: releaseName?.replace(/^v/, '') || undefined,
-        releaseNotes: releaseNotes || undefined,
-      };
-      this.notify();
-      this.showNativeNotification();
-    });
-
-    autoUpdater.on('error', (err) => {
-      log.warn('Auto-update error:', err.message);
-      if (this.manualCheck) {
-        this.showErrorNotification(err.message);
-        this.manualCheck = false;
-      }
-      this.state = { ...this.state, status: 'error', error: err.message };
-      this.notify();
-    });
-
+    // Squirrel.Windows autoUpdater is incompatible with WiX MSI installers.
+    // Use GitHub API check for both dev and production until electron-updater is integrated.
+    log.info('Update service started (GitHub API mode)');
     this.checkForUpdates();
     this.checkTimer = setInterval(() => this.checkForUpdates(), CHECK_INTERVAL_MS);
   }
@@ -79,15 +35,11 @@ export class UpdateService {
   }
 
   checkForUpdates(manual = false): UpdateState {
-    log.info('checkForUpdates() called, isPackaged:', app.isPackaged, 'manual:', manual);
+    log.info('checkForUpdates() called, manual:', manual);
     this.manualCheck = manual;
-    if (!app.isPackaged) {
-      this.devCheckForUpdates().catch((err) => {
-        log.error('devCheckForUpdates unhandled error:', err);
-      });
-      return this.state;
-    }
-    autoUpdater.checkForUpdates();
+    this.githubCheckForUpdates().catch((err) => {
+      log.error('GitHub update check unhandled error:', err);
+    });
     return this.state;
   }
 
@@ -97,7 +49,8 @@ export class UpdateService {
 
   quitAndInstall(): void {
     if (this.state.status === 'downloaded') {
-      autoUpdater.quitAndInstall();
+      // WiX MSI doesn't support Squirrel's quitAndInstall — open releases page instead
+      shell.openExternal(`https://github.com/${GITHUB_REPO}/releases/latest`);
     }
   }
 
@@ -105,13 +58,12 @@ export class UpdateService {
     this.statusListeners.push(callback);
   }
 
-  /** DEV ONLY: check GitHub API directly (autoUpdater needs packaged app) */
-  private async devCheckForUpdates(): Promise<void> {
-    log.info('Dev: checking GitHub API for updates...');
+  private async githubCheckForUpdates(): Promise<void> {
+    log.info('Checking GitHub API for updates...');
     this.setState('checking');
     try {
       const url = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-      log.info('Dev: fetching', url);
+      log.info('Fetching', url);
       const response = await net.fetch(url, {
         headers: {
           'Accept': 'application/vnd.github.v3+json',
@@ -119,16 +71,16 @@ export class UpdateService {
         },
       });
 
-      log.info('Dev: GitHub API response status:', response.status);
+      log.info('GitHub API response status:', response.status);
 
       if (response.status === 404) {
-        log.info('Dev: no releases found on GitHub');
+        log.info('No releases found on GitHub');
         this.setUpToDate();
         return;
       }
 
       if (!response.ok) {
-        log.warn('Dev: GitHub API error:', response.status);
+        log.warn('GitHub API error:', response.status);
         this.setState('idle');
         return;
       }
@@ -136,7 +88,7 @@ export class UpdateService {
       const data = await response.json() as { tag_name: string; body: string };
       const latestVersion = data.tag_name.replace(/^v/, '');
       const current = app.getVersion();
-      log.info('Dev: current=%s, latest=%s', current, latestVersion);
+      log.info('Current=%s, latest=%s', current, latestVersion);
 
       if (this.isNewer(latestVersion, current)) {
         this.state = {
@@ -148,18 +100,24 @@ export class UpdateService {
         this.notify();
         this.showNativeNotification();
       } else {
-        log.info('Dev: already up to date');
+        log.info('Already up to date');
         this.setUpToDate();
       }
     } catch (err) {
-      log.warn('Dev update check failed:', err instanceof Error ? err.message : err);
-      this.state = { ...this.state, status: 'error', error: err instanceof Error ? err.message : 'Unknown error' };
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      log.warn('Update check failed:', message);
+      if (this.manualCheck) {
+        this.showErrorNotification(message);
+        this.manualCheck = false;
+      }
+      this.state = { ...this.state, status: 'error', error: message };
       this.notify();
     }
   }
 
   private isNewer(latest: string, current: string): boolean {
-    const parse = (v: string) => v.split('.').map(Number);
+    // Strip pre-release suffixes (e.g. "1.1.1-beta" → "1.1.1") before comparing
+    const parse = (v: string) => v.split('-')[0].split('.').map(Number);
     const [lMajor = 0, lMinor = 0, lPatch = 0] = parse(latest);
     const [cMajor = 0, cMinor = 0, cPatch = 0] = parse(current);
     if (lMajor !== cMajor) return lMajor > cMajor;

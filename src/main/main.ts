@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeImage, protocol, screen, session, systemPreferences } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, screen, session, systemPreferences } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -171,15 +171,7 @@ function createMainWindow(): BrowserWindow {
     show: false,
     autoHideMenuBar: true,
     title: 'The Dictator',
-    icon: (() => {
-      const raw = nativeImage.createFromPath(getAssetPath('icon.png'));
-      const { width, height } = raw.getSize();
-      // Crop 20% from each side to focus on the central logo, skip transparent corners + shadow
-      const margin = Math.floor(width * 0.2);
-      return raw
-        .crop({ x: margin, y: margin, width: width - margin * 2, height: height - margin * 2 })
-        .resize({ width: 256, height: 256 });
-    })(),
+    icon: getAssetPath('icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -403,12 +395,23 @@ app.on('ready', () => {
   });
   session.defaultSession.setDevicePermissionHandler(() => true);
 
+  // Resolve recordings directory early so the protocol handler can validate paths.
+  const recordingsDir = path.resolve(path.join(app.getPath('userData'), 'recordings'));
+
   // Serve local audio files via recording:// with proper Range request support.
   // The HTML5 audio element requires Range responses (HTTP 206) for buffering/seeking.
   // Uses streaming (fs.createReadStream) instead of loading entire file into memory —
   // buffer-based Response hangs in Electron's custom protocol for files over ~1 MB.
   protocol.handle('recording', async (request) => {
     const filePath = decodeURIComponent(request.url.replace('recording:///', ''));
+
+    // Prevent path traversal — only serve files inside the recordings directory.
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(recordingsDir + path.sep) && resolved !== recordingsDir) {
+      log.warn('recording:// blocked path traversal attempt:', filePath);
+      return new Response('Forbidden', { status: 403 });
+    }
+
     try {
       const stat = await fs.promises.stat(filePath);
       const fileSize = stat.size;
@@ -451,7 +454,6 @@ app.on('ready', () => {
   mainWindow = createMainWindow();
   overlayWindow = createOverlayWindow();
 
-  const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
   historyService = new HistoryService(path.join(app.getPath('userData'), 'history.db'));
   historyService.setRecordingsDir(recordingsDir);
