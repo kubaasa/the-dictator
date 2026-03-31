@@ -84,7 +84,7 @@ function MainApp() {
     }).catch((err) => log.warn('Failed to get update info:', err));
 
     return window.dictator.update.onStatusChange((state) => {
-      if (state.status === 'up-to-date') {
+      if (state.status === 'up-to-date' && state.manual) {
         setUpToDateVersion(state.currentVersion);
       } else {
         setUpdateState(state.status === 'downloaded' ? state : null);
