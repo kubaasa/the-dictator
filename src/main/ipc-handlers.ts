@@ -265,7 +265,11 @@ export function registerIpcHandlers(
 
     encryptSettingsKeys(settings);
     for (const [key, value] of Object.entries(settings)) {
-      store.set(key as keyof AppSettings, value);
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        store.set(key, { ...(store.get(key) as object), ...value });
+      } else {
+        store.set(key, value);
+      }
     }
     const decrypted = decryptSettingsForRenderer(store.store);
     for (const win of BrowserWindow.getAllWindows()) {
