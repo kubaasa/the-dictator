@@ -83,8 +83,7 @@ export const WHISPER_MODEL_DESCRIPTIONS: Record<string, string> = {
 
 export const OPENAI_MODELS: { value: string; label: string }[] = [
   { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
-  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-  { value: 'gpt-4.1', label: 'GPT-4.1' },
+  { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
 ];
 
 export const ANTHROPIC_MODELS: { value: string; label: string }[] = [
@@ -94,8 +93,7 @@ export const ANTHROPIC_MODELS: { value: string; label: string }[] = [
 
 export const AI_MODEL_DESCRIPTIONS: Record<string, string> = {
   'gpt-4.1-nano': 'Cheapest & fastest',
-  'gpt-4.1-mini': 'Fast & affordable',
-  'gpt-4.1': 'Most capable OpenAI model',
+  'gpt-5.4-nano': 'Smart & affordable',
   'claude-sonnet-4-6': 'Powerful & balanced',
   'claude-haiku-4-5-20251001': 'Fast & lightweight',
 };
