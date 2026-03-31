@@ -1,4 +1,7 @@
-import { app, net, Notification, nativeImage, shell } from 'electron';
+import { app, net, Notification, nativeImage } from 'electron';
+import path from 'node:path';
+import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 import type { UpdateState, UpdateStatus } from '../../shared/types';
 import logger from './logger';
 
@@ -7,12 +10,19 @@ const log = logger.scope('Update');
 const GITHUB_REPO = 'kubaasa/the-dictator';
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
+interface GithubRelease {
+  tag_name: string;
+  body: string;
+  assets: Array<{ name: string; browser_download_url: string }>;
+}
+
 export class UpdateService {
   private state: UpdateState;
   private checkTimer: ReturnType<typeof setInterval> | null = null;
   private statusListeners: Array<(state: UpdateState) => void> = [];
   private iconPath: string;
   private manualCheck = false;
+  private installerPath: string | null = null;
 
   constructor(iconPath: string) {
     this.iconPath = iconPath;
@@ -20,8 +30,6 @@ export class UpdateService {
   }
 
   start(): void {
-    // Squirrel.Windows autoUpdater is incompatible with WiX MSI installers.
-    // Use GitHub API check for both dev and production until electron-updater is integrated.
     log.info('Update service started (GitHub API mode)');
     this.checkForUpdates();
     this.checkTimer = setInterval(() => this.checkForUpdates(), CHECK_INTERVAL_MS);
@@ -48,10 +56,13 @@ export class UpdateService {
   }
 
   quitAndInstall(): void {
-    if (this.state.status === 'downloaded') {
-      // WiX MSI doesn't support Squirrel's quitAndInstall — open releases page instead
-      shell.openExternal(`https://github.com/${GITHUB_REPO}/releases/latest`);
-    }
+    if (this.state.status !== 'downloaded' || !this.installerPath) return;
+
+    log.info('Launching installer:', this.installerPath);
+    // /S = silent NSIS flag — runs the installer without user interaction.
+    // detached + unref = the installer process survives after our app exits.
+    spawn(this.installerPath, ['/S'], { detached: true, stdio: 'ignore' }).unref();
+    app.quit();
   }
 
   onStatusChange(callback: (state: UpdateState) => void): void {
@@ -85,12 +96,24 @@ export class UpdateService {
         return;
       }
 
-      const data = await response.json() as { tag_name: string; body: string };
+      const data = await response.json() as GithubRelease;
       const latestVersion = data.tag_name.replace(/^v/, '');
       const current = app.getVersion();
       log.info('Current=%s, latest=%s', current, latestVersion);
 
       if (this.isNewer(latestVersion, current)) {
+        const installerAsset = data.assets.find((a) => a.name.endsWith('.exe'));
+        if (!installerAsset) {
+          log.warn('No .exe installer found in release assets');
+          this.state = { ...this.state, status: 'error', error: 'No installer found in release' };
+          this.notify();
+          return;
+        }
+
+        this.setState('downloading');
+        const downloaded = await this.downloadInstaller(installerAsset.browser_download_url, installerAsset.name);
+        if (!downloaded) return;
+
         this.state = {
           ...this.state,
           status: 'downloaded',
@@ -115,14 +138,49 @@ export class UpdateService {
     }
   }
 
+  private async downloadInstaller(url: string, filename: string): Promise<boolean> {
+    const dest = path.join(app.getPath('temp'), filename);
+    log.info('Downloading installer to', dest);
+
+    try {
+      const response = await net.fetch(url);
+      if (!response.ok || !response.body) {
+        log.error('Installer download failed:', response.status);
+        this.state = { ...this.state, status: 'error', error: 'Installer download failed' };
+        this.notify();
+        return false;
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      fs.writeFileSync(dest, buffer);
+      this.installerPath = dest;
+      log.info('Installer downloaded: %d bytes', buffer.length);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Download failed';
+      log.error('Installer download error:', message);
+      this.state = { ...this.state, status: 'error', error: message };
+      this.notify();
+      return false;
+    }
+  }
+
   private isNewer(latest: string, current: string): boolean {
-    // Strip pre-release suffixes (e.g. "1.1.1-beta" → "1.1.1") before comparing
-    const parse = (v: string) => v.split('-')[0].split('.').map(Number);
-    const [lMajor = 0, lMinor = 0, lPatch = 0] = parse(latest);
-    const [cMajor = 0, cMinor = 0, cPatch = 0] = parse(current);
+    const parse = (v: string) => {
+      const [core, ...preParts] = v.split('-');
+      const nums = core.split('.').map(Number);
+      return { nums, preRelease: preParts.join('-') };
+    };
+    const l = parse(latest);
+    const c = parse(current);
+    const [lMajor = 0, lMinor = 0, lPatch = 0] = l.nums;
+    const [cMajor = 0, cMinor = 0, cPatch = 0] = c.nums;
     if (lMajor !== cMajor) return lMajor > cMajor;
     if (lMinor !== cMinor) return lMinor > cMinor;
-    return lPatch > cPatch;
+    if (lPatch !== cPatch) return lPatch > cPatch;
+    // Same core version: release (no suffix) is newer than pre-release (e.g. 1.2.0 > 1.2.0-beta)
+    if (c.preRelease && !l.preRelease) return true;
+    return false;
   }
 
   private setUpToDate(): void {

@@ -1,5 +1,6 @@
 import OpenAI, { toFile } from 'openai';
 import type { AppSettings, VocabularyEntry } from '../../shared/types';
+import { app } from 'electron';
 import Store from 'electron-store';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
@@ -69,12 +70,10 @@ function getDtypeForModel(modelId: string): Record<string, string> | undefined {
   return undefined;
 }
 
-// Explicitly pin the cache dir so both download and detection always use the same path.
-// require.resolve() only resolves the file path — it does NOT load the native module.
-const MODELS_CACHE_DIR = path.join(
-  path.dirname(require.resolve('@huggingface/transformers')),
-  '../.cache',
-);
+// Store models in userData — always writable, survives app updates.
+// The old require.resolve() approach pointed inside app.asar in production,
+// causing ENOTDIR when the library tried to create the cache directory.
+const MODELS_CACHE_DIR = path.join(app.getPath('userData'), 'models');
 
 // Capture the pristine global.fetch once at module load — never lost even if overrides overlap.
 const pristineFetch = global.fetch;

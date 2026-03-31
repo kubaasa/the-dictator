@@ -91,14 +91,14 @@ typings/
 # Vite
 .vite/
 
-# Electron-Forge
+# Build output
 out/
+dist/
 
 # App-specific
 models/
 *.wav
 recordings/
-dist/
 
 # Future test plans (local only)
 Future Tests/

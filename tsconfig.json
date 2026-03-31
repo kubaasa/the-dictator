@@ -15,5 +15,5 @@
     "resolveJsonModule": true,
     "strict": true
   },
-  "include": ["src/**/*", "forge.env.d.ts"]
+  "include": ["src/**/*", "env.d.ts", "scripts/**/*"]
 }

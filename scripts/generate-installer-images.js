@@ -1,25 +1,17 @@
 /**
- * Generates BMP images for the WiX installer.
+ * Generates placeholder BMP images for the NSIS installer.
  * Run once: node scripts/generate-installer-images.js
  *
  * Creates:
- *   assets/installer-background.bmp  (493x312) — Welcome/Finish dialog background
- *   assets/installer-banner.bmp      (493x58)  — Top banner on other dialogs
+ *   assets/nsis-header.bmp  (150x57)  — MUI header (License/Directory/Options pages)
+ *   assets/nsis-sidebar.bmp (164x314) — MUI sidebar (Welcome/Finish pages)
+ *
+ * Uses pure Node.js BMP encoder — no external image libraries needed.
+ * TODO: Replace with final branded artwork.
  */
 
 const fs = require('fs');
 const path = require('path');
-
-// Colors (RGB)
-const COLORS = {
-  white:      [255, 255, 255],
-  nearWhite:  [250, 250, 252],
-  lightGray:  [235, 238, 242],
-  medGray:    [200, 206, 214],
-  accent:     [52, 73, 94],    // dark blue-gray
-  accentLight:[86, 117, 150],  // lighter accent
-  textDark:   [44, 62, 80],    // near-black
-};
 
 function createBMP(width, height, pixelFn) {
   const rowStride = Math.ceil(width * 3 / 4) * 4;
@@ -36,19 +28,19 @@ function createBMP(width, height, pixelFn) {
   // -- DIB Header (40 bytes) --
   buf.writeUInt32LE(40, 14);
   buf.writeInt32LE(width, 18);
-  buf.writeInt32LE(height, 22);   // positive = bottom-up
-  buf.writeUInt16LE(1, 26);       // planes
-  buf.writeUInt16LE(24, 28);      // bpp
-  buf.writeUInt32LE(0, 30);       // no compression
+  buf.writeInt32LE(height, 22);
+  buf.writeUInt16LE(1, 26);
+  buf.writeUInt16LE(24, 28);
+  buf.writeUInt32LE(0, 30);
   buf.writeUInt32LE(pixelDataSize, 34);
-  buf.writeUInt32LE(2835, 38);    // ~72 DPI
+  buf.writeUInt32LE(2835, 38);
   buf.writeUInt32LE(2835, 42);
   buf.writeUInt32LE(0, 46);
   buf.writeUInt32LE(0, 50);
 
   // -- Pixel data (bottom-up, BGR) --
   for (let row = 0; row < height; row++) {
-    const y = height - 1 - row;   // flip: row 0 in BMP = bottom of image
+    const y = height - 1 - row;
     for (let x = 0; x < width; x++) {
       const [r, g, b] = pixelFn(x, y);
       const off = 54 + row * rowStride + x * 3;
@@ -61,59 +53,27 @@ function createBMP(width, height, pixelFn) {
   return buf;
 }
 
-function lerp(a, b, t) {
-  return Math.round(a + (b - a) * t);
+const WHITE = [255, 255, 255];
+
+/** Header (150x57) — plain white placeholder */
+function headerPixel() {
+  return WHITE;
 }
 
-function lerpColor(c1, c2, t) {
-  return [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)];
+/** Sidebar (164x314) — plain white placeholder */
+function sidebarPixel() {
+  return WHITE;
 }
 
-// ── Background image (493 x 312) ──
-// Left panel (0-163): vertical gradient from accent to accentLight
-// Divider (164-165): thin medium gray line
-// Right panel (166-492): clean near-white
-function backgroundPixel(x, y) {
-  const panelWidth = 164;
-
-  if (x < panelWidth) {
-    // Left panel: subtle vertical gradient
-    const t = y / 311;
-    return lerpColor(COLORS.accent, COLORS.accentLight, t);
-  }
-
-  if (x < panelWidth + 2) {
-    // Thin divider line
-    return COLORS.medGray;
-  }
-
-  // Right panel: clean near-white with very subtle gradient
-  const t = y / 311;
-  return lerpColor(COLORS.nearWhite, COLORS.white, t * 0.5);
-}
-
-// ── Banner image (493 x 58) ──
-// White background with accent strip at the bottom (3px)
-function bannerPixel(x, y) {
-  if (y >= 55) {
-    // Bottom 3px: accent color strip
-    const t = (y - 55) / 2;
-    return lerpColor(COLORS.accentLight, COLORS.accent, t);
-  }
-
-  // Clean white
-  return COLORS.white;
-}
-
-// ── Generate ──
+// --- Generate ---
 const assetsDir = path.resolve(__dirname, '..', 'assets');
 
-const bgBuf = createBMP(493, 312, backgroundPixel);
-fs.writeFileSync(path.join(assetsDir, 'installer-background.bmp'), bgBuf);
-console.log('Created: assets/installer-background.bmp (493x312)');
+const headerBuf = createBMP(150, 57, headerPixel);
+fs.writeFileSync(path.join(assetsDir, 'nsis-header.bmp'), headerBuf);
+console.log('Created: assets/nsis-header.bmp (150x57)');
 
-const bannerBuf = createBMP(493, 58, bannerPixel);
-fs.writeFileSync(path.join(assetsDir, 'installer-banner.bmp'), bannerBuf);
-console.log('Created: assets/installer-banner.bmp (493x58)');
+const sidebarBuf = createBMP(164, 314, sidebarPixel);
+fs.writeFileSync(path.join(assetsDir, 'nsis-sidebar.bmp'), sidebarBuf);
+console.log('Created: assets/nsis-sidebar.bmp (164x314)');
 
-console.log('Done!');
+console.log('Done! Replace with final artwork if desired.');

@@ -179,12 +179,10 @@ function createMainWindow(): BrowserWindow {
     },
   });
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  if (process.env.VITE_DEV_SERVER_URL) {
+    win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
+    win.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
 
   win.webContents.setBackgroundThrottling(false);
@@ -250,11 +248,11 @@ function createOverlayWindow(): BrowserWindow {
   // Blur immediately on focus so the overlay never steals focus from other apps
   win.on('focus', () => win.blur());
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    win.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#overlay`);
+  if (process.env.VITE_DEV_SERVER_URL) {
+    win.loadURL(`${process.env.VITE_DEV_SERVER_URL}#overlay`);
   } else {
     win.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+      path.join(__dirname, '../renderer/index.html'),
       { hash: 'overlay' },
     );
   }
@@ -460,6 +458,15 @@ app.on('ready', () => {
 
   migrateApiKeys(store);
 
+  // Bidirectional sync: adopt the OS auto-start state into the store so the
+  // UI toggle stays consistent with what the NSIS installer (or the user via
+  // Windows settings) has configured.
+  const systemAutoStart = app.getLoginItemSettings({ args: ['--autostart'] }).openAtLogin;
+  const storeAutoStart = store.get('general.autoStart') as boolean;
+  if (systemAutoStart !== storeAutoStart) {
+    store.set('general.autoStart', systemAutoStart);
+  }
+
   const autoStartEnabled = store.get('general.autoStart') as boolean;
   syncAutoStart(autoStartEnabled);
 
@@ -492,10 +499,17 @@ app.on('ready', () => {
 
   updateService.onStatusChange((state) => {
     trayManager.setUpdateState(state);
-    // Show main window only after manual check from tray (not on automatic startup check)
-    if (state.status === 'up-to-date' && state.manual && mainWindow && !mainWindow.isVisible()) {
-      mainWindow.show();
-      mainWindow.focus();
+    if (mainWindow && !mainWindow.isVisible()) {
+      // Force-show the window so the ForceUpdateModal is visible
+      if (state.status === 'downloaded') {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+      // Show main window after manual check from tray
+      if (state.status === 'up-to-date' && state.manual) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
     }
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(IPC.UPDATE_STATUS_CHANGED, state);

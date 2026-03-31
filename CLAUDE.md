@@ -10,11 +10,23 @@ Windows desktop voice dictation app. Records audio via global hotkey, transcribe
 ## Dev Commands
 
 ```bash
-npm start          # Start in dev mode (Electron Forge + Vite HMR)
+npm run dev        # Start in dev mode (custom Vite dev script + HMR)
+npm run build      # Build all contexts (renderer → main → preload)
+npm run dist       # Build + create NSIS installer
+npm run publish    # Build + create installer + publish to GitHub
 npm run lint       # ESLint (TypeScript + import rules)
 npm run rebuild    # Rebuild native modules (run after npm install or Node version change)
-npm run make       # Build production installer
 ```
+
+## Build System
+
+**electron-builder** with NSIS target (replaced Electron Forge in v1.2.0).
+
+- Config: `electron-builder.yml`
+- Dev script: `scripts/dev.mjs` (Vite dev server + Electron watch/restart)
+- Security fuses: `scripts/after-pack.js` (flipped after packaging)
+- Custom NSIS pages: `assets/installer.nsh` (desktop shortcut + auto-start options)
+- Installer images: `assets/nsis-header.bmp`, `assets/nsis-sidebar.bmp` (generate via `node scripts/generate-installer-images.js`)
 
 ## Architecture
 
@@ -71,14 +83,15 @@ The following packages are **native modules** or large non-bundleable packages. 
 
 **When adding a new native module, two steps are mandatory:**
 
-1. Add to `externals` in `vite.main.config.ts`:
+1. Add to `external` array in `vite.main.config.ts` → `build.rollupOptions.external`:
    ```ts
    external: ['uiohook-napi', '@huggingface/transformers', 'onnxruntime-node', ..., 'new-native-module']
    ```
 
-2. Add to `rebuildConfig.onlyModules` in `forge.config.ts` (only for true native C++ addons):
-   ```ts
-   rebuildConfig: { onlyModules: ['better-sqlite3', 'uiohook-napi', 'new-native-module'] }
+2. If it contains native `.node` addons, add to `asarUnpack` in `electron-builder.yml`:
+   ```yaml
+   asarUnpack:
+     - "node_modules/new-native-module/**"
    ```
 
 Skipping either step will cause the production build to fail or crash at runtime.

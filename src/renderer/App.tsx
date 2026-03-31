@@ -53,9 +53,21 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 }
 
 export function App() {
-  const isOverlay = window.location.hash === '#overlay';
+  if (window.location.hash === '#overlay') {
+    return <ErrorBoundary><OverlayApp /></ErrorBoundary>;
+  }
+  return <ErrorBoundary><MainApp /></ErrorBoundary>;
+}
+
+function OverlayApp() {
   const recordingState = useRecordingState();
-  useSoundFeedback(recordingState, isOverlay);
+  useSoundFeedback(recordingState, true);
+  return <OverlayWindow state={recordingState} />;
+}
+
+function MainApp() {
+  const recordingState = useRecordingState();
+  useSoundFeedback(recordingState, false);
   const modelStatus = useModelStatus();
   const [activeView, setActiveView] = useState<ActiveView>('home');
   const micSelector = useMicrophoneSelector();
@@ -94,12 +106,7 @@ export function App() {
     });
   }, []);
 
-  if (isOverlay) {
-    return <ErrorBoundary><OverlayWindow state={recordingState} /></ErrorBoundary>;
-  }
-
   return (
-    <ErrorBoundary>
     <ToastProvider>
     <div className="flex h-screen text-neutral-200 select-none font-sans bg-[#0A0A0A]">
       <ScanLines />
@@ -148,6 +155,5 @@ export function App() {
       {upToDateVersion && <UpToDatePopup version={upToDateVersion} onClose={() => setUpToDateVersion(null)} />}
     </div>
     </ToastProvider>
-    </ErrorBoundary>
   );
 }

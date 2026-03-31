@@ -4,7 +4,10 @@ import tailwindcss from '@tailwindcss/vite';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 
 export default defineConfig({
+  base: './',
   build: {
+    outDir: 'dist/renderer',
+    emptyOutDir: true,
     sourcemap: true,
   },
   plugins: [
