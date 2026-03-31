@@ -492,8 +492,8 @@ app.on('ready', () => {
 
   updateService.onStatusChange((state) => {
     trayManager.setUpdateState(state);
-    // Show main window so the user sees the in-app popup after manual check from tray
-    if (state.status === 'up-to-date' && mainWindow && !mainWindow.isVisible()) {
+    // Show main window only after manual check from tray (not on automatic startup check)
+    if (state.status === 'up-to-date' && state.manual && mainWindow && !mainWindow.isVisible()) {
       mainWindow.show();
       mainWindow.focus();
     }

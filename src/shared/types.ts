@@ -198,4 +198,5 @@ export interface UpdateState {
   latestVersion?: string;
   releaseNotes?: string;
   error?: string;
+  manual?: boolean;
 }

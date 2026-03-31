@@ -133,7 +133,7 @@ export class UpdateService {
   }
 
   private setState(status: UpdateStatus): void {
-    this.state = { ...this.state, status, error: undefined };
+    this.state = { ...this.state, status, error: undefined, manual: this.manualCheck };
     this.notify();
   }
 
