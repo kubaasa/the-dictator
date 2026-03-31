@@ -12,15 +12,13 @@ interface OverlayWindowProps {
 }
 
 export function OverlayWindow({ state }: OverlayWindowProps) {
-  const voiceLevel = useVoiceActivity();
+  const { level: voiceLevel, bandsRef } = useVoiceActivity();
   const { error } = useTranscriptionResult(state);
   const [activeWidget, setActiveWidget] = useState<WidgetType>('voicebar');
   const [shortcuts, setShortcuts] = useState<AppSettings['hotkey']['shortcuts']>(
     () => DEFAULT_SETTINGS.hotkey.shortcuts,
   );
   const [hotkeyMode, setHotkeyMode] = useState<HotkeyMode>('toggle');
-  const [audioDeviceId, setAudioDeviceId] = useState('');
-
   useEffect(() => {
     window.dictator.getSettings().then((settings) => {
       if (settings.widget) setActiveWidget(settings.widget.activeWidget);
@@ -28,7 +26,6 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
         setShortcuts(settings.hotkey.shortcuts);
         setHotkeyMode(settings.hotkey.mode);
       }
-      if (settings.audio?.deviceId) setAudioDeviceId(settings.audio.deviceId);
     }).catch((err) => log.error('Failed to load settings in OverlayWindow:', err));
 
     const unsub = window.dictator.onSettingsChange((settings) => {
@@ -37,7 +34,6 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
         setShortcuts(settings.hotkey.shortcuts);
         setHotkeyMode(settings.hotkey.mode);
       }
-      setAudioDeviceId(settings.audio?.deviceId ?? '');
     });
     return unsub;
   }, []);
@@ -46,11 +42,11 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
     return (
       <MaxiWidget
         voiceLevel={voiceLevel}
+        bandsRef={bandsRef}
         state={state}
         shortcuts={shortcuts}
         hotkeyMode={hotkeyMode}
         errorMessage={error}
-        audioDeviceId={audioDeviceId}
       />
     );
   }
@@ -61,7 +57,6 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
       state={state}
       errorMessage={error}
       onToggleRecording={() => window.dictator.requestToggleRecording()}
-      audioDeviceId={audioDeviceId}
     />
   );
 }

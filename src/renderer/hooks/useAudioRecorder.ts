@@ -2,8 +2,28 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import log from 'electron-log/renderer';
 
 // AudioWorklet processor: accumulates 4096-sample chunks (~256ms at 16kHz) in a dedicated
-// audio thread, immune to main-thread jank. Posts chunks + RMS level to the main thread.
+// audio thread, immune to main-thread jank. Posts chunks to the main thread for transcription.
+// Level messages (with 8-band spectral energy via Goertzel) are posted every ~256 samples
+// (~16ms at 16kHz ≈ 62.5Hz) so the overlay visualization gets real frequency data.
 const WORKLET_PROCESSOR_CODE = `
+// Goertzel magnitude for a single DFT bin k out of N samples — O(N) per bin
+function goertzelMag(buf, N, k) {
+  var w = 2 * Math.PI * k / N;
+  var coeff = 2 * Math.cos(w);
+  var s1 = 0, s2 = 0, s0;
+  for (var i = 0; i < N; i++) {
+    s0 = buf[i] + coeff * s1 - s2;
+    s2 = s1;
+    s1 = s0;
+  }
+  return Math.sqrt(s1 * s1 + s2 * s2 - coeff * s1 * s2) / N;
+}
+
+// 8 log-spaced DFT bins for voice spectral analysis at 16kHz / 256 samples (62.5Hz resolution)
+// Bins: ~125Hz, ~250Hz, ~500Hz, ~1kHz, ~2kHz, ~3kHz, ~4.5kHz, ~7kHz
+var BAND_BINS = [2, 4, 8, 16, 32, 48, 72, 112];
+var NUM_BANDS = 8;
+
 class RecorderProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -12,9 +32,10 @@ class RecorderProcessor extends AudioWorkletProcessor {
     this._stopped = false;
     this._emptyFrames = 0;
     this._noInputSent = false;
+    this._levelBuf = new Float32Array(256);
+    this._levelOffset = 0;
     this.port.onmessage = (e) => {
       if (e.data === 'stop') {
-        // Flush remaining samples before terminating — prevents up to 256ms audio loss
         if (this._offset > 0) {
           const partial = new Float32Array(this._buffer.subarray(0, this._offset));
           this.port.postMessage({ type: 'audio', samples: partial }, [partial.buffer]);
@@ -40,8 +61,40 @@ class RecorderProcessor extends AudioWorkletProcessor {
     this._emptyFrames = 0;
 
     const samples = input[0];
-    let srcOffset = 0;
 
+    // Accumulate samples for spectral analysis (~62.5Hz posting rate)
+    var copied = 0;
+    while (copied < samples.length) {
+      var space = 256 - this._levelOffset;
+      var take = Math.min(space, samples.length - copied);
+      this._levelBuf.set(samples.subarray(copied, copied + take), this._levelOffset);
+      this._levelOffset += take;
+      copied += take;
+
+      if (this._levelOffset >= 256) {
+        // RMS level
+        var sum = 0;
+        for (var j = 0; j < 256; j++) sum += this._levelBuf[j] * this._levelBuf[j];
+        var rms = Math.min(1, Math.sqrt(sum / 256) / 0.15);
+
+        // 8-band spectral energy via Goertzel, normalized to spectral shape (0-1)
+        var bands = new Float32Array(NUM_BANDS);
+        var maxBand = 0;
+        for (var b = 0; b < NUM_BANDS; b++) {
+          bands[b] = goertzelMag(this._levelBuf, 256, BAND_BINS[b]);
+          if (bands[b] > maxBand) maxBand = bands[b];
+        }
+        if (maxBand > 0.0001) {
+          for (var b = 0; b < NUM_BANDS; b++) bands[b] = bands[b] / maxBand;
+        }
+
+        this.port.postMessage({ type: 'level', level: rms, bands: bands });
+        this._levelOffset = 0;
+      }
+    }
+
+    // Accumulate audio chunks for transcription (4096-sample blocks)
+    let srcOffset = 0;
     while (srcOffset < samples.length) {
       const remaining = 4096 - this._offset;
       const toCopy = Math.min(remaining, samples.length - srcOffset);
@@ -52,16 +105,6 @@ class RecorderProcessor extends AudioWorkletProcessor {
       if (this._offset >= 4096) {
         const copy = new Float32Array(this._buffer);
         this.port.postMessage({ type: 'audio', samples: copy }, [copy.buffer]);
-
-        let sum = 0;
-        for (let i = 0; i < 4096; i++) {
-          sum += this._buffer[i] * this._buffer[i];
-        }
-        this.port.postMessage({
-          type: 'level',
-          level: Math.min(1, Math.sqrt(sum / 4096) / 0.15),
-        });
-
         this._offset = 0;
       }
     }
@@ -277,15 +320,74 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
           },
         });
       } catch (micErr) {
-        if (sessionIdRef.current !== thisSession) return;
-        log.error('getUserMedia failed:', micErr);
-        isSettingUpRef.current = false;
-        pendingStopRef.current = false;
-        const message = classifyMicError(micErr);
-        setError(message);
-        setErrorType('');
-        window.dictator.reportMicError(message);
-        return;
+        // Saved device unavailable (e.g. after reboot) — retry with default mic before giving up
+        if (micErr instanceof DOMException && micErr.name === 'OverconstrainedError' && deviceId) {
+          log.warn('Saved mic unavailable, falling back to default device');
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                channelCount: 1,
+                echoCancellation: !!callMode,
+                noiseSuppression: !!callMode,
+                autoGainControl: !!callMode,
+              },
+            });
+            if (sessionIdRef.current !== thisSession) {
+              stream.getTracks().forEach(t => t.stop());
+              return;
+            }
+          } catch (fallbackErr) {
+            if (sessionIdRef.current !== thisSession) return;
+            log.error('getUserMedia fallback also failed:', fallbackErr);
+            isSettingUpRef.current = false;
+            pendingStopRef.current = false;
+            const message = classifyMicError(fallbackErr);
+            setError(message);
+            setErrorType('');
+            window.dictator.reportMicError(message);
+            return;
+          }
+        } else if (micErr instanceof DOMException && micErr.name === 'NotReadableError') {
+          // Mic may be momentarily busy (e.g. Teams/Zoom releasing it) — retry once after brief delay
+          log.warn('Mic busy (NotReadableError), retrying in 400ms...');
+          await new Promise(r => setTimeout(r, 400));
+          if (sessionIdRef.current !== thisSession) return;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+                channelCount: 1,
+                echoCancellation: !!callMode,
+                noiseSuppression: !!callMode,
+                autoGainControl: !!callMode,
+              },
+            });
+            if (sessionIdRef.current !== thisSession) {
+              stream.getTracks().forEach(t => t.stop());
+              return;
+            }
+          } catch (retryErr) {
+            if (sessionIdRef.current !== thisSession) return;
+            log.error('getUserMedia retry also failed:', retryErr);
+            isSettingUpRef.current = false;
+            pendingStopRef.current = false;
+            const message = classifyMicError(retryErr);
+            setError(message);
+            setErrorType('');
+            window.dictator.reportMicError(message);
+            return;
+          }
+        } else {
+          if (sessionIdRef.current !== thisSession) return;
+          log.error('getUserMedia failed:', micErr);
+          isSettingUpRef.current = false;
+          pendingStopRef.current = false;
+          const message = classifyMicError(micErr);
+          setError(message);
+          setErrorType('');
+          window.dictator.reportMicError(message);
+          return;
+        }
       }
 
       if (sessionIdRef.current !== thisSession) {
@@ -363,7 +465,7 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
         if (e.data.type === 'audio') {
           chunksRef.current.push(e.data.samples);
         } else if (e.data.type === 'level') {
-          window.dictator.sendVoiceActivity(e.data.level);
+          window.dictator.sendVoiceActivity(e.data.level, e.data.bands ? Array.from(e.data.bands) : undefined);
         } else if (e.data.type === 'no-input') {
           log.warn('AudioWorklet: no audio input detected — mic may have been taken by another app');
           if (isRecordingRef.current) {

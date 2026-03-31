@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import log from 'electron-log/renderer';
 import type { RecordingState } from '../../../shared/types';
 
 interface VoiceBarProps {
@@ -7,7 +6,6 @@ interface VoiceBarProps {
   state: RecordingState;
   errorMessage?: string;
   onToggleRecording?: () => void;
-  audioDeviceId?: string;
 }
 
 const BAR_COUNT = 6;
@@ -87,7 +85,7 @@ const KEYFRAMES = `
 
 type AnimPhase = 'idle' | 'entering' | 'active' | 'exiting';
 
-export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }: VoiceBarProps) {
+export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps) {
   const barWidth = 3;
   const gap      = 3;
 
@@ -175,10 +173,6 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
   const barElemsRef   = useRef<(HTMLDivElement | null)[]>([]);
   const smoothedRef   = useRef<Float32Array>(new Float32Array(BAR_COUNT).fill(MIN_BAR_H));
   const voiceLevelRef = useRef(0);
-  const vizActiveRef  = useRef(false);
-  const audioCtxRef   = useRef<AudioContext | null>(null);
-  const analyserRef   = useRef<AnalyserNode | null>(null);
-  const streamRef     = useRef<MediaStream | null>(null);
   const rafRef        = useRef<number>(0);
 
   useEffect(() => { voiceLevelRef.current = voiceLevel; }, [voiceLevel]);
@@ -226,84 +220,31 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
     document.addEventListener('mouseup', onUp);
   }, []);
 
+  // Voice-level driven visualization — uses IPC voiceLevel from the recording worklet
+  // instead of opening a second mic stream (which blocks on many Windows audio drivers).
   useEffect(() => {
     if (!isRecording) {
-      vizActiveRef.current = false;
-      stopVisualization();
+      cancelAnimationFrame(rafRef.current);
+      smoothedRef.current.fill(MIN_BAR_H);
       return;
     }
-    vizActiveRef.current = true;
-    startVisualization().catch((err) => {
-      log.warn('[VoiceBar] startVisualization failed:', err);
-      vizActiveRef.current = false;
-      stopVisualization();
-    });
-    return () => {
-      vizActiveRef.current = false;
-      stopVisualization();
-    };
-  }, [isRecording]);
-
-  async function startVisualization() {
-    let localAnalyser: AnalyserNode | null = null;
-    let dataArray: Uint8Array | null = null;
-    let samplesPerBar = 0;
-
-    try {
-      const audioConstraints: MediaTrackConstraints = audioDeviceId
-        ? { deviceId: { exact: audioDeviceId } }
-        : {};
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { ...audioConstraints }, video: false });
-      if (!vizActiveRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
-      streamRef.current = stream;
-
-      const ctx = new AudioContext();
-      await ctx.resume();
-      if (!vizActiveRef.current) { stream.getTracks().forEach(t => t.stop()); ctx.close(); return; }
-      audioCtxRef.current = ctx;
-
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 1024;
-      analyserRef.current = analyser;
-      localAnalyser = analyser;
-
-      const source = ctx.createMediaStreamSource(stream);
-      source.connect(analyser);
-
-      dataArray = new Uint8Array(analyser.fftSize);
-      samplesPerBar = Math.floor(analyser.fftSize / BAR_COUNT);
-    } catch (err) {
-      log.warn('[VoiceBar] getUserMedia failed, falling back to voiceLevel prop:', err);
-    }
-
-    if (!vizActiveRef.current) return;
 
     const tick = () => {
-      if (localAnalyser && dataArray) {
-        localAnalyser.getByteTimeDomainData(dataArray);
-        for (let i = 0; i < BAR_COUNT; i++) {
-          let peak = 0;
-          const offset = i * samplesPerBar;
-          for (let s = 0; s < samplesPerBar; s++) {
-            const amplitude = Math.abs(dataArray[offset + s] - 128) / 128;
-            if (amplitude > peak) peak = amplitude;
-          }
-          const boosted = Math.min(1, peak * 4);
-          const enveloped = boosted * HANNING_WEIGHTS[i];
-          const targetH = MIN_BAR_H + enveloped * (MAX_BAR_H - MIN_BAR_H);
-          const current = smoothedRef.current[i];
-          const factor = targetH > current ? LERP_ATTACK : LERP_RELEASE;
-          smoothedRef.current[i] = current + (targetH - current) * factor;
-        }
-      } else {
-        const level = Math.min(1, Math.pow(Math.min(1, Math.max(0, voiceLevelRef.current)), 0.3) * 1.5);
-        for (let i = 0; i < BAR_COUNT; i++) {
-          const enveloped = level * HANNING_WEIGHTS[i];
-          const targetH = MIN_BAR_H + enveloped * (MAX_BAR_H - MIN_BAR_H);
-          const current = smoothedRef.current[i];
-          const factor = targetH > current ? LERP_ATTACK : LERP_RELEASE;
-          smoothedRef.current[i] = current + (targetH - current) * factor;
-        }
+      const level = Math.min(1, Math.pow(Math.min(1, Math.max(0, voiceLevelRef.current)), 0.3) * 1.5);
+      const t = performance.now() / 1000;
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const { rand, multiplier } = BARS[i];
+        // Three overlapping sine waves per bar — each bar oscillates independently,
+        // creating organic waveform-like motion instead of uniform expansion/contraction
+        const w1 = Math.sin(t * 2.3 + i * 0.9 + rand * 6.28);
+        const w2 = Math.sin(t * 3.7 + i * 1.4 + rand * 4.19) * 0.6;
+        const w3 = Math.sin(t * 1.1 + i * 2.3 + rand * 2.09) * 0.3;
+        const oscillation = (w1 + w2 + w3) / 3.8 + 0.5;
+        const barLevel = level * (0.3 + 0.7 * oscillation) * multiplier;
+        const targetH = MIN_BAR_H + barLevel * (MAX_BAR_H - MIN_BAR_H);
+        const current = smoothedRef.current[i];
+        const factor = targetH > current ? LERP_ATTACK : LERP_RELEASE;
+        smoothedRef.current[i] = current + (targetH - current) * factor;
       }
 
       for (let i = 0; i < BAR_COUNT; i++) {
@@ -320,17 +261,11 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording, audioDeviceId }
     };
 
     rafRef.current = requestAnimationFrame(tick);
-  }
-
-  function stopVisualization() {
-    cancelAnimationFrame(rafRef.current);
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-    audioCtxRef.current?.close();
-    audioCtxRef.current = null;
-    analyserRef.current = null;
-    smoothedRef.current.fill(MIN_BAR_H);
-  }
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      smoothedRef.current.fill(MIN_BAR_H);
+    };
+  }, [isRecording]);
 
   const isExpanded = isProximate || isInitializing || isRecording || isTranscribing || isDone || errorFlash;
 

@@ -337,8 +337,8 @@ function setupRecordingIpc(): void {
     }, 2500);
   });
 
-  ipcMain.on(IPC.VOICE_ACTIVITY, (_, level: number) => {
-    overlayWindow?.webContents.send(IPC.VOICE_ACTIVITY, level);
+  ipcMain.on(IPC.VOICE_ACTIVITY, (_, level: number, bands?: number[]) => {
+    overlayWindow?.webContents.send(IPC.VOICE_ACTIVITY, level, bands);
   });
 
   ipcMain.handle(IPC.RECORDING_STATE_CHANGED, () => {

@@ -428,7 +428,25 @@ function StepMicTest({
         noiseSuppression: false,
         autoGainControl: false,
       };
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+      } catch (micErr) {
+        // Saved device unavailable — retry with default mic before giving up
+        if (micErr instanceof DOMException && micErr.name === 'OverconstrainedError' && deviceId) {
+          log.warn('[OnboardingWizard] Saved mic unavailable, falling back to default device');
+          stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 }, video: false });
+        // Mic temporarily busy (e.g. Teams/Zoom releasing it) — retry once after brief delay
+        } else if (micErr instanceof DOMException && micErr.name === 'NotReadableError') {
+          log.warn('[OnboardingWizard] Mic busy (NotReadableError), retrying in 400ms...');
+          await new Promise(r => setTimeout(r, 400));
+          if (!activeRef.current) return;
+          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+        } else {
+          throw micErr;
+        }
+      }
       if (!activeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
       streamRef.current = stream;
 

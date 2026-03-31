@@ -29,8 +29,8 @@ export interface DictatorAPI {
   setSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>;
   onSettingsChange: (callback: (settings: AppSettings) => void) => () => void;
 
-  sendVoiceActivity: (level: number) => void;
-  onVoiceActivity: (callback: (level: number) => void) => () => void;
+  sendVoiceActivity: (level: number, bands?: number[]) => void;
+  onVoiceActivity: (callback: (level: number, bands?: number[]) => void) => () => void;
 
   onHotkeyToggle: (callback: () => void) => () => void;
   onHotkeyCancel: (callback: () => void) => () => void;
@@ -141,9 +141,9 @@ const api: DictatorAPI = {
     return () => ipcRenderer.removeListener(IPC.SETTINGS_ON_CHANGE, handler);
   },
 
-  sendVoiceActivity: (level) => ipcRenderer.send(IPC.VOICE_ACTIVITY, level),
+  sendVoiceActivity: (level, bands) => ipcRenderer.send(IPC.VOICE_ACTIVITY, level, bands),
   onVoiceActivity: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, level: number) => callback(level);
+    const handler = (_event: Electron.IpcRendererEvent, level: number, bands?: number[]) => callback(level, bands);
     ipcRenderer.on(IPC.VOICE_ACTIVITY, handler);
     return () => ipcRenderer.removeListener(IPC.VOICE_ACTIVITY, handler);
   },

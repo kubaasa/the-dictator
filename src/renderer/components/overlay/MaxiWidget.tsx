@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import log from 'electron-log/renderer';
 import type { RecordingState, HotkeyMode, AppSettings } from '../../../shared/types';
+
+const NUM_BANDS = 8;
 
 interface MaxiWidgetProps {
   voiceLevel: number;
+  bandsRef: React.RefObject<number[] | null>;
   state: RecordingState;
   shortcuts: AppSettings['hotkey']['shortcuts'];
   hotkeyMode: HotkeyMode;
   errorMessage?: string;
-  audioDeviceId?: string;
 }
 
 const BAR_COUNT  = 60;
@@ -103,17 +104,13 @@ const KEYFRAMES = `
 
 type AnimPhase = 'idle' | 'entering' | 'active' | 'exiting';
 
-export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMessage, audioDeviceId }: MaxiWidgetProps) {
+export function MaxiWidget({ voiceLevel, bandsRef, state, shortcuts, hotkeyMode, errorMessage }: MaxiWidgetProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
   const prevIsActiveRef = useRef(false);
   const dragMouseUpRef = useRef<(() => void) | null>(null);
 
   // Audio visualization refs — updated in RAF loop, not React state
-  const vizActiveRef   = useRef(false);
-  const audioCtxRef    = useRef<AudioContext | null>(null);
-  const analyserRef    = useRef<AnalyserNode | null>(null);
-  const streamRef      = useRef<MediaStream | null>(null);
   const rafRef         = useRef<number>(0);
   const voiceLevelRef  = useRef(0);
   const smoothedRef    = useRef<Float32Array>(new Float32Array(BAR_COUNT).fill(MIN_BAR_H));
@@ -161,99 +158,43 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
     }
   }, [isActive]);
 
+  // Voice-level driven visualization — uses IPC voiceLevel from the recording worklet
+  // instead of opening a second mic stream (which blocks on many Windows audio drivers).
   useEffect(() => {
     if (!isRecording) {
-      vizActiveRef.current = false;
-      stopVisualization();
+      cancelAnimationFrame(rafRef.current);
+      smoothedRef.current.fill(MIN_BAR_H);
       return;
     }
-    vizActiveRef.current = true;
-    startVisualization().catch((err) => {
-      log.warn('[MaxiWidget] startVisualization failed:', err);
-      vizActiveRef.current = false;
-      stopVisualization();
-    });
-    return () => {
-      vizActiveRef.current = false;
-      stopVisualization();
-    };
-  }, [isRecording]);
-
-  async function startVisualization() {
-    let localAnalyser: AnalyserNode | null = null;
-    let dataArray: Uint8Array | null = null;
-    let samplesPerBar = 0;
-
-    try {
-      const audioConstraints: MediaTrackConstraints = audioDeviceId
-        ? { deviceId: { exact: audioDeviceId } }
-        : {};
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { ...audioConstraints }, video: false });
-
-      if (!vizActiveRef.current) {
-        stream.getTracks().forEach(t => t.stop());
-        return;
-      }
-      streamRef.current = stream;
-
-      const ctx = new AudioContext();
-      await ctx.resume();
-
-      if (!vizActiveRef.current) {
-        stream.getTracks().forEach(t => t.stop());
-        ctx.close();
-        return;
-      }
-      audioCtxRef.current = ctx;
-
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 1024;
-      analyserRef.current = analyser;
-      localAnalyser = analyser;
-
-      const source = ctx.createMediaStreamSource(stream);
-      source.connect(analyser);
-
-      dataArray    = new Uint8Array(analyser.fftSize);
-      samplesPerBar = Math.floor(analyser.fftSize / BAR_COUNT);
-    } catch (err) {
-      log.warn('[MaxiWidget] getUserMedia failed, falling back to voiceLevel prop:', err);
-    }
-
-    if (!vizActiveRef.current) return;
 
     const tick = () => {
-      if (localAnalyser && dataArray) {
-        localAnalyser.getByteTimeDomainData(dataArray);
+      const bands = bandsRef.current;
+      const level = Math.min(1, Math.pow(Math.min(1, Math.max(0, voiceLevelRef.current)), 0.25) * 1.8);
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const { multiplier, jitter } = BAR_PROPS[i];
 
-        for (let i = 0; i < BAR_COUNT; i++) {
-          let peak = 0;
-          const offset = i * samplesPerBar;
-          for (let s = 0; s < samplesPerBar; s++) {
-            const amplitude = Math.abs(dataArray[offset + s] - 128) / 128;
-            if (amplitude > peak) peak = amplitude;
-          }
-
-          const boosted = Math.min(1, peak * 4);
-          const varied = boosted * BAR_PROPS[i].multiplier * BAR_PROPS[i].jitter;
-          const enveloped = varied * HANNING_WEIGHTS[i];
-          const targetH   = MIN_BAR_H + enveloped * (MAX_BAR_H - MIN_BAR_H);
-
-          const current = smoothedRef.current[i];
-          const factor  = targetH > current ? LERP_ATTACK : LERP_RELEASE;
-          smoothedRef.current[i] = current + (targetH - current) * factor;
+        // Interpolate 8 spectral bands (normalized shape 0-1) across 60 bars,
+        // then scale by overall voice level for amplitude
+        let bandShape: number;
+        if (bands && bands.length === NUM_BANDS) {
+          const pos = (i / (BAR_COUNT - 1)) * (NUM_BANDS - 1);
+          const lo = Math.floor(pos);
+          const hi = Math.min(lo + 1, NUM_BANDS - 1);
+          const frac = pos - lo;
+          bandShape = bands[lo] * (1 - frac) + bands[hi] * frac;
+          // Ensure minimum bar variation even for quiet bands
+          bandShape = 0.3 + 0.7 * bandShape;
+        } else {
+          bandShape = 1;
         }
-      } else {
-        const level = Math.min(1, Math.pow(Math.min(1, Math.max(0, voiceLevelRef.current)), 0.3) * 1.5);
-        for (let i = 0; i < BAR_COUNT; i++) {
-          const varied = level * BAR_PROPS[i].multiplier * BAR_PROPS[i].jitter;
-          const enveloped = varied * HANNING_WEIGHTS[i];
-          const targetH   = MIN_BAR_H + enveloped * (MAX_BAR_H - MIN_BAR_H);
 
-          const current = smoothedRef.current[i];
-          const factor  = targetH > current ? LERP_ATTACK : LERP_RELEASE;
-          smoothedRef.current[i] = current + (targetH - current) * factor;
-        }
+        const barLevel = level * bandShape * multiplier * jitter;
+        const enveloped = barLevel * HANNING_WEIGHTS[i];
+        const targetH   = MIN_BAR_H + enveloped * (MAX_BAR_H - MIN_BAR_H);
+
+        const current = smoothedRef.current[i];
+        const factor  = targetH > current ? LERP_ATTACK : LERP_RELEASE;
+        smoothedRef.current[i] = current + (targetH - current) * factor;
       }
 
       for (let i = 0; i < BAR_COUNT; i++) {
@@ -270,20 +211,11 @@ export function MaxiWidget({ voiceLevel, state, shortcuts, hotkeyMode, errorMess
     };
 
     rafRef.current = requestAnimationFrame(tick);
-  }
-
-  function stopVisualization() {
-    cancelAnimationFrame(rafRef.current);
-
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-
-    audioCtxRef.current?.close();
-    audioCtxRef.current = null;
-
-    analyserRef.current = null;
-    smoothedRef.current.fill(MIN_BAR_H);
-  }
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      smoothedRef.current.fill(MIN_BAR_H);
+    };
+  }, [isRecording]);
 
   useEffect(() => {
     return () => {
