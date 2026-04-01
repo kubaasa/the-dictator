@@ -87,6 +87,13 @@ FunctionEnd
 ; customInstall — runs after files are installed
 ; ============================================================================
 !macro customInstall
+  ; Create install marker so the app knows this is the first launch after installation.
+  ; The main process reads and deletes this file on startup to show the window.
+  CreateDirectory "$APPDATA\The Dictator"
+  FileOpen $0 "$APPDATA\The Dictator\.install-marker" w
+  FileWrite $0 "1"
+  FileClose $0
+
   ; Desktop shortcut (only if user checked the box)
   ${If} $CreateDesktopShortcut == ${BST_CHECKED}
     CreateShortCut "$DESKTOP\${SHORTCUT_NAME}.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0

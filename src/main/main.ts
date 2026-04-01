@@ -106,6 +106,7 @@ app.on('second-instance', () => {
 });
 
 let isQuitting = false;
+let isPostInstallLaunch = false;
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let currentState: RecordingState = 'idle';
@@ -189,9 +190,12 @@ function createMainWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => {
     const firstRun = !(store.get('general.firstRunComplete') as boolean);
-    if (firstRun) {
+    if (firstRun || isPostInstallLaunch) {
       win.show();
+      // Bypass Windows focus-stealing prevention when launched from NSIS finish page
+      win.setAlwaysOnTop(true);
       win.focus();
+      win.setAlwaysOnTop(false);
     }
   });
 
@@ -448,6 +452,18 @@ app.on('ready', () => {
       return new Response('Not found', { status: 404 });
     }
   });
+
+  // Detect first launch after installation (marker created by NSIS installer)
+  const installMarkerPath = path.join(app.getPath('userData'), '.install-marker');
+  try {
+    if (fs.existsSync(installMarkerPath)) {
+      fs.unlinkSync(installMarkerPath);
+      isPostInstallLaunch = true;
+      log.info('Post-install launch detected — will show main window');
+    }
+  } catch (err) {
+    log.warn('Failed to check/remove install marker:', err);
+  }
 
   mainWindow = createMainWindow();
   overlayWindow = createOverlayWindow();
