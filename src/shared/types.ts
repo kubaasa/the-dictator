@@ -199,4 +199,5 @@ export interface UpdateState {
   releaseNotes?: string;
   error?: string;
   manual?: boolean;
+  progress?: number;
 }

@@ -79,15 +79,18 @@ function MainApp() {
   const [upToDateVersion, setUpToDateVersion] = useState<string | null>(null);
 
   useEffect(() => {
+    const isModalState = (s: import('../shared/types').UpdateState) =>
+      s.status === 'downloading' || s.status === 'downloaded';
+
     window.dictator.update.getInfo().then((state) => {
-      if (state.status === 'downloaded') setUpdateState(state);
+      if (isModalState(state)) setUpdateState(state);
     }).catch((err) => log.warn('Failed to get update info:', err));
 
     return window.dictator.update.onStatusChange((state) => {
       if (state.status === 'up-to-date' && state.manual) {
         setUpToDateVersion(state.currentVersion);
       } else {
-        setUpdateState(state.status === 'downloaded' ? state : null);
+        setUpdateState(isModalState(state) ? state : null);
       }
     });
   }, []);

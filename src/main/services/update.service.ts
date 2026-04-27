@@ -1,20 +1,11 @@
-import { app, net, Notification, nativeImage } from 'electron';
-import path from 'node:path';
-import fs from 'node:fs';
-import { spawn } from 'node:child_process';
+import { app, Notification, nativeImage } from 'electron';
+import { autoUpdater, type UpdateInfo, type ProgressInfo } from 'electron-updater';
 import type { UpdateState, UpdateStatus } from '../../shared/types';
 import logger from './logger';
 
 const log = logger.scope('Update');
 
-const GITHUB_REPO = 'kubaasa/the-dictator';
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
-
-interface GithubRelease {
-  tag_name: string;
-  body: string;
-  assets: Array<{ name: string; browser_download_url: string }>;
-}
 
 export class UpdateService {
   private state: UpdateState;
@@ -22,15 +13,25 @@ export class UpdateService {
   private statusListeners: Array<(state: UpdateState) => void> = [];
   private iconPath: string;
   private manualCheck = false;
-  private installerPath: string | null = null;
 
   constructor(iconPath: string) {
     this.iconPath = iconPath;
     this.state = { status: 'idle', currentVersion: app.getVersion() };
+
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = false;
+    // Forward electron-updater logs to our scoped logger so they show up next to other main-process logs
+    autoUpdater.logger = log;
+
+    this.bindEvents();
   }
 
   start(): void {
-    log.info('Update service started (GitHub API mode)');
+    if (!app.isPackaged) {
+      log.info('Skipping update check — running in dev mode (electron-updater requires packaged app)');
+      return;
+    }
+    log.info('Update service started (electron-updater)');
     this.checkForUpdates();
     this.checkTimer = setInterval(() => this.checkForUpdates(), CHECK_INTERVAL_MS);
   }
@@ -45,8 +46,12 @@ export class UpdateService {
   checkForUpdates(manual = false): UpdateState {
     log.info('checkForUpdates() called, manual:', manual);
     this.manualCheck = manual;
-    this.githubCheckForUpdates().catch((err) => {
-      log.error('GitHub update check unhandled error:', err);
+    if (!app.isPackaged) {
+      this.setUpToDate();
+      return this.state;
+    }
+    autoUpdater.checkForUpdates().catch((err) => {
+      log.error('checkForUpdates unhandled error:', err);
     });
     return this.state;
   }
@@ -56,131 +61,69 @@ export class UpdateService {
   }
 
   quitAndInstall(): void {
-    if (this.state.status !== 'downloaded' || !this.installerPath) return;
-
-    log.info('Launching installer:', this.installerPath);
-    // /S = silent NSIS flag — runs the installer without user interaction.
-    // detached + unref = the installer process survives after our app exits.
-    spawn(this.installerPath, ['/S'], { detached: true, stdio: 'ignore' }).unref();
-    app.quit();
+    if (this.state.status !== 'downloaded') return;
+    log.info('quitAndInstall() — restarting with update');
+    // (isSilent=true, isForceRunAfter=true): minimizes installer UI exposure during the update
+    // and ensures the app re-launches after the new version is installed.
+    autoUpdater.quitAndInstall(true, true);
   }
 
   onStatusChange(callback: (state: UpdateState) => void): void {
     this.statusListeners.push(callback);
   }
 
-  private async githubCheckForUpdates(): Promise<void> {
-    log.info('Checking GitHub API for updates...');
-    this.setState('checking');
-    try {
-      const url = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-      log.info('Fetching', url);
-      const response = await net.fetch(url, {
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': `TheDictator/${app.getVersion()}`,
-        },
-      });
+  private bindEvents(): void {
+    autoUpdater.on('checking-for-update', () => {
+      this.setState('checking');
+    });
 
-      log.info('GitHub API response status:', response.status);
+    autoUpdater.on('update-available', (info: UpdateInfo) => {
+      log.info('Update available:', info.version);
+      this.state = {
+        ...this.state,
+        status: 'downloading',
+        latestVersion: info.version,
+        releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+        progress: 0,
+        error: undefined,
+        manual: this.manualCheck,
+      };
+      this.notify();
+    });
 
-      if (response.status === 404) {
-        log.info('No releases found on GitHub');
-        this.setUpToDate();
-        return;
-      }
+    autoUpdater.on('update-not-available', () => {
+      log.info('Already up to date');
+      this.setUpToDate();
+    });
 
-      if (!response.ok) {
-        log.warn('GitHub API error:', response.status);
-        this.setState('idle');
-        return;
-      }
+    autoUpdater.on('download-progress', (progress: ProgressInfo) => {
+      this.state = { ...this.state, status: 'downloading', progress: progress.percent };
+      this.notify();
+    });
 
-      const data = await response.json() as GithubRelease;
-      const latestVersion = data.tag_name.replace(/^v/, '');
-      const current = app.getVersion();
-      log.info('Current=%s, latest=%s', current, latestVersion);
+    autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
+      log.info('Update downloaded:', info.version);
+      this.state = {
+        ...this.state,
+        status: 'downloaded',
+        latestVersion: info.version,
+        releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+        progress: 100,
+      };
+      this.notify();
+      this.showNativeNotification();
+    });
 
-      if (this.isNewer(latestVersion, current)) {
-        const installerAsset = data.assets.find((a) => a.name.endsWith('.exe'));
-        if (!installerAsset) {
-          log.warn('No .exe installer found in release assets');
-          this.state = { ...this.state, status: 'error', error: 'No installer found in release' };
-          this.notify();
-          return;
-        }
-
-        this.setState('downloading');
-        const downloaded = await this.downloadInstaller(installerAsset.browser_download_url, installerAsset.name);
-        if (!downloaded) return;
-
-        this.state = {
-          ...this.state,
-          status: 'downloaded',
-          latestVersion,
-          releaseNotes: data.body ?? undefined,
-        };
-        this.notify();
-        this.showNativeNotification();
-      } else {
-        log.info('Already up to date');
-        this.setUpToDate();
-      }
-    } catch (err) {
+    autoUpdater.on('error', (err) => {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      log.warn('Update check failed:', message);
+      log.warn('Update error:', message);
       if (this.manualCheck) {
         this.showErrorNotification(message);
         this.manualCheck = false;
       }
       this.state = { ...this.state, status: 'error', error: message };
       this.notify();
-    }
-  }
-
-  private async downloadInstaller(url: string, filename: string): Promise<boolean> {
-    const dest = path.join(app.getPath('temp'), filename);
-    log.info('Downloading installer to', dest);
-
-    try {
-      const response = await net.fetch(url);
-      if (!response.ok || !response.body) {
-        log.error('Installer download failed:', response.status);
-        this.state = { ...this.state, status: 'error', error: 'Installer download failed' };
-        this.notify();
-        return false;
-      }
-
-      const buffer = Buffer.from(await response.arrayBuffer());
-      fs.writeFileSync(dest, buffer);
-      this.installerPath = dest;
-      log.info('Installer downloaded: %d bytes', buffer.length);
-      return true;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Download failed';
-      log.error('Installer download error:', message);
-      this.state = { ...this.state, status: 'error', error: message };
-      this.notify();
-      return false;
-    }
-  }
-
-  private isNewer(latest: string, current: string): boolean {
-    const parse = (v: string) => {
-      const [core, ...preParts] = v.split('-');
-      const nums = core.split('.').map(Number);
-      return { nums, preRelease: preParts.join('-') };
-    };
-    const l = parse(latest);
-    const c = parse(current);
-    const [lMajor = 0, lMinor = 0, lPatch = 0] = l.nums;
-    const [cMajor = 0, cMinor = 0, cPatch = 0] = c.nums;
-    if (lMajor !== cMajor) return lMajor > cMajor;
-    if (lMinor !== cMinor) return lMinor > cMinor;
-    if (lPatch !== cPatch) return lPatch > cPatch;
-    // Same core version: release (no suffix) is newer than pre-release (e.g. 1.2.0 > 1.2.0-beta)
-    if (c.preRelease && !l.preRelease) return true;
-    return false;
+    });
   }
 
   private setUpToDate(): void {

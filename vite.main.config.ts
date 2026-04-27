@@ -29,6 +29,7 @@ export default defineConfig({
         'better-sqlite3',
         'electron-log',
         'electron-log/main',
+        'electron-updater',
         '@sentry/electron',
         '@sentry/electron/main',
       ],

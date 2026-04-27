@@ -14,6 +14,14 @@ export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
   }, []);
 
   const version = updateState.latestVersion ?? 'new';
+  const isDownloading = updateState.status === 'downloading';
+  const percent = Math.max(0, Math.min(100, Math.round(updateState.progress ?? 0)));
+
+  const buttonLabel = installing
+    ? 'Restarting...'
+    : isDownloading
+      ? 'Preparing...'
+      : 'Install & Restart';
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm">
@@ -35,12 +43,26 @@ export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
         {/* Title */}
         <div>
           <h2 className="text-xl font-semibold text-neutral-100">
-            Update Required
+            {isDownloading ? 'Downloading Update' : 'Update Required'}
           </h2>
           <p className="mt-1 text-sm text-neutral-400">
-            Version {version} is ready to install
+            {isDownloading
+              ? `Version ${version} — ${percent}%`
+              : `Version ${version} is ready to install`}
           </p>
         </div>
+
+        {/* Progress bar (during download) */}
+        {isDownloading && (
+          <div className="w-full">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
+              <div
+                className="h-full bg-red-500 transition-[width] duration-300 ease-out"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Release notes */}
         {updateState.releaseNotes && (
@@ -57,10 +79,10 @@ export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
         {/* Install button */}
         <button
           onClick={handleInstall}
-          disabled={installing}
+          disabled={installing || isDownloading}
           className="w-full rounded-lg bg-red-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {installing ? 'Restarting...' : 'Install & Restart'}
+          {buttonLabel}
         </button>
 
       </div>
