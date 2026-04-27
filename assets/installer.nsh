@@ -101,6 +101,15 @@ FunctionEnd
   FileWrite $0 "1"
   FileClose $0
 
+  ; Silent install (electron-updater auto-update) bypasses OptionsPageLeave,
+  ; leaving checkbox state at 0 — without this, every auto-update would silently
+  ; strip the user's shortcuts and autostart entry.
+  ${If} ${Silent}
+    StrCpy $CreateDesktopShortcut ${BST_CHECKED}
+    StrCpy $CreateStartMenuShortcut ${BST_CHECKED}
+    StrCpy $CreateAutoStart ${BST_CHECKED}
+  ${EndIf}
+
   ; Desktop shortcut (only if user checked the box)
   ${If} $CreateDesktopShortcut == ${BST_CHECKED}
     CreateShortCut "$DESKTOP\${SHORTCUT_NAME}.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0
