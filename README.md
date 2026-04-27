@@ -16,17 +16,17 @@
 
 </div>
 
-<img width="1194" height="829" alt="The Dictator main window" src="https://github.com/user-attachments/assets/6fa41d10-8031-42c9-9bc5-d5a5aa4419ac" />
+![The Dictator main window](assets/screenshots/home.png)
 
 ---
 
 ## Screenshots
 
-| Home | Modes |
+| Modes | Polish AI |
 |:---:|:---:|
-| ![Home](assets/screenshots/home.png) | ![Modes](assets/screenshots/modes.png) |
-| **History** | **Overlay** |
-| ![History](assets/screenshots/history.png) | ![Overlay](assets/screenshots/overlay.png) |
+| ![Modes](assets/screenshots/modes.png) | ![Polish AI](assets/screenshots/polish%20ai.png) |
+| **Vocabulary** | **Widget** |
+| ![Vocabulary](assets/screenshots/vocabulary.png) | ![Widget](assets/screenshots/widget.png) |
 
 ## How It Works
 
@@ -257,17 +257,17 @@ Pull requests welcome.
 
 </div>
 
-<img width="1194" height="829" alt="The Dictator — okno główne" src="https://github.com/user-attachments/assets/6fa41d10-8031-42c9-9bc5-d5a5aa4419ac" />
+![The Dictator — okno główne](assets/screenshots/home.png)
 
 ---
 
 ## Zrzuty ekranu
 
-| Home | Modes |
+| Modes | Polish AI |
 |:---:|:---:|
-| ![Home](assets/screenshots/home.png) | ![Modes](assets/screenshots/modes.png) |
-| **History** | **Overlay** |
-| ![History](assets/screenshots/history.png) | ![Overlay](assets/screenshots/overlay.png) |
+| ![Modes](assets/screenshots/modes.png) | ![Polish AI](assets/screenshots/polish%20ai.png) |
+| **Vocabulary** | **Widget** |
+| ![Vocabulary](assets/screenshots/vocabulary.png) | ![Widget](assets/screenshots/widget.png) |
 
 ## Jak to działa
 
