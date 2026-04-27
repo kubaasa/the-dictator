@@ -44,6 +44,19 @@ function formatApiError(err: unknown): string {
   return String(err);
 }
 
+// CLI commands / paths shouldn't carry sentence punctuation that Whisper adds
+// from intonation (e.g. "claude --dangerously-skip-permissions." breaks the command).
+function looksLikeCliCommand(replacement: string): boolean {
+  return (
+    replacement.includes('--') ||
+    replacement.includes(' -') ||
+    replacement.includes('/') ||
+    replacement.includes('\\') ||
+    replacement.startsWith('$') ||
+    replacement.startsWith('>')
+  );
+}
+
 // Single-pass replacement prevents chains (A→B, B→C won't cascade)
 function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]): string {
   if (!vocabulary || vocabulary.length === 0) return text;
@@ -58,9 +71,15 @@ function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]
     // \b doesn't work with non-ASCII (Polish etc.) — use whitespace/punctuation boundaries instead
     // eslint-disable-next-line no-control-regex
     const hasNonAscii = /[^\x00-\x7F]/.test(entry.input);
-    const pattern = hasNonAscii
+    const basePattern = hasNonAscii
       ? `(?<=^|[\\s.,;:!?"""''()\\[\\]])${escaped}(?=$|[\\s.,;:!?"""''()\\[\\]])`
       : `\\b${escaped}\\b`;
+
+    // For CLI-like replacements, consume trailing sentence punctuation as part of the match
+    // so it disappears together with the input fragment.
+    const pattern = looksLikeCliCommand(entry.replacement)
+      ? `${basePattern}[.,!?;:]?`
+      : basePattern;
 
     patterns.push(`(?:${pattern})`);
     replacementMap.set(entry.input.toLowerCase(), entry.replacement);
@@ -71,7 +90,10 @@ function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]
   // Combined regex — each match position visited only once, no chaining
   const combinedRegex = new RegExp(patterns.join('|'), 'gi');
   return text.replace(combinedRegex, (match) => {
-    return replacementMap.get(match.toLowerCase()) ?? match;
+    // Strip trailing punctuation that the CLI pattern may have consumed,
+    // so the lookup key matches entry.input (normal patterns don't capture it).
+    const normalized = match.replace(/[.,!?;:]$/, '').toLowerCase();
+    return replacementMap.get(normalized) ?? match;
   });
 }
 
