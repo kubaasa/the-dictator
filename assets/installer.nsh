@@ -17,8 +17,10 @@
 ; --- Variables for the custom options page (installer only) ---
 !ifndef BUILD_UNINSTALLER
 Var DesktopShortcutCheckbox
+Var StartMenuShortcutCheckbox
 Var AutoStartCheckbox
 Var CreateDesktopShortcut
+Var CreateStartMenuShortcut
 Var CreateAutoStart
 !endif
 
@@ -70,7 +72,11 @@ Function OptionsPageCreate
   Pop $DesktopShortcutCheckbox
   ${NSD_SetState} $DesktopShortcutCheckbox ${BST_CHECKED}
 
-  ${NSD_CreateCheckbox} 0 30u 100% 12u "Start The Dictator with Windows"
+  ${NSD_CreateCheckbox} 0 30u 100% 12u "Add to Start Menu"
+  Pop $StartMenuShortcutCheckbox
+  ${NSD_SetState} $StartMenuShortcutCheckbox ${BST_CHECKED}
+
+  ${NSD_CreateCheckbox} 0 50u 100% 12u "Start The Dictator with Windows"
   Pop $AutoStartCheckbox
   ${NSD_SetState} $AutoStartCheckbox ${BST_CHECKED}
 
@@ -79,6 +85,7 @@ FunctionEnd
 
 Function OptionsPageLeave
   ${NSD_GetState} $DesktopShortcutCheckbox $CreateDesktopShortcut
+  ${NSD_GetState} $StartMenuShortcutCheckbox $CreateStartMenuShortcut
   ${NSD_GetState} $AutoStartCheckbox $CreateAutoStart
 FunctionEnd
 !endif
@@ -99,6 +106,11 @@ FunctionEnd
     CreateShortCut "$DESKTOP\${SHORTCUT_NAME}.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0
   ${EndIf}
 
+  ; Start Menu shortcut (flat, directly in Programs — only if user checked the box)
+  ${If} $CreateStartMenuShortcut == ${BST_CHECKED}
+    CreateShortCut "$SMPROGRAMS\${SHORTCUT_NAME}.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0
+  ${EndIf}
+
   ; Auto-start registry entry (only if user checked the box)
   ${If} $CreateAutoStart == ${BST_CHECKED}
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" \
@@ -112,6 +124,14 @@ FunctionEnd
 !macro customUnInstall
   ; Remove desktop shortcut
   Delete "$DESKTOP\${SHORTCUT_NAME}.lnk"
+
+  ; Remove Start Menu shortcut (flat layout, current scheme)
+  Delete "$SMPROGRAMS\${SHORTCUT_NAME}.lnk"
+
+  ; Clean up legacy nested folder layout left by older installers
+  ; (electron-builder's default createStartMenuShortcut put the .lnk inside a subfolder)
+  Delete "$SMPROGRAMS\${SHORTCUT_NAME}\${SHORTCUT_NAME}.lnk"
+  RMDir "$SMPROGRAMS\${SHORTCUT_NAME}"
 
   ; Remove auto-start registry entry
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "The Dictator"

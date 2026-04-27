@@ -46,7 +46,7 @@ nsis:
   include: assets/installer.nsh
   runAfterFinish: true
   createDesktopShortcut: false
-  createStartMenuShortcut: true
+  createStartMenuShortcut: false
 
 afterPack: scripts/after-pack.js
 
