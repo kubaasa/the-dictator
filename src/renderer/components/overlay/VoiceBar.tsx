@@ -165,7 +165,6 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
     return () => { if (errorFlashTimer.current) clearTimeout(errorFlashTimer.current); };
   }, [isError]);
 
-  // Reset proximity when recording cycle completes
   useEffect(() => {
     if (isDone) setIsProximate(false);
   }, [isDone]);

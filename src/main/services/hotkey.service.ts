@@ -8,12 +8,10 @@ const log = logger.scope('Hotkey');
 // Recorder uses e.code-based names (physical keys), so names like "BracketRight"
 // match regardless of Shift state.
 const KEY_MAP: Record<string, number> = {
-  // Modifiers
   Ctrl: UiohookKey.Ctrl,
   Shift: UiohookKey.Shift,
   Alt: UiohookKey.Alt,
 
-  // Letters
   A: UiohookKey.A, B: UiohookKey.B, C: UiohookKey.C, D: UiohookKey.D,
   E: UiohookKey.E, F: UiohookKey.F, G: UiohookKey.G, H: UiohookKey.H,
   I: UiohookKey.I, J: UiohookKey.J, K: UiohookKey.K, L: UiohookKey.L,
@@ -22,23 +20,19 @@ const KEY_MAP: Record<string, number> = {
   U: UiohookKey.U, V: UiohookKey.V, W: UiohookKey.W, X: UiohookKey.X,
   Y: UiohookKey.Y, Z: UiohookKey.Z,
 
-  // Digits (scan codes: 1=0x02 .. 9=0x0a, 0=0x0b)
   '1': 0x02, '2': 0x03, '3': 0x04, '4': 0x05, '5': 0x06,
   '6': 0x07, '7': 0x08, '8': 0x09, '9': 0x0a, '0': 0x0b,
 
-  // F-keys
   F1: UiohookKey.F1, F2: UiohookKey.F2, F3: UiohookKey.F3, F4: UiohookKey.F4,
   F5: UiohookKey.F5, F6: UiohookKey.F6, F7: UiohookKey.F7, F8: UiohookKey.F8,
   F9: UiohookKey.F9, F10: UiohookKey.F10, F11: UiohookKey.F11, F12: UiohookKey.F12,
 
-  // Special keys
   Space: UiohookKey.Space,
   Escape: UiohookKey.Escape,
   Enter: 0x1c,
   Tab: 0x0f,
   Backspace: 0x0e,
 
-  // Punctuation (physical key names from e.code)
   Minus: 0x0c,
   Equal: 0x0d,
   BracketLeft: 0x1a,

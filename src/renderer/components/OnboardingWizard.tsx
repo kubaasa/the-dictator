@@ -14,7 +14,6 @@ interface OnboardingWizardProps {
   onClose?: () => void;
 }
 
-// ─── Stepper ────────────────────────────────────────────────────────────────
 
 function WizardStepper({ currentStep }: { currentStep: WizardStep }) {
   return (
@@ -68,7 +67,6 @@ function WizardStepper({ currentStep }: { currentStep: WizardStep }) {
   );
 }
 
-// ─── Step 1: Engine Selection ───────────────────────────────────────────────
 
 function StepEngine({
   engine,
@@ -146,7 +144,6 @@ function StepEngine({
   );
 }
 
-// ─── Step 2: Configuration ──────────────────────────────────────────────────
 
 const LOCAL_MODELS = [
   { value: 'tiny',     label: 'Tiny',     size: '~40 MB',   precision: 'Basic',     strengths: 'Fastest, lowest resource usage' },
@@ -339,7 +336,6 @@ function StepConfig({
   );
 }
 
-// ─── Step 3: Microphone Test ────────────────────────────────────────────────
 
 const MIC_BAR_COUNT = 8;
 const MIC_MIN_BAR_H = 2;
@@ -692,7 +688,6 @@ function StepMicTest({
   );
 }
 
-// ─── Wizard Shell ───────────────────────────────────────────────────────────
 
 export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps) {
   const [currentStep, setCurrentStep] = useState<WizardStep>(0);

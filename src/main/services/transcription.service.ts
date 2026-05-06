@@ -172,10 +172,6 @@ export class TranscriptionService {
     return { modelId: MODEL_MAP[bestSize], fallback: true };
   }
 
-  // TODO: Downloaded ONNX model files are not verified against checksums.
-  // HuggingFace doesn't expose simple per-file checksums in its API, so proper
-  // integrity verification would require parsing the repo's LFS metadata.
-  // Corrupted-in-transit files could cause silent transcription failures.
   async downloadModel(onProgress: (pct: number) => void): Promise<void> {
     // Wait for any previous download/cleanup to fully finish before starting.
     // Prevents EPERM on Windows when Cancel → Download is clicked rapidly
@@ -564,7 +560,6 @@ function encodeWavFast(samples: Float32Array, sampleRate: number): Buffer {
   const dataLength = samples.length * 2;
   const buf = Buffer.alloc(44 + dataLength);
 
-  // WAV header
   buf.write('RIFF', 0, 'ascii');
   buf.writeUInt32LE(36 + dataLength, 4);
   buf.write('WAVE', 8, 'ascii');

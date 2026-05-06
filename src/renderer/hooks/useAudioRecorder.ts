@@ -62,7 +62,6 @@ class RecorderProcessor extends AudioWorkletProcessor {
 
     const samples = input[0];
 
-    // Accumulate samples for spectral analysis (~62.5Hz posting rate)
     var copied = 0;
     while (copied < samples.length) {
       var space = 256 - this._levelOffset;
@@ -72,7 +71,6 @@ class RecorderProcessor extends AudioWorkletProcessor {
       copied += take;
 
       if (this._levelOffset >= 256) {
-        // RMS level
         var sum = 0;
         for (var j = 0; j < 256; j++) sum += this._levelBuf[j] * this._levelBuf[j];
         var rms = Math.min(1, Math.sqrt(sum / 256) / 0.15);

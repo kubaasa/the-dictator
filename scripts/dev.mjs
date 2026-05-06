@@ -11,17 +11,14 @@ import { spawn } from 'node:child_process';
 
 const electronPath = String((await import('electron')).default);
 
-// 1. Build preload (one-shot — rarely changes)
 await build({ configFile: 'vite.preload.config.ts', mode: 'development' });
 console.log('[dev] Preload built');
 
-// 2. Start renderer dev server
 const server = await createServer({ configFile: 'vite.renderer.config.ts' });
 await server.listen();
 const url = server.resolvedUrls.local[0];
 console.log(`[dev] Renderer: ${url}`);
 
-// 3. Build main in watch mode — restart Electron on each rebuild
 let electronProc = null;
 
 function killElectron() {

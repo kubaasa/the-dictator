@@ -499,7 +499,6 @@ export function registerIpcHandlers(
       if (autoPaste && pasteService.hasTarget()) {
         try {
           await pasteService.simulatePaste();
-          // Restore original clipboard content after successful paste
           if (shouldRestore) {
             clipboard.writeText(previousClipboard);
           } else {

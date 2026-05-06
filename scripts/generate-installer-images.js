@@ -7,7 +7,6 @@
  *   assets/nsis-sidebar.bmp (164x314) — MUI sidebar (Welcome/Finish pages)
  *
  * Uses pure Node.js BMP encoder — no external image libraries needed.
- * TODO: Replace with final branded artwork.
  */
 
 const fs = require('fs');
@@ -19,13 +18,11 @@ function createBMP(width, height, pixelFn) {
   const fileSize = 54 + pixelDataSize;
   const buf = Buffer.alloc(fileSize);
 
-  // -- BMP File Header (14 bytes) --
   buf.write('BM', 0);
   buf.writeUInt32LE(fileSize, 2);
   buf.writeUInt32LE(0, 6);
   buf.writeUInt32LE(54, 10);
 
-  // -- DIB Header (40 bytes) --
   buf.writeUInt32LE(40, 14);
   buf.writeInt32LE(width, 18);
   buf.writeInt32LE(height, 22);
@@ -38,7 +35,6 @@ function createBMP(width, height, pixelFn) {
   buf.writeUInt32LE(0, 46);
   buf.writeUInt32LE(0, 50);
 
-  // -- Pixel data (bottom-up, BGR) --
   for (let row = 0; row < height; row++) {
     const y = height - 1 - row;
     for (let x = 0; x < width; x++) {
@@ -55,17 +51,14 @@ function createBMP(width, height, pixelFn) {
 
 const WHITE = [255, 255, 255];
 
-/** Header (150x57) — plain white placeholder */
 function headerPixel() {
   return WHITE;
 }
 
-/** Sidebar (164x314) — plain white placeholder */
 function sidebarPixel() {
   return WHITE;
 }
 
-// --- Generate ---
 const assetsDir = path.resolve(__dirname, '..', 'assets');
 
 const headerBuf = createBMP(150, 57, headerPixel);

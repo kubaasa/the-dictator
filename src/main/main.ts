@@ -116,7 +116,6 @@ let pttSafetyTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const hotkeyService = new HotkeyService(
   () => {
-    // Clear safety timeout on new recording start
     if (pttSafetyTimeout) { clearTimeout(pttSafetyTimeout); pttSafetyTimeout = null; }
     broadcastState('initializing');
     sendToggleToRenderer();
@@ -242,7 +241,6 @@ function createOverlayWindow(): BrowserWindow {
     win.setPosition(screenW - initW - 20, 20);
   }
 
-  // Save position whenever the user moves the widget
   win.on('moved', () => {
     const { x, y } = win.getBounds();
     store.set('widget.x', x);
@@ -266,7 +264,6 @@ function createOverlayWindow(): BrowserWindow {
 
 function broadcastState(state: RecordingState): void {
   currentState = state;
-  // Clear PTT safety timeout when state reaches idle normally
   if (state === 'idle' && pttSafetyTimeout) {
     clearTimeout(pttSafetyTimeout);
     pttSafetyTimeout = null;
@@ -293,8 +290,6 @@ function broadcastState(state: RecordingState): void {
         }, 350);
       }
     } else {
-      // Active states (initializing, recording, transcribing, processing, done, error):
-      // cancel any pending hide and ensure the widget is visible
       if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
       if (!overlayWindow.isVisible()) {
         overlayWindow.showInactive();
@@ -327,7 +322,6 @@ function setupRecordingIpc(): void {
     hotkeyService.notifyRecordingStopped();
   });
 
-  // Mic error reported by renderer — broadcast error state + forward message to overlay
   ipcMain.on(IPC.RECORDING_MIC_ERROR, (_event, errorMessage: string) => {
     broadcastState('error');
     hotkeyService.notifyRecordingStopped();
@@ -521,7 +515,6 @@ app.on('ready', () => {
         mainWindow.show();
         mainWindow.focus();
       }
-      // Show main window after manual check from tray
       if (state.status === 'up-to-date' && state.manual) {
         mainWindow.show();
         mainWindow.focus();

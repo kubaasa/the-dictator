@@ -307,7 +307,6 @@ export function HistoryPage() {
       try {
         if (q.trim()) {
           const result = await window.dictator.history.search(q.trim());
-          // Another stale check after async
           if (searchQueryRef.current !== q) return;
           if (result.success) {
             setRecordings(result.data);
