@@ -27,6 +27,7 @@ export interface HistoryStats {
 }
 
 export type TranscriptionEngine = 'local' | 'cloud';
+export type PasteMode = 'shortcut' | 'type';
 export type WidgetType = 'voicebar' | 'maxi';
 export type AIProviderType = 'openai' | 'anthropic';
 export type RecordingState = 'idle' | 'initializing' | 'recording' | 'transcribing' | 'processing' | 'done' | 'error';
@@ -75,6 +76,7 @@ export interface AppSettings {
     selectedPromptId: string;
     autoPaste: boolean;
     restoreClipboard: boolean;
+    pasteMode: PasteMode;
   };
   audio: {
     deviceId: string;
@@ -170,7 +172,8 @@ Respond with ONLY the reformatted message wrapped in the required tags.`,
     savedPrompts: [],
     selectedPromptId: 'default',
     autoPaste: true,
-    restoreClipboard: true,
+    restoreClipboard: false,
+    pasteMode: 'shortcut',
   },
   audio: {
     deviceId: '',

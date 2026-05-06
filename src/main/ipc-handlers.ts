@@ -6,7 +6,7 @@ import logger from './services/logger';
 import { IPC } from '../shared/constants';
 
 const log = logger.scope('IPC');
-import type { AppSettings, RecordingState, WidgetType, RecordingEntry, VocabularyEntry } from '../shared/types';
+import type { AppSettings, RecordingState, WidgetType, RecordingEntry, VocabularyEntry, PasteMode } from '../shared/types';
 import { TranscriptionService } from './services/transcription.service';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
@@ -509,9 +509,17 @@ export function registerIpcHandlers(
 
       if (autoPaste && pasteService.hasTarget()) {
         try {
-          await pasteService.simulatePaste();
+          const pasteMode = (store.get('dictation.pasteMode') as PasteMode | undefined) ?? 'shortcut';
+          await pasteService.simulatePaste(pasteMode);
           if (shouldRestore) {
-            clipboard.writeText(previousClipboard);
+            // 500ms gives the target app time to read clipboard before we restore. Guard skips
+            // restore if a newer dictation already overwrote it.
+            const myText = text;
+            setTimeout(() => {
+              if (clipboard.readText() === myText) {
+                clipboard.writeText(previousClipboard);
+              }
+            }, 500);
           } else {
             clipboard.writeText(text);
           }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import log from 'electron-log/renderer';
 import type { ModelStatus } from '../hooks/useModelStatus';
-import type { AIProviderType, TranscriptionEngine, AppSettings, SavedPrompt } from '../../shared/types';
+import type { AIProviderType, TranscriptionEngine, AppSettings, SavedPrompt, PasteMode } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import { WHISPER_MODEL_DESCRIPTIONS, AI_MODEL_DESCRIPTIONS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
 import { ApiKeyInput } from './ApiKeyInput';
@@ -72,6 +72,8 @@ export function ModesPage(props: ModelStatus) {
   const skipBlurSaveRef = useRef(false);
 
   const [autoPaste, setAutoPaste] = useState(DEFAULT_SETTINGS.dictation.autoPaste);
+  const [pasteMode, setPasteMode] = useState<PasteMode>(DEFAULT_SETTINGS.dictation.pasteMode);
+  const [restoreClipboard, setRestoreClipboard] = useState(DEFAULT_SETTINGS.dictation.restoreClipboard);
 
   const fetchOpenAIModels = useCallback(async () => {
     try {
@@ -93,6 +95,8 @@ export function ModesPage(props: ModelStatus) {
     setSavedPrompts(s.dictation.savedPrompts ?? []);
     setSelectedPromptId(s.dictation.selectedPromptId ?? 'default');
     setAutoPaste(s.dictation.autoPaste);
+    setPasteMode(s.dictation.pasteMode ?? 'shortcut');
+    setRestoreClipboard(s.dictation.restoreClipboard ?? false);
     setAiProvider(s.ai.provider);
     setAiOpenaiKey(s.ai.openaiApiKey);
     setAiOpenaiModel(s.ai.openaiModel);
@@ -226,6 +230,33 @@ export function ModesPage(props: ModelStatus) {
       });
     } catch (err) {
       log.error('[ModesPage] Failed to toggle AI:', err);
+    }
+  };
+
+  const handleToggleCompatibilityMode = async () => {
+    const next: PasteMode = pasteMode === 'shortcut' ? 'type' : 'shortcut';
+    setPasteMode(next);
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        dictation: { ...current.dictation, pasteMode: next },
+      });
+    } catch (err) {
+      log.error('[ModesPage] Failed to toggle paste mode:', err);
+    }
+  };
+
+  // UI shows "keep transcription" which is the inverse of stored restoreClipboard.
+  const handleToggleKeepTranscription = async () => {
+    const next = !restoreClipboard;
+    setRestoreClipboard(next);
+    try {
+      const current = await window.dictator.getSettings();
+      await window.dictator.setSettings({
+        dictation: { ...current.dictation, restoreClipboard: next },
+      });
+    } catch (err) {
+      log.error('[ModesPage] Failed to toggle clipboard behavior:', err);
     }
   };
 
@@ -1068,6 +1099,66 @@ export function ModesPage(props: ModelStatus) {
                 </div>
               </>
             )}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
+            Output
+          </h2>
+
+          <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5 flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-0.5 pr-4">
+                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">
+                  Keep transcription in clipboard
+                </span>
+                <span className="text-xs text-neutral-500">
+                  When on, the last transcription stays in your clipboard so you can paste it again with Ctrl+V (or Shift+Insert). When off, your previous clipboard content is restored after auto-paste.
+                </span>
+              </div>
+              <button
+                onClick={handleToggleKeepTranscription}
+                role="switch"
+                aria-checked={!restoreClipboard}
+                aria-label="Keep transcription in clipboard"
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                  !restoreClipboard ? 'bg-red-600' : 'bg-neutral-700'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    !restoreClipboard ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-0.5 pr-4">
+                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">
+                  Compatibility mode
+                </span>
+                <span className="text-xs text-neutral-500">
+                  Types the transcription character-by-character instead of pasting it. Slower, but works in apps that block synthetic Ctrl+V. Leave off unless auto-paste fails somewhere.
+                </span>
+              </div>
+              <button
+                onClick={handleToggleCompatibilityMode}
+                role="switch"
+                aria-checked={pasteMode === 'type'}
+                aria-label="Compatibility mode"
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                  pasteMode === 'type' ? 'bg-red-600' : 'bg-neutral-700'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    pasteMode === 'type' ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </section>
 

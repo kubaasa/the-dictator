@@ -56,6 +56,16 @@ const legacyEngine = store.get('transcription.engine') as string;
 if (legacyEngine === 'api' || legacyEngine === 'groq') {
   store.set('transcription.engine', 'cloud');
 }
+
+// Flip legacy restoreClipboard=true to the new default (false) once. Stamp key preserves a
+// deliberate re-enable from being overwritten on later launches.
+const migrationStore = store as unknown as { has(k: string): boolean; set(k: string, v: unknown): void };
+if (!migrationStore.has('_migrations.clipboardBehaviorV2')) {
+  if (store.get('dictation.restoreClipboard') === true) {
+    store.set('dictation.restoreClipboard', false);
+  }
+  migrationStore.set('_migrations.clipboardBehaviorV2', true);
+}
 function syncAutoStart(enabled: boolean): void {
   if (!app.isPackaged) return;
   app.setLoginItemSettings({
