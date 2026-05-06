@@ -85,7 +85,7 @@ const KEYFRAMES = `
 
 type AnimPhase = 'idle' | 'entering' | 'active' | 'exiting';
 
-export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps) {
+export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }: VoiceBarProps) {
   const barWidth = 3;
   const gap      = 3;
 
@@ -362,16 +362,19 @@ export function VoiceBar({ voiceLevel, state, onToggleRecording }: VoiceBarProps
           )}
 
           {showError ? (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0 4px',
-              minWidth: BAR_COUNT * barWidth + (BAR_COUNT - 1) * gap,
-              opacity: isExpanded ? 1 : 0,
-              transition: 'opacity 200ms ease-out',
-              animation: 'vb-error-flicker 2s linear infinite',
-            }}>
+            <div
+              title={errorMessage}
+              aria-label={errorMessage || 'Error'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 4px',
+                minWidth: BAR_COUNT * barWidth + (BAR_COUNT - 1) * gap,
+                opacity: isExpanded ? 1 : 0,
+                transition: 'opacity 200ms ease-out',
+                animation: 'vb-error-flicker 2s linear infinite',
+              }}>
               <svg
                 width={18}
                 height={18}

@@ -660,15 +660,6 @@ export function registerIpcHandlers(
     }
   });
 
-  ipcMain.handle(IPC.AI_TEST_PROMPT, async (_event, text: string, systemPrompt: string) => {
-    try {
-      const result = await aiService.testPrompt(text, systemPrompt);
-      return { success: true, result };
-    } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-
   ipcMain.handle(IPC.AI_ENHANCE_PROMPT, async (_event, rawPrompt: string) => {
     try {
       const result = await aiService.enhancePrompt(rawPrompt);

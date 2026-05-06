@@ -40,7 +40,6 @@ export const IPC = {
 
   AUDIO_SAVE: 'audio:save',
 
-  AI_TEST_PROMPT: 'ai:test-prompt',
   AI_ENHANCE_PROMPT: 'ai:enhance-prompt',
   AI_GENERATE_PROMPT_NAME: 'ai:generate-prompt-name',
   AI_GET_OPENAI_MODELS: 'ai:get-openai-models',

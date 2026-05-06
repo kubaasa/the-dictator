@@ -66,7 +66,6 @@ export function ModesPage(props: ModelStatus) {
   const [savingPrompt, setSavingPrompt] = useState(false);
   const savingRef = useRef(false);
   const [isCreatingNewPrompt, setIsCreatingNewPrompt] = useState(false);
-  const [, setNewPromptTempId] = useState<string | null>(null);
   const [lastLoadedPrompt, setLastLoadedPrompt] = useState(DEFAULT_SETTINGS.dictation.customPrompt);
   const [promptDropdownOpen, setPromptDropdownOpen] = useState(false);
   const promptDropdownRef = useRef<HTMLDivElement>(null);
@@ -287,7 +286,6 @@ export function ModesPage(props: ModelStatus) {
     skipBlurSaveRef.current = true;
     setSelectedPromptId(id);
     setIsCreatingNewPrompt(false);
-    setNewPromptTempId(null);
     const content = id === 'default'
       ? DEFAULT_SETTINGS.dictation.customPrompt
       : savedPrompts.find(p => p.id === id)?.content ?? DEFAULT_SETTINGS.dictation.customPrompt;
@@ -307,7 +305,6 @@ export function ModesPage(props: ModelStatus) {
     if (savingPrompt || enhancing) return;
     skipBlurSaveRef.current = true;
     const tempId = `new-${Date.now()}`;
-    setNewPromptTempId(tempId);
     setIsCreatingNewPrompt(true);
     setSelectedPromptId(tempId);
     setCustomPrompt('');
@@ -337,7 +334,6 @@ export function ModesPage(props: ModelStatus) {
       setSelectedPromptId(newPrompt.id);
       setLastLoadedPrompt(customPrompt);
       setIsCreatingNewPrompt(false);
-      setNewPromptTempId(null);
       addToast('success', `Prompt saved as "${name}"`);
     } catch (err) {
       log.error('[ModesPage] Failed to save prompt:', err);
@@ -368,7 +364,6 @@ export function ModesPage(props: ModelStatus) {
       setSavedPrompts(updated);
       if (isSelected) {
         setIsCreatingNewPrompt(false);
-        setNewPromptTempId(null);
         setSelectedPromptId('default');
         setCustomPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
         setLastLoadedPrompt(DEFAULT_SETTINGS.dictation.customPrompt);
