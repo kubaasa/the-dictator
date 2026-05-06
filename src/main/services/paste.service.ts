@@ -1,7 +1,6 @@
 import { spawn, execFile, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { BrowserWindow } from 'electron';
-import type { PasteMode } from '../../shared/types';
 import logger from './logger';
 
 const log = logger.scope('Paste');
@@ -22,8 +21,7 @@ const MARKER = '__DICTATOR_DONE__';
 // Add-Type definitions compiled once at PowerShell startup (saves ~200-400ms per call)
 const INIT_SCRIPT = [
   `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;using System.Diagnostics;public class WinCapE{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern int GetClassName(IntPtr h,StringBuilder s,int n);[DllImport("user32.dll")]public static extern int GetWindowThreadProcessId(IntPtr h,out int pid);}'`,
-  `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PW{[StructLayout(LayoutKind.Sequential)]public struct KI{public ushort vk;public ushort sc;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Sequential)]public struct MI{public int dx;public int dy;public uint md;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Explicit)]public struct IU{[FieldOffset(0)]public KI ki;[FieldOffset(0)]public MI mi;}[StructLayout(LayoutKind.Sequential)]public struct IP{public uint tp;public IU u;}[DllImport("user32.dll",SetLastError=true)]public static extern uint SendInput(uint n,IP[] i,int s);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,IntPtr p);[DllImport("kernel32.dll")]public static extern uint GetCurrentThreadId();[DllImport("user32.dll")]public static extern bool AttachThreadInput(uint a,uint b,bool c);public static void T(string s){int z=Marshal.SizeOf(typeof(IP));foreach(char ch in s){IP[] inp=new IP[2];inp[0].tp=1;inp[0].u.ki.sc=(ushort)ch;inp[0].u.ki.fl=4;inp[1].tp=1;inp[1].u.ki.sc=(ushort)ch;inp[1].u.ki.fl=6;SendInput(2,inp,z);}}public static void Paste(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x11;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x56;inp[1].u.ki.fl=0;inp[2].tp=1;inp[2].u.ki.vk=0x56;inp[2].u.ki.fl=2;inp[3].tp=1;inp[3].u.ki.vk=0x11;inp[3].u.ki.fl=2;SendInput(4,inp,z);}public static void PasteSI(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x10;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x2D;inp[1].u.ki.fl=1;inp[2].tp=1;inp[2].u.ki.vk=0x2D;inp[2].u.ki.fl=3;inp[3].tp=1;inp[3].u.ki.vk=0x10;inp[3].u.ki.fl=2;SendInput(4,inp,z);}}'`,
-  `Add-Type -AssemblyName System.Windows.Forms`,
+  `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PW{[StructLayout(LayoutKind.Sequential)]public struct KI{public ushort vk;public ushort sc;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Sequential)]public struct MI{public int dx;public int dy;public uint md;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Explicit)]public struct IU{[FieldOffset(0)]public KI ki;[FieldOffset(0)]public MI mi;}[StructLayout(LayoutKind.Sequential)]public struct IP{public uint tp;public IU u;}[DllImport("user32.dll",SetLastError=true)]public static extern uint SendInput(uint n,IP[] i,int s);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,IntPtr p);[DllImport("kernel32.dll")]public static extern uint GetCurrentThreadId();[DllImport("user32.dll")]public static extern bool AttachThreadInput(uint a,uint b,bool c);public static void Paste(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x11;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x56;inp[1].u.ki.fl=0;inp[2].tp=1;inp[2].u.ki.vk=0x56;inp[2].u.ki.fl=2;inp[3].tp=1;inp[3].u.ki.vk=0x11;inp[3].u.ki.fl=2;SendInput(4,inp,z);}public static void PasteSI(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x10;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x2D;inp[1].u.ki.fl=1;inp[2].tp=1;inp[2].u.ki.vk=0x2D;inp[2].u.ki.fl=3;inp[3].tp=1;inp[3].u.ki.vk=0x10;inp[3].u.ki.fl=2;SendInput(4,inp,z);}}'`,
   `Write-Output '${MARKER}'`,
 ].join('\n');
 
@@ -33,18 +31,13 @@ const CAPTURE_CMD = `$h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.
 // (Chromium isTrusted gating, vscode#238609). Shift+Insert sidesteps both.
 const SHIFT_INSERT_APPS = new Set(['cursor', 'code', 'windsurf']);
 
-function buildPasteCmd(hwnd: string, mode: PasteMode, appName?: string | null): string {
+function buildPasteCmd(hwnd: string, appName?: string | null): string {
   if (!/^\d+$/.test(hwnd)) {
     throw new Error(`Invalid hwnd: expected digits only, got "${hwnd}"`);
   }
   const focus = `$t=[IntPtr]${hwnd}; $fg=[PW]::GetForegroundWindow(); $ft=[PW]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $mt=[PW]::GetCurrentThreadId(); $att=$false; if($ft -ne $mt){[void][PW]::AttachThreadInput($mt,$ft,$true);$att=$true}; if([PW]::IsIconic($t)){[void][PW]::ShowWindow($t,9)}; [void][PW]::SetForegroundWindow($t); if($att){[void][PW]::AttachThreadInput($mt,$ft,$false)}; Start-Sleep -Milliseconds 250;`;
-  let inject: string;
-  if (mode === 'type') {
-    inject = `$txt=[System.Windows.Forms.Clipboard]::GetText(); if($txt){[PW]::T($txt)}`;
-  } else {
-    const useShiftInsert = !!appName && SHIFT_INSERT_APPS.has(appName.toLowerCase());
-    inject = useShiftInsert ? `[PW]::PasteSI()` : `[PW]::Paste()`;
-  }
+  const useShiftInsert = !!appName && SHIFT_INSERT_APPS.has(appName.toLowerCase());
+  const inject = useShiftInsert ? `[PW]::PasteSI()` : `[PW]::Paste()`;
   return `${focus} ${inject}`;
 }
 
@@ -258,22 +251,22 @@ export class PasteService {
     return this.targetHwnd !== null;
   }
 
-  async simulatePaste(mode: PasteMode = 'shortcut'): Promise<void> {
+  async simulatePaste(): Promise<void> {
     if (process.platform !== 'win32' || !this.targetHwnd) return;
     const hwnd = this.targetHwnd;
     const appName = this.targetAppName;
 
     try {
       if (this.psReady && this.psProcess) {
-        await this.exec(buildPasteCmd(hwnd, mode, appName), 10000);
+        await this.exec(buildPasteCmd(hwnd, appName), 10000);
       } else {
         const args = [
           '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
-          `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PW{[StructLayout(LayoutKind.Sequential)]public struct KI{public ushort vk;public ushort sc;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Sequential)]public struct MI{public int dx;public int dy;public uint md;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Explicit)]public struct IU{[FieldOffset(0)]public KI ki;[FieldOffset(0)]public MI mi;}[StructLayout(LayoutKind.Sequential)]public struct IP{public uint tp;public IU u;}[DllImport("user32.dll",SetLastError=true)]public static extern uint SendInput(uint n,IP[] i,int s);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,IntPtr p);[DllImport("kernel32.dll")]public static extern uint GetCurrentThreadId();[DllImport("user32.dll")]public static extern bool AttachThreadInput(uint a,uint b,bool c);public static void T(string s){int z=Marshal.SizeOf(typeof(IP));foreach(char ch in s){IP[] inp=new IP[2];inp[0].tp=1;inp[0].u.ki.sc=(ushort)ch;inp[0].u.ki.fl=4;inp[1].tp=1;inp[1].u.ki.sc=(ushort)ch;inp[1].u.ki.fl=6;SendInput(2,inp,z);}}public static void Paste(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x11;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x56;inp[1].u.ki.fl=0;inp[2].tp=1;inp[2].u.ki.vk=0x56;inp[2].u.ki.fl=2;inp[3].tp=1;inp[3].u.ki.vk=0x11;inp[3].u.ki.fl=2;SendInput(4,inp,z);}public static void PasteSI(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x10;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x2D;inp[1].u.ki.fl=1;inp[2].tp=1;inp[2].u.ki.vk=0x2D;inp[2].u.ki.fl=3;inp[3].tp=1;inp[3].u.ki.vk=0x10;inp[3].u.ki.fl=2;SendInput(4,inp,z);}}'; Add-Type -AssemblyName System.Windows.Forms; ${buildPasteCmd(hwnd, mode, appName)}`,
+          `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PW{[StructLayout(LayoutKind.Sequential)]public struct KI{public ushort vk;public ushort sc;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Sequential)]public struct MI{public int dx;public int dy;public uint md;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Explicit)]public struct IU{[FieldOffset(0)]public KI ki;[FieldOffset(0)]public MI mi;}[StructLayout(LayoutKind.Sequential)]public struct IP{public uint tp;public IU u;}[DllImport("user32.dll",SetLastError=true)]public static extern uint SendInput(uint n,IP[] i,int s);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,IntPtr p);[DllImport("kernel32.dll")]public static extern uint GetCurrentThreadId();[DllImport("user32.dll")]public static extern bool AttachThreadInput(uint a,uint b,bool c);public static void Paste(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x11;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x56;inp[1].u.ki.fl=0;inp[2].tp=1;inp[2].u.ki.vk=0x56;inp[2].u.ki.fl=2;inp[3].tp=1;inp[3].u.ki.vk=0x11;inp[3].u.ki.fl=2;SendInput(4,inp,z);}public static void PasteSI(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x10;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x2D;inp[1].u.ki.fl=1;inp[2].tp=1;inp[2].u.ki.vk=0x2D;inp[2].u.ki.fl=3;inp[3].tp=1;inp[3].u.ki.vk=0x10;inp[3].u.ki.fl=2;SendInput(4,inp,z);}}'; ${buildPasteCmd(hwnd, appName)}`,
         ];
         await execFileAsync('powershell', args, { timeout: 10000, windowsHide: true });
       }
-      log.info('Auto-typed successfully (app=%s, mode=%s)', appName ?? 'unknown', mode);
+      log.info('Pasted successfully (app=%s)', appName ?? 'unknown');
     } catch (err) {
       log.warn('simulatePaste failed:', err instanceof Error ? err.message : err);
       throw err;

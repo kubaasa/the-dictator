@@ -6,7 +6,7 @@ import logger from './services/logger';
 import { IPC } from '../shared/constants';
 
 const log = logger.scope('IPC');
-import type { AppSettings, RecordingState, WidgetType, RecordingEntry, VocabularyEntry, PasteMode } from '../shared/types';
+import type { AppSettings, RecordingState, WidgetType, RecordingEntry, VocabularyEntry } from '../shared/types';
 import { TranscriptionService } from './services/transcription.service';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
@@ -397,11 +397,6 @@ export function registerIpcHandlers(
     Sentry.setTag('ai.enabled', String(aiEnabled));
     Sentry.setTag('ai.provider', aiEnabled ? aiProvider : 'none');
 
-    // Snapshot clipboard NOW — before the multi-second transcription pipeline runs.
-    // If we read it later, the user may have copied something new in the meantime.
-    const shouldRestore = (store.get('dictation.restoreClipboard') as boolean) ?? true;
-    const previousClipboard = shouldRestore ? clipboard.readText() : '';
-
     try {
     // Silence detection: skip transcription if audio is below speech threshold.
     // Prevents Whisper hallucinations like [muzyka], [music], [cisza] on silence.
@@ -509,20 +504,7 @@ export function registerIpcHandlers(
 
       if (autoPaste && pasteService.hasTarget()) {
         try {
-          const pasteMode = (store.get('dictation.pasteMode') as PasteMode | undefined) ?? 'shortcut';
-          await pasteService.simulatePaste(pasteMode);
-          if (shouldRestore) {
-            // 500ms gives the target app time to read clipboard before we restore. Guard skips
-            // restore if a newer dictation already overwrote it.
-            const myText = text;
-            setTimeout(() => {
-              if (clipboard.readText() === myText) {
-                clipboard.writeText(previousClipboard);
-              }
-            }, 500);
-          } else {
-            clipboard.writeText(text);
-          }
+          await pasteService.simulatePaste();
         } catch (pasteErr) {
           log.warn('Paste failed:', pasteErr);
           for (const win of BrowserWindow.getAllWindows()) {
