@@ -14,6 +14,7 @@ import { HistoryService } from './services/history.service';
 import { UpdateService } from './services/update.service';
 import { migrateApiKeys, decryptSettingsForRenderer } from './services/secure-storage';
 import { registerIpcHandlers, getOverlaySize, clampToVisibleArea } from './ipc-handlers';
+import { getAssetPath } from './paths';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
 import { DEFAULT_SETTINGS, type AppSettings, type RecordingState } from '../shared/types';
@@ -26,12 +27,6 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
   log.error('Unhandled promise rejection:', reason);
 });
-
-function getAssetPath(filename: string): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, filename)
-    : path.join(app.getAppPath(), 'assets', filename);
-}
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {

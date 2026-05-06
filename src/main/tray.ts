@@ -1,12 +1,6 @@
 import { app, Menu, Tray, nativeImage, BrowserWindow } from 'electron';
-import path from 'node:path';
 import type { RecordingState, UpdateState } from '../shared/types';
-
-function getAssetPath(filename: string): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, filename)
-    : path.join(app.getAppPath(), 'assets', filename);
-}
+import { getAssetPath } from './paths';
 
 interface TrayCallbacks {
   onCheckForUpdates: () => void;
