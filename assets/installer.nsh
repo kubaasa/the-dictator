@@ -1,20 +1,9 @@
-; ============================================================================
-; The Dictator — Custom NSIS Installer Script
-; ============================================================================
-; Hooks into electron-builder's assisted installer to customize:
-;   - Welcome page text
-;   - "Installation Options" page (desktop shortcut + auto-start checkboxes)
-;   - Shortcut/registry creation based on user choices
-;   - Cleanup on uninstall
-; ============================================================================
-
 ; Our include loads before electron-builder's MUI2, so we need these explicitly.
 ; All have include guards so re-inclusion later is harmless.
 !include "LogicLib.nsh"
 !include "nsDialogs.nsh"
 !include "WinMessages.nsh"
 
-; --- Variables for the custom options page (installer only) ---
 !ifndef BUILD_UNINSTALLER
 Var DesktopShortcutCheckbox
 Var StartMenuShortcutCheckbox
@@ -24,18 +13,12 @@ Var CreateStartMenuShortcut
 Var CreateAutoStart
 !endif
 
-; ============================================================================
-; customInstallMode — force per-user install, skip multi-user selection page
-; ============================================================================
+; force per-user install, skip multi-user selection page
 !macro customInstallMode
   StrCpy $isForceCurrentInstall "1"
 !macroend
 
-; ============================================================================
-; customHeader — runs before MUI page definitions
-; ============================================================================
 !macro customHeader
-  ; Custom Welcome page text
   !define MUI_WELCOMEPAGE_TITLE "Welcome to The Dictator Setup"
   !define MUI_WELCOMEPAGE_TEXT "The Dictator turns your voice into text instantly:$\r$\n$\r$\n  \
     $\u2022 Global hotkey $\u2014 record from any app$\r$\n  \
@@ -45,9 +28,6 @@ Var CreateAutoStart
     Click Next to continue."
 !macroend
 
-; ============================================================================
-; customPageAfterChangeDir — "Installation Options" page (after directory)
-; ============================================================================
 !macro customPageAfterChangeDir
   Page custom OptionsPageCreate OptionsPageLeave
 !macroend
@@ -90,9 +70,6 @@ Function OptionsPageLeave
 FunctionEnd
 !endif
 
-; ============================================================================
-; customInstall — runs after files are installed
-; ============================================================================
 !macro customInstall
   ; Create install marker so the app knows this is the first launch after installation.
   ; The main process reads and deletes this file on startup to show the window.
@@ -110,31 +87,25 @@ FunctionEnd
     StrCpy $CreateAutoStart ${BST_CHECKED}
   ${EndIf}
 
-  ; Desktop shortcut (only if user checked the box)
   ${If} $CreateDesktopShortcut == ${BST_CHECKED}
     CreateShortCut "$DESKTOP\${SHORTCUT_NAME}.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0
   ${EndIf}
 
-  ; Start Menu shortcut (flat, directly in Programs — only if user checked the box)
+  ; Flat layout — directly in Programs, not nested under a folder
   ${If} $CreateStartMenuShortcut == ${BST_CHECKED}
     CreateShortCut "$SMPROGRAMS\${SHORTCUT_NAME}.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0
   ${EndIf}
 
-  ; Auto-start registry entry (only if user checked the box)
   ${If} $CreateAutoStart == ${BST_CHECKED}
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" \
       "The Dictator" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --autostart'
   ${EndIf}
 !macroend
 
-; ============================================================================
-; customUnInstall — cleanup on uninstall
-; ============================================================================
 !macro customUnInstall
-  ; Remove desktop shortcut
   Delete "$DESKTOP\${SHORTCUT_NAME}.lnk"
 
-  ; Remove Start Menu shortcut (flat layout, current scheme)
+  ; Flat layout — current scheme
   Delete "$SMPROGRAMS\${SHORTCUT_NAME}.lnk"
 
   ; Clean up legacy nested folder layout left by older installers
@@ -142,6 +113,5 @@ FunctionEnd
   Delete "$SMPROGRAMS\${SHORTCUT_NAME}\${SHORTCUT_NAME}.lnk"
   RMDir "$SMPROGRAMS\${SHORTCUT_NAME}"
 
-  ; Remove auto-start registry entry
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "The Dictator"
 !macroend
