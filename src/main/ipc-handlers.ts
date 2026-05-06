@@ -116,6 +116,35 @@ const TRANSCRIPTION_TIMEOUT_MIN_MS = 30_000;
 const TRANSCRIPTION_TIMEOUT_MAX_MS = 120_000;
 const AI_TIMEOUT_MS = 30_000;
 
+function expectObject(name: string, value: unknown): void {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`Invalid value for "${name}": expected object`);
+  }
+}
+
+function expectArray(name: string, value: unknown): void {
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid value for "${name}": expected array`);
+  }
+}
+
+async function wrapHandler<T extends object>(
+  name: string,
+  fn: () => Promise<T> | T,
+  errorFallback: Record<string, unknown> = {},
+) {
+  try {
+    return { success: true as const, ...(await fn()) };
+  } catch (err) {
+    log.error(`${name} failed:`, err);
+    return {
+      success: false as const,
+      error: err instanceof Error ? err.message : String(err),
+      ...errorFallback,
+    };
+  }
+}
+
 export function registerIpcHandlers(
   store: Store<AppSettings>,
   transcriptionService: TranscriptionService,
@@ -205,22 +234,12 @@ export function registerIpcHandlers(
       }
     }
 
-    if (settings.transcription !== undefined && (typeof settings.transcription !== 'object' || settings.transcription === null)) {
-      throw new Error('Invalid value for "transcription": expected object');
-    }
-    if (settings.ai !== undefined && (typeof settings.ai !== 'object' || settings.ai === null)) {
-      throw new Error('Invalid value for "ai": expected object');
-    }
-    if (settings.hotkey !== undefined && (typeof settings.hotkey !== 'object' || settings.hotkey === null)) {
-      throw new Error('Invalid value for "hotkey": expected object');
-    }
-    if (settings.dictation !== undefined && (typeof settings.dictation !== 'object' || settings.dictation === null)) {
-      throw new Error('Invalid value for "dictation": expected object');
-    }
+    if (settings.transcription !== undefined) expectObject('transcription', settings.transcription);
+    if (settings.ai !== undefined) expectObject('ai', settings.ai);
+    if (settings.hotkey !== undefined) expectObject('hotkey', settings.hotkey);
+    if (settings.dictation !== undefined) expectObject('dictation', settings.dictation);
     if (settings.dictation?.savedPrompts !== undefined) {
-      if (!Array.isArray(settings.dictation.savedPrompts)) {
-        throw new Error('Invalid value for "savedPrompts": expected array');
-      }
+      expectArray('savedPrompts', settings.dictation.savedPrompts);
       if (settings.dictation.savedPrompts.length > 5) {
         throw new Error('Saved prompts limit exceeded: maximum 5 prompts');
       }
@@ -248,9 +267,7 @@ export function registerIpcHandlers(
       }
     }
     if (settings.vocabulary !== undefined) {
-      if (!Array.isArray(settings.vocabulary)) {
-        throw new Error('Invalid value for "vocabulary": expected array');
-      }
+      expectArray('vocabulary', settings.vocabulary);
       if (settings.vocabulary.length > 500) {
         throw new Error('Vocabulary limit exceeded: maximum 500 entries');
       }
@@ -275,15 +292,9 @@ export function registerIpcHandlers(
         }
       }
     }
-    if (settings.widget !== undefined && (typeof settings.widget !== 'object' || settings.widget === null)) {
-      throw new Error('Invalid value for "widget": expected object');
-    }
-    if (settings.general !== undefined && (typeof settings.general !== 'object' || settings.general === null)) {
-      throw new Error('Invalid value for "general": expected object');
-    }
-    if (settings.audio !== undefined && (typeof settings.audio !== 'object' || settings.audio === null)) {
-      throw new Error('Invalid value for "audio": expected object');
-    }
+    if (settings.widget !== undefined) expectObject('widget', settings.widget);
+    if (settings.general !== undefined) expectObject('general', settings.general);
+    if (settings.audio !== undefined) expectObject('audio', settings.audio);
 
     encryptSettingsKeys(settings);
     for (const [key, value] of Object.entries(settings)) {
@@ -557,77 +568,42 @@ export function registerIpcHandlers(
     return filePath;
   });
 
-  ipcMain.handle(IPC.HISTORY_GET_STATS, () => {
-    try {
-      const data = historyService.getStats();
-      return { success: true, data };
-    } catch (err) {
-      log.error('HISTORY_GET_STATS failed:', err);
-      return { success: false, data: null, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+  ipcMain.handle(IPC.HISTORY_GET_STATS, () =>
+    wrapHandler('HISTORY_GET_STATS', () => ({ data: historyService.getStats() }), { data: null }),
+  );
 
-  ipcMain.handle(IPC.HISTORY_GET_COUNT, () => {
-    try {
-      const count = historyService.getCount();
-      return { success: true, count };
-    } catch (err) {
-      log.error('HISTORY_GET_COUNT failed:', err);
-      return { success: false, count: 0, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+  ipcMain.handle(IPC.HISTORY_GET_COUNT, () =>
+    wrapHandler('HISTORY_GET_COUNT', () => ({ count: historyService.getCount() }), { count: 0 }),
+  );
 
-  ipcMain.handle(IPC.HISTORY_GET_ALL, (_event, limit?: number, offset?: number) => {
-    try {
-      const data = historyService.getAll(limit ?? 50, offset ?? 0);
-      return { success: true, data };
-    } catch (err) {
-      log.error('HISTORY_GET_ALL failed:', err);
-      return { success: false, data: [], error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+  ipcMain.handle(IPC.HISTORY_GET_ALL, (_event, limit?: number, offset?: number) =>
+    wrapHandler('HISTORY_GET_ALL', () => ({ data: historyService.getAll(limit ?? 50, offset ?? 0) }), { data: [] }),
+  );
 
   ipcMain.handle(IPC.HISTORY_DELETE, (_event, id: string) => {
-    try {
-      if (!id || typeof id !== 'string') {
-        return { success: false, error: 'Invalid recording ID' };
-      }
-      const result = historyService.delete(id);
-      return { success: true, ...result };
-    } catch (err) {
-      log.error('HISTORY_DELETE failed:', err);
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    if (!id || typeof id !== 'string') {
+      return { success: false, error: 'Invalid recording ID' };
     }
+    return wrapHandler('HISTORY_DELETE', () => historyService.delete(id));
   });
 
-  ipcMain.handle(IPC.HISTORY_SEARCH, (_event, query: string) => {
-    try {
-      if (typeof query !== 'string') {
-        return { success: true, data: historyService.getAll() };
-      }
-      const data = historyService.search(query);
-      return { success: true, data };
-    } catch (err) {
-      log.error('HISTORY_SEARCH failed:', err);
-      return { success: false, data: [], error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+  ipcMain.handle(IPC.HISTORY_SEARCH, (_event, query: string) =>
+    wrapHandler(
+      'HISTORY_SEARCH',
+      () => ({ data: typeof query === 'string' ? historyService.search(query) : historyService.getAll() }),
+      { data: [] },
+    ),
+  );
 
-  ipcMain.handle(IPC.HISTORY_CLEAR_ALL, () => {
-    try {
-      const result = historyService.clearAll();
-      return { success: true, ...result };
-    } catch (err) {
-      log.error('HISTORY_CLEAR_ALL failed:', err);
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+  ipcMain.handle(IPC.HISTORY_CLEAR_ALL, () =>
+    wrapHandler('HISTORY_CLEAR_ALL', () => historyService.clearAll()),
+  );
 
   ipcMain.handle(IPC.HISTORY_MIGRATE, (_event, entries: unknown) => {
-    try {
-      if (!Array.isArray(entries)) {
-        return { success: false, error: 'Expected an array of entries' };
-      }
+    if (!Array.isArray(entries)) {
+      return { success: false, error: 'Expected an array of entries' };
+    }
+    return wrapHandler('HISTORY_MIGRATE', () => {
       let added = 0;
       let skipped = 0;
       for (const entry of entries) {
@@ -644,39 +620,21 @@ export function registerIpcHandlers(
           skipped++;
         }
       }
-      return { success: true, added, skipped };
-    } catch (err) {
-      log.error('HISTORY_MIGRATE failed:', err);
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
-    }
+      return { added, skipped };
+    });
   });
 
-  ipcMain.handle(IPC.AI_GET_OPENAI_MODELS, async () => {
-    try {
-      const models = await aiService.getOpenAIModels();
-      return { success: true, models };
-    } catch (err) {
-      return { success: false, models: [], error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+  ipcMain.handle(IPC.AI_GET_OPENAI_MODELS, () =>
+    wrapHandler('AI_GET_OPENAI_MODELS', async () => ({ models: await aiService.getOpenAIModels() }), { models: [] }),
+  );
 
-  ipcMain.handle(IPC.AI_ENHANCE_PROMPT, async (_event, rawPrompt: string) => {
-    try {
-      const result = await aiService.enhancePrompt(rawPrompt);
-      return { success: true, result };
-    } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+  ipcMain.handle(IPC.AI_ENHANCE_PROMPT, (_event, rawPrompt: string) =>
+    wrapHandler('AI_ENHANCE_PROMPT', async () => ({ result: await aiService.enhancePrompt(rawPrompt) })),
+  );
 
-  ipcMain.handle(IPC.AI_GENERATE_PROMPT_NAME, async (_event, promptContent: string) => {
-    try {
-      const name = await aiService.generatePromptName(promptContent);
-      return { success: true, name };
-    } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+  ipcMain.handle(IPC.AI_GENERATE_PROMPT_NAME, (_event, promptContent: string) =>
+    wrapHandler('AI_GENERATE_PROMPT_NAME', async () => ({ name: await aiService.generatePromptName(promptContent) })),
+  );
 
   ipcMain.on(IPC.APP_OPEN_MODELS_FOLDER, () => {
     shell.openPath(transcriptionService.getModelsCacheDir());

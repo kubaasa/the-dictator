@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import Store from 'electron-store';
 import type { AppSettings, VocabularyEntry } from '../../shared/types';
 import { getApiKey } from './secure-storage';
+import { mapValidationError } from './api-errors';
 import logger from './logger';
 
 const log = logger.scope('AI');
@@ -42,10 +43,7 @@ export class AIService {
       await client.models.list({ timeout: 5000 });
       return { valid: true };
     } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status === 401) return { valid: false, error: 'Invalid API key. Check that you copied it correctly.' };
-      if (status === 403) return { valid: false, error: 'API key does not have permission. Generate a new one.' };
-      return { valid: false, error: err instanceof Error ? err.message : 'Validation failed' };
+      return mapValidationError(err);
     }
   }
 
@@ -58,10 +56,7 @@ export class AIService {
       });
       return { valid: true };
     } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status === 401) return { valid: false, error: 'Invalid API key. Check that you copied it correctly.' };
-      if (status === 403) return { valid: false, error: 'API key does not have permission. Generate a new one.' };
-      return { valid: false, error: err instanceof Error ? err.message : 'Validation failed' };
+      return mapValidationError(err);
     }
   }
 
