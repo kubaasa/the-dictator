@@ -135,9 +135,6 @@ export class HistoryService {
 
   delete(id: string): DeleteResult {
     this.ensureOpen();
-    if (!id || typeof id !== 'string') {
-      throw new Error('Invalid recording ID');
-    }
     log.debug('Deleting entry:', id);
 
     const row = this.db.prepare(
@@ -237,8 +234,6 @@ export class HistoryService {
 
   updateAudioPath(id: string, audioPath: string): void {
     this.ensureOpen();
-    if (!id || typeof id !== 'string') throw new Error('Invalid recording ID');
-    if (!audioPath || typeof audioPath !== 'string') throw new Error('Invalid audio path');
     if (!this.isPathInsideRecordingsDir(audioPath)) {
       throw new Error('Audio path must be inside the recordings directory');
     }
@@ -250,9 +245,6 @@ export class HistoryService {
   }
 
   private validateEntry(entry: RecordingEntry): void {
-    if (!entry.id || typeof entry.id !== 'string') throw new Error('Entry missing valid id');
-    if (!entry.date || typeof entry.date !== 'string') throw new Error('Entry missing valid date');
-    if (typeof entry.text !== 'string') throw new Error('Entry missing valid text');
     if (typeof entry.wordCount !== 'number' || entry.wordCount < 0) {
       throw new Error('Entry has invalid wordCount');
     }

@@ -255,7 +255,9 @@ export function HistoryPage() {
       try {
         const countResult = await window.dictator.history.getCount();
         if (countResult.success) setTotalCount(countResult.count);
-      } catch { /* non-critical */ }
+      } catch (err) {
+        log.warn('[HistoryPage] Failed to fetch total count:', err);
+      }
 
     } catch (err) {
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
