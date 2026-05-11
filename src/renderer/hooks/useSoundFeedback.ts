@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import log from 'electron-log/renderer';
 import type { RecordingState } from '../../shared/types';
 
 function playTone(
@@ -82,17 +83,35 @@ export function useSoundFeedback(recordingState: RecordingState, isOverlay: bool
 
     if (!playFn) return;
 
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new AudioContext();
-    }
+    // AudioContext can land in 'closed' after system sleep/wake or display changes,
+    // and 'suspended' resume() can reject silently. Recreate the context whenever
+    // it's not in a playable state so the cue is never silently dropped.
+    const playWithRecovery = (fn: (ctx: AudioContext) => void) => {
+      let ctx = audioCtxRef.current;
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+      }
+      const activeCtx = ctx;
+      const safePlay = (target: AudioContext) => {
+        try { fn(target); } catch (err) { log.warn('sound playback failed:', err); }
+      };
+      if (activeCtx.state === 'suspended') {
+        activeCtx.resume().then(() => safePlay(activeCtx)).catch((err) => {
+          log.warn('AudioContext resume failed, recreating:', err);
+          try { activeCtx.close(); } catch { /* ignore */ }
+          const fresh = new AudioContext();
+          audioCtxRef.current = fresh;
+          fresh.resume()
+            .then(() => safePlay(fresh))
+            .catch((e) => log.warn('AudioContext recreate resume failed:', e));
+        });
+      } else {
+        safePlay(activeCtx);
+      }
+    };
 
-    const ctx = audioCtxRef.current;
-
-    if (ctx.state === 'suspended') {
-      ctx.resume().then(() => playFn(ctx));
-    } else {
-      playFn(ctx);
-    }
+    playWithRecovery(playFn);
   }, [recordingState, isOverlay]);
 
   useEffect(() => {

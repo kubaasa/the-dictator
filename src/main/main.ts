@@ -172,6 +172,9 @@ function createMainWindow(): BrowserWindow {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Required so AudioContext (start/stop chime in useSoundFeedback) can play
+      // even when the main window has never received a user gesture (autostart, tray-only use)
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 
@@ -259,6 +262,9 @@ function createOverlayWindow(): BrowserWindow {
 }
 
 function broadcastState(state: RecordingState): void {
+  if (currentState !== state) {
+    log.info('state: %s -> %s', currentState, state);
+  }
   currentState = state;
   if (state === 'idle' && pttSafetyTimeout) {
     clearTimeout(pttSafetyTimeout);
@@ -287,9 +293,17 @@ function broadcastState(state: RecordingState): void {
       }
     } else {
       if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
-      if (!overlayWindow.isVisible()) {
-        overlayWindow.showInactive();
+      // Re-clamp position and force show unconditionally — guards against cases where
+      // isVisible() reports true but the window is on a stale display or its GPU
+      // compositor froze after a display config change.
+      const { x, y, width, height } = overlayWindow.getBounds();
+      const clamped = clampToVisibleArea(x, y, width, height);
+      if (clamped.x !== x || clamped.y !== y) {
+        overlayWindow.setPosition(clamped.x, clamped.y);
+        store.set('widget.x', clamped.x);
+        store.set('widget.y', clamped.y);
       }
+      overlayWindow.showInactive();
     }
   }
 }
@@ -543,7 +557,7 @@ app.on('ready', () => {
 
   // When a monitor is disconnected or resolution changes, re-clamp the overlay widget.
   // On display-removed: center on primary display (old position is meaningless).
-  // On display-metrics-changed: clamp to nearest visible area (same display, just resized).
+  // On display-metrics-changed / display-added: clamp to nearest visible area (same display, just resized).
   const reclampOverlay = (center: boolean) => {
     if (!overlayWindow || overlayWindow.isDestroyed()) return;
     const { x, y, width, height } = overlayWindow.getBounds();
@@ -570,8 +584,39 @@ app.on('ready', () => {
     mainWindow.setBounds(bounds);
   };
 
-  screen.on('display-removed', () => { reclampOverlay(true); reclampMainWindow(); });
-  screen.on('display-metrics-changed', () => { reclampOverlay(false); reclampMainWindow(); });
+  // Force overlay renderer to recover its GPU compositor after a display config change.
+  // Transparent always-on-top windows on Windows can silently lose their GPU context on
+  // monitor disconnect/sleep, leaving webContents alive but the surface blank. A hide/show
+  // cycle (only when widget should currently be visible) forces re-composition.
+  const recoverOverlayCompositor = () => {
+    if (!overlayWindow || overlayWindow.isDestroyed()) return;
+    overlayWindow.webContents.invalidate();
+    const activeWidget = (store.get('widget') ?? DEFAULT_SETTINGS.widget).activeWidget;
+    const shouldBeVisible = activeWidget === 'voicebar' || currentState !== 'idle';
+    if (shouldBeVisible) {
+      overlayWindow.hide();
+      overlayWindow.showInactive();
+    }
+  };
+
+  screen.on('display-added', () => {
+    log.info('display-added — reclamping overlay and main window');
+    reclampOverlay(false);
+    reclampMainWindow();
+    recoverOverlayCompositor();
+  });
+  screen.on('display-removed', () => {
+    log.info('display-removed — centering overlay on primary');
+    reclampOverlay(true);
+    reclampMainWindow();
+    recoverOverlayCompositor();
+  });
+  screen.on('display-metrics-changed', () => {
+    log.info('display-metrics-changed — reclamping overlay');
+    reclampOverlay(false);
+    reclampMainWindow();
+    recoverOverlayCompositor();
+  });
 
   // Preload local transcription model in background (eliminates 2-3s delay on first use)
   transcriptionService.preloadModel().catch((err) => {
