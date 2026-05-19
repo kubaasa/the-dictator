@@ -172,9 +172,6 @@ function createMainWindow(): BrowserWindow {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      // Required so AudioContext (start/stop chime in useSoundFeedback) can play
-      // even when the main window has never received a user gesture (autostart, tray-only use)
-      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 
@@ -225,6 +222,9 @@ function createOverlayWindow(): BrowserWindow {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Cue chimes (useSoundFeedback) run in this window — the maxi widget starts hidden,
+      // so AudioContext can land in 'suspended' without a prior user gesture
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 

@@ -61,13 +61,12 @@ export function App() {
 
 function OverlayApp() {
   const recordingState = useRecordingState();
-  useSoundFeedback(recordingState, true);
+  useSoundFeedback(recordingState);
   return <OverlayWindow state={recordingState} />;
 }
 
 function MainApp() {
   const recordingState = useRecordingState();
-  useSoundFeedback(recordingState, false);
   const modelStatus = useModelStatus();
   const [activeView, setActiveView] = useState<ActiveView>('home');
   const micSelector = useMicrophoneSelector();

@@ -44,14 +44,12 @@ function playErrorSound(ctx: AudioContext): void {
   playTone(ctx, 220, now, 0.15, 0.15);
 }
 
-export function useSoundFeedback(recordingState: RecordingState, isOverlay: boolean): void {
+export function useSoundFeedback(recordingState: RecordingState): void {
   const prevStateRef = useRef<RecordingState>(recordingState);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const soundEnabledRef = useRef(true);
 
   useEffect(() => {
-    if (isOverlay) return;
-
     window.dictator.getSettings().then((s) => {
       soundEnabledRef.current = s.audio?.soundEnabled ?? true;
     });
@@ -60,11 +58,9 @@ export function useSoundFeedback(recordingState: RecordingState, isOverlay: bool
       soundEnabledRef.current = s.audio?.soundEnabled ?? true;
     });
     return unsub;
-  }, [isOverlay]);
+  }, []);
 
   useEffect(() => {
-    if (isOverlay) return;
-
     const prev = prevStateRef.current;
     prevStateRef.current = recordingState;
 
@@ -112,7 +108,7 @@ export function useSoundFeedback(recordingState: RecordingState, isOverlay: bool
     };
 
     playWithRecovery(playFn);
-  }, [recordingState, isOverlay]);
+  }, [recordingState]);
 
   useEffect(() => {
     return () => {
