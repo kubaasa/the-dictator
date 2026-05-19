@@ -7,6 +7,7 @@ interface TrayCallbacks {
   onInstallUpdate: () => void;
   onAutoStartToggle: (enabled: boolean) => void;
   onAudioCuesToggle: (enabled: boolean) => void;
+  onMuteOthersToggle: (enabled: boolean) => void;
 }
 
 export class TrayManager {
@@ -17,6 +18,7 @@ export class TrayManager {
   private callbacks: TrayCallbacks | null = null;
   private autoStartEnabled = false;
   private audioCuesEnabled = true;
+  private muteOthersEnabled = true;
 
   create(mainWindow: BrowserWindow, callbacks: TrayCallbacks): void {
     this.mainWindow = mainWindow;
@@ -61,6 +63,11 @@ export class TrayManager {
 
   setAudioCues(enabled: boolean): void {
     this.audioCuesEnabled = enabled;
+    this.updateMenu();
+  }
+
+  setMuteOthers(enabled: boolean): void {
+    this.muteOthersEnabled = enabled;
     this.updateMenu();
   }
 
@@ -134,6 +141,14 @@ export class TrayManager {
         click: () => {
           this.audioCuesEnabled = !this.audioCuesEnabled;
           this.callbacks?.onAudioCuesToggle(this.audioCuesEnabled);
+          this.updateMenu();
+        },
+      },
+      {
+        label: `${this.muteOthersEnabled ? '■' : '   '} Mute other apps while recording`,
+        click: () => {
+          this.muteOthersEnabled = !this.muteOthersEnabled;
+          this.callbacks?.onMuteOthersToggle(this.muteOthersEnabled);
           this.updateMenu();
         },
       },

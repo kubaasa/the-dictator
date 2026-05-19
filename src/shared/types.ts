@@ -44,6 +44,13 @@ export interface SavedPrompt {
   content: string;
 }
 
+export interface SessionSnapshot {
+  pid: number;
+  name: string;
+  volume: number;
+  muted: boolean;
+}
+
 export interface AppSettings {
   transcription: {
     engine: TranscriptionEngine;
@@ -82,6 +89,13 @@ export interface AppSettings {
      *  the other person's voice during Slack/Teams/Zoom calls at the cost of slightly lower
      *  dictation fidelity in quiet rooms. */
     callMode: boolean;
+    /** When true, mutes all other Windows audio sessions (Spotify, YouTube, etc.) while
+     *  recording. The Dictator's own sessions are excluded. Previous volumes are restored
+     *  after recording ends. */
+    muteOthersWhileRecording: boolean;
+    /** Dirty snapshot used for crash recovery — when present at app start, the helper
+     *  restores these volumes and the field is cleared. Should not be touched by UI. */
+    muteSnapshot?: SessionSnapshot[];
   };
   vocabulary: VocabularyEntry[];
   widget: {
@@ -174,6 +188,7 @@ Respond with ONLY the reformatted message wrapped in the required tags.`,
     deviceId: '',
     soundEnabled: true,
     callMode: false,
+    muteOthersWhileRecording: true,
   },
   vocabulary: [],
   widget: {

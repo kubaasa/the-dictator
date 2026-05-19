@@ -17,6 +17,7 @@ import { registerIpcHandlers, getOverlaySize, clampToVisibleArea } from './ipc-h
 import { getAssetPath } from './paths';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
+import { AudioMuteService } from './services/audio-mute.service';
 import { DEFAULT_SETTINGS, type AppSettings, type RecordingState } from '../shared/types';
 import { IPC } from '../shared/constants';
 
@@ -57,6 +58,19 @@ if (legacyEngine === 'api' || legacyEngine === 'groq') {
   store.set('transcription.engine', 'cloud');
 }
 
+// Backfill nested audio fields added in v1.3.0. electron-store v11 shallow-merges
+// defaults — so a pre-existing top-level `audio` object swallows any new keys
+// declared in DEFAULT_SETTINGS.audio. Force-write missing fields here.
+if (typeof store.get('audio.muteOthersWhileRecording') !== 'boolean') {
+  store.set('audio.muteOthersWhileRecording', DEFAULT_SETTINGS.audio.muteOthersWhileRecording);
+}
+if (typeof store.get('audio.soundEnabled') !== 'boolean') {
+  store.set('audio.soundEnabled', DEFAULT_SETTINGS.audio.soundEnabled);
+}
+if (typeof store.get('audio.callMode') !== 'boolean') {
+  store.set('audio.callMode', DEFAULT_SETTINGS.audio.callMode);
+}
+
 function syncAutoStart(enabled: boolean): void {
   if (!app.isPackaged) return;
   app.setLoginItemSettings({
@@ -70,6 +84,9 @@ const transcriptionService = new TranscriptionService(store);
 const pasteService = new PasteService();
 const aiService = new AIService(store);
 const updateService = new UpdateService(getAssetPath('icon.png'));
+const audioMuteService = new AudioMuteService(store);
+
+const isMicActive = (s: RecordingState) => s === 'initializing' || s === 'recording';
 
 function sendToggleToRenderer(): void {
   if (mainWindow) {
@@ -262,14 +279,32 @@ function createOverlayWindow(): BrowserWindow {
 }
 
 function broadcastState(state: RecordingState): void {
-  if (currentState !== state) {
-    log.info('state: %s -> %s', currentState, state);
+  const prev = currentState;
+  if (prev !== state) {
+    log.info('state: %s -> %s', prev, state);
   }
   currentState = state;
   if (state === 'idle' && pttSafetyTimeout) {
     clearTimeout(pttSafetyTimeout);
     pttSafetyTimeout = null;
   }
+
+  // Mute other Windows audio sessions while mic is active (Spotify/YouTube/Discord etc.).
+  // Triggered on 'initializing' (NOT 'recording') so the mute is in place BEFORE Windows
+  // begins the Bluetooth A2DP→HFP profile switch — otherwise audio queued into the BT
+  // buffer pre-switch (~150-300ms worth) audibly plays out after HFP comes online.
+  if (isMicActive(state) && !isMicActive(prev)) {
+    const enabled = (store.get('audio.muteOthersWhileRecording') as boolean | undefined)
+      ?? DEFAULT_SETTINGS.audio.muteOthersWhileRecording;
+    log.info('audio mute: mic activating (setting=%s)', enabled);
+    if (enabled) {
+      audioMuteService.startMuting().catch((err) => log.warn('audio mute start failed:', err));
+    }
+  } else if (isMicActive(prev) && !isMicActive(state)) {
+    log.info('audio mute: mic released -> stop');
+    audioMuteService.stopMuting().catch((err) => log.warn('audio mute stop failed:', err));
+  }
+
   trayManager.updateRecordingState(state);
 
   for (const win of BrowserWindow.getAllWindows()) {
@@ -513,9 +548,26 @@ app.on('ready', () => {
         win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
       }
     },
+    onMuteOthersToggle: (enabled) => {
+      store.set('audio.muteOthersWhileRecording', enabled);
+      audioMuteService.setEnabled(enabled);
+      const decrypted = decryptSettingsForRenderer(store.store);
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
+      }
+    },
   });
   trayManager.setAutoStart(autoStartEnabled);
-  trayManager.setAudioCues(store.get('audio.soundEnabled') as boolean);
+  trayManager.setAudioCues(
+    (store.get('audio.soundEnabled') as boolean | undefined) ?? DEFAULT_SETTINGS.audio.soundEnabled,
+  );
+  trayManager.setMuteOthers(
+    (store.get('audio.muteOthersWhileRecording') as boolean | undefined)
+      ?? DEFAULT_SETTINGS.audio.muteOthersWhileRecording,
+  );
+
+  // Spawn helper + restore dirty snapshot if previous run crashed mid-mute.
+  audioMuteService.init().catch((err) => log.warn('AudioMuteService init failed:', err));
 
   updateService.onStatusChange((state) => {
     trayManager.setUpdateState(state);
@@ -645,4 +697,6 @@ app.on('before-quit', () => {
   historyService?.close();
   pasteService.destroy();
   updateService.stop();
+  // Closing stdin lets the helper restore on EOF without us needing to await stop()
+  audioMuteService.shutdown();
 });

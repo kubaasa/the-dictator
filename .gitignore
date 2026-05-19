@@ -95,6 +95,10 @@ typings/
 out/
 dist/
 
+# C# helper build artifacts (audio-mute-helper)
+tools/audio-mute-helper/bin/
+tools/audio-mute-helper/obj/
+
 # App-specific
 models/
 *.wav
