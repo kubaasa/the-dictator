@@ -57,6 +57,9 @@ export interface AppSettings {
     localModelSize: string;
     language: string;
     groqApiKey: string;
+    /** Last language the user picked while on the cloud engine. Used to restore the
+     *  preference when switching back to cloud, since the local engine forces 'en'. */
+    preferredCloudLanguage: string;
   };
   ai: {
     provider: AIProviderType;
@@ -118,6 +121,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     localModelSize: 'base',
     language: 'en',
     groqApiKey: '',
+    preferredCloudLanguage: 'en',
   },
   ai: {
     provider: 'openai',

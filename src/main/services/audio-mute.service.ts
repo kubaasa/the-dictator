@@ -155,7 +155,7 @@ export class AudioMuteService {
   private resolveHelperPath(): string | null {
     const exe = 'audio-mute-helper.exe';
     const candidates = app.isPackaged
-      ? [path.join(process.resourcesPath, exe)]
+      ? [path.join(process.resourcesPath, 'audio-mute-helper', exe)]
       : [
           path.join(app.getAppPath(), 'tools', 'audio-mute-helper', 'bin', 'Release', 'net8.0-windows', 'win-x64', 'publish', exe),
           path.join(app.getAppPath(), 'tools', 'audio-mute-helper', 'bin', 'Debug', 'net8.0-windows', 'win-x64', 'publish', exe),

@@ -134,8 +134,12 @@ export function ModesPage(props: ModelStatus) {
     setLanguage(newLang);
     try {
       const current = await window.dictator.getSettings();
+      const patch: Partial<AppSettings['transcription']> = { language: newLang };
+      if (current.transcription.engine === 'cloud') {
+        patch.preferredCloudLanguage = newLang;
+      }
       await window.dictator.setSettings({
-        transcription: { ...current.transcription, language: newLang },
+        transcription: { ...current.transcription, ...patch },
       });
     } catch (err) {
       log.error('[ModesPage] Failed to save language:', err);
@@ -159,8 +163,18 @@ export function ModesPage(props: ModelStatus) {
     setEngine(newEngine);
     try {
       const current = await window.dictator.getSettings();
+      const patch: Partial<AppSettings['transcription']> = { engine: newEngine };
+      if (newEngine === 'local') {
+        patch.preferredCloudLanguage = current.transcription.language;
+        patch.language = 'en';
+      } else {
+        patch.language = current.transcription.preferredCloudLanguage || current.transcription.language;
+      }
+      if (patch.language && patch.language !== current.transcription.language) {
+        setLanguage(patch.language);
+      }
       await window.dictator.setSettings({
-        transcription: { ...current.transcription, engine: newEngine },
+        transcription: { ...current.transcription, ...patch },
       });
     } catch (err) {
       log.error('[ModesPage] Failed to save engine:', err);
@@ -752,7 +766,7 @@ export function ModesPage(props: ModelStatus) {
                 Language
               </span>
               <div className="flex gap-2">
-                {LANGUAGE_OPTIONS.map((opt) => (
+                {LANGUAGE_OPTIONS.filter((opt) => engine !== 'local' || opt.value === 'en').map((opt) => (
                   <button
                     key={opt.value}
                     onClick={() => handleLanguageChange(opt.value)}

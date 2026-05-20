@@ -70,6 +70,10 @@ if (typeof store.get('audio.soundEnabled') !== 'boolean') {
 if (typeof store.get('audio.callMode') !== 'boolean') {
   store.set('audio.callMode', DEFAULT_SETTINGS.audio.callMode);
 }
+if (typeof store.get('transcription.preferredCloudLanguage') !== 'string') {
+  const existingLang = store.get('transcription.language') as string | undefined;
+  store.set('transcription.preferredCloudLanguage', existingLang || DEFAULT_SETTINGS.transcription.preferredCloudLanguage);
+}
 
 function syncAutoStart(enabled: boolean): void {
   if (!app.isPackaged) return;
