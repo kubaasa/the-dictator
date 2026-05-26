@@ -46,6 +46,13 @@ app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 // permission gate is skipped entirely. Safe because this is a standalone desktop app.
 app.commandLine.appendSwitch('auto-accept-camera-and-microphone-capture');
 
+// Allow the start/stop cue chimes to play without a prior user gesture.
+// The cues run as Web Audio in the overlay renderer, but in tray + hotkey usage the user
+// never clicks/focuses the window, so Chromium's autoplay gate keeps the AudioContext
+// suspended and the chime is silent. The per-window webPreferences.autoplayPolicy does not
+// reliably cover the Web Audio API, so the global switch is required (must be set pre-ready).
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 protocol.registerSchemesAsPrivileged([
   { scheme: 'recording', privileges: { stream: true, supportFetchAPI: true } },
 ]);

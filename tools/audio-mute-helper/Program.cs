@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -28,6 +29,7 @@ public static class Program
     private static bool _muting;
     private static HashSet<int> _excludePids = new();
     private static int _excludeRootPid;
+    private static string _excludeImagePath = "";
     private static List<MutedRef> _muted = new();
     private static Dictionary<string, MutedRef> _mutedBySid = new();
     private static Dictionary<int, MutedRef> _mutedByPid = new();
@@ -39,6 +41,7 @@ public static class Program
     private static HashSet<int> _cachedDescendants = new();
     private static long _cachedDescendantsAt;
     private static readonly Dictionary<int, (string Name, long At)> _processNameCache = new();
+    private static readonly Dictionary<int, (string Path, long At)> _processPathCache = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -145,6 +148,12 @@ public static class Program
             _muting = true;
             _excludePids = excludePids;
             _excludeRootPid = rootPid;
+            // Match own audio sessions by executable path: every Electron child process
+            // (renderer, GPU, audio-service utility) shares the parent's image. This catches
+            // the lazily-spawned audio service that plays our cue chimes immediately, closing
+            // the race window where the descendant-PID cache hasn't refreshed yet and would
+            // otherwise mute our own session (and Windows would persist that volume=0 per-app).
+            _excludeImagePath = GetProcessImagePath(rootPid);
             _muted = new List<MutedRef>();
             _mutedBySid = new Dictionary<string, MutedRef>();
             _mutedByPid = new Dictionary<int, MutedRef>();
@@ -152,6 +161,7 @@ public static class Program
             _cachedDescendants = new HashSet<int>();
             _cachedDescendantsAt = 0;
             _processNameCache.Clear();
+            _processPathCache.Clear();
             _scanEnumerator ??= new MMDeviceEnumerator();
         }
 
@@ -292,10 +302,11 @@ public static class Program
         {
             var pid = (int)session.GetProcessID;
             if (pid == 0) return; // system sounds session — leave alone
-            if (liveExcludes.Contains(pid))
+            if (liveExcludes.Contains(pid) || IsOwnImage(pid))
             {
-                // Our own descendant — opt out of Windows Communications Ducking so the
-                // audio cue stays at full volume while the mic is active.
+                // Our own process (by PID tree or shared executable path) — opt out of Windows
+                // Communications Ducking so the audio cue stays at full volume while the mic is
+                // active, and never mute it.
                 TryOptOutOfDucking(session);
                 return;
             }
@@ -545,6 +556,52 @@ public static class Program
         catch { name = ""; }
         lock (_lock) { _processNameCache[pid] = (name, now); }
         return name;
+    }
+
+    private static bool IsOwnImage(int pid)
+    {
+        if (_excludeImagePath.Length == 0 || pid <= 0) return false;
+        var path = SafeProcessPath(pid);
+        return path.Length > 0 && path.Equals(_excludeImagePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string SafeProcessPath(int pid)
+    {
+        var now = Environment.TickCount64;
+        lock (_lock)
+        {
+            if (_processPathCache.TryGetValue(pid, out var hit) && now - hit.At < ProcessNameCacheTtlMs)
+                return hit.Path;
+        }
+        var path = GetProcessImagePath(pid);
+        lock (_lock) { _processPathCache[pid] = (path, now); }
+        return path;
+    }
+
+    // QueryFullProcessImageName works across 32/64-bit boundaries and needs only
+    // PROCESS_QUERY_LIMITED_INFORMATION, unlike Process.MainModule which throws for
+    // cross-bitness or protected processes.
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, int dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool QueryFullProcessImageNameW(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
+
+    private static string GetProcessImagePath(int pid)
+    {
+        if (pid <= 0) return "";
+        var h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == IntPtr.Zero) return "";
+        try
+        {
+            var sb = new StringBuilder(1024);
+            uint size = (uint)sb.Capacity;
+            return QueryFullProcessImageNameW(h, 0, sb, ref size) ? sb.ToString() : "";
+        }
+        catch { return ""; }
+        finally { CloseHandle(h); }
     }
 
     private static string SafeSessionId(AudioSessionControl session)
