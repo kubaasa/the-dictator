@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, screen, session, systemPreferences } from 'electron';
+import { app, BrowserWindow, ipcMain, powerMonitor, protocol, screen, session, systemPreferences } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -137,26 +137,56 @@ let currentState: RecordingState = 'idle';
 let overlayHideTimeout: ReturnType<typeof setTimeout> | null = null;
 let historyService: HistoryService | null = null;
 let pttSafetyTimeout: ReturnType<typeof setTimeout> | null = null;
+let mainRendererReady = false;
+let pendingHotkeyToggleAt: number | null = null;
 
 const hotkeyService = new HotkeyService(
   () => {
     if (pttSafetyTimeout) { clearTimeout(pttSafetyTimeout); pttSafetyTimeout = null; }
+    if (!mainRendererReady) {
+      // The main renderer hasn't registered its hotkey listener yet (auto-start at
+      // logon) — sending now would silently drop the toggle and invert HotkeyService
+      // polarity. Revert the polarity; in toggle mode queue the press for replay on
+      // RENDERER_READY. In push-to-talk the key is likely released before the renderer
+      // is ready, so a replayed start would never receive its stop — drop it instead.
+      hotkeyService.notifyRecordingStopped();
+      const mode = (store.get('hotkey') as AppSettings['hotkey'] | undefined)?.mode
+        ?? DEFAULT_SETTINGS.hotkey.mode;
+      if (mode === 'toggle') {
+        log.info('hotkey toggle before main renderer ready — queued');
+        pendingHotkeyToggleAt = Date.now();
+      } else {
+        log.info('push-to-talk press before main renderer ready — dropped');
+      }
+      return;
+    }
     broadcastState('initializing');
     sendToggleToRenderer();
   },
   () => {
     sendToggleToRenderer();
-    // Safety net: if state is still non-idle after all timeouts expire,
-    // force reset. Normal flow should never hit this — covers edge cases
-    // where renderer/IPC chain breaks silently.
+    // Safety net: covers edge cases where the renderer/IPC chain breaks silently.
+    // Two stages: 'initializing'/'recording' means the renderer never delivered audio
+    // after the stop request — reset at 65s. 'transcribing'/'processing' have their own
+    // timeouts (adaptive ≤120s + AI 30s), so a legitimate long pipeline must not be
+    // killed at 65s — those states get one extended grace period instead.
     if (pttSafetyTimeout) clearTimeout(pttSafetyTimeout);
     pttSafetyTimeout = setTimeout(() => {
-      if (currentState !== 'idle') {
+      if (currentState === 'initializing' || currentState === 'recording') {
         log.warn('PTT safety timeout: forcing idle from state "%s"', currentState);
         broadcastState('idle');
         hotkeyService.notifyRecordingStopped();
+        pttSafetyTimeout = null;
+        return;
       }
-      pttSafetyTimeout = null;
+      pttSafetyTimeout = setTimeout(() => {
+        if (currentState !== 'idle') {
+          log.warn('PTT safety timeout (extended): forcing idle from state "%s"', currentState);
+          broadcastState('idle');
+          hotkeyService.notifyRecordingStopped();
+        }
+        pttSafetyTimeout = null;
+      }, 120_000);
     }, 65_000);
   },
 );
@@ -210,6 +240,20 @@ function createMainWindow(): BrowserWindow {
   }
 
   win.webContents.setBackgroundThrottling(false);
+
+  // Covers reloads and crash-recovery reloads — the hotkey listener is gone until
+  // the renderer signals RENDERER_READY again.
+  win.webContents.on('did-start-loading', () => {
+    mainRendererReady = false;
+  });
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    if (isQuitting || details.reason === 'clean-exit') return;
+    log.error('main renderer process gone (reason=%s) — reloading', details.reason);
+    win.webContents.reload();
+  });
+
+  win.on('unresponsive', () => log.warn('main window unresponsive'));
 
   win.once('ready-to-show', () => {
     const firstRun = !(store.get('general.firstRunComplete') as boolean);
@@ -286,7 +330,62 @@ function createOverlayWindow(): BrowserWindow {
     );
   }
 
+  // The maxi widget sits hidden between recordings — without this, Chromium throttles
+  // the hidden page's timers and the enter animation can start in a stale, throttled state.
+  win.webContents.setBackgroundThrottling(false);
+
+  // The overlay is a one-shot window for the app's lifetime — a crashed renderer would
+  // otherwise leave the widget (and the cue chimes) permanently dead until app restart.
+  win.webContents.on('render-process-gone', (_event, details) => {
+    if (isQuitting || details.reason === 'clean-exit') return;
+    log.error('overlay renderer process gone (reason=%s) — recreating window', details.reason);
+    overlayWindow = createOverlayWindow();
+    win.destroy();
+  });
+
+  win.on('unresponsive', () => log.warn('overlay window unresponsive'));
+
   return win;
+}
+
+// Force the overlay into a visible, on-screen, top-most state. A recording can start
+// with the window minimized (Win+D), de-topped (fullscreen apps, UAC round-trips),
+// off-screen (monitor changes) or with a stale compositor surface — every path here
+// self-heals so the widget is never silently absent while the mic is live.
+function ensureOverlayVisible(reason: string): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
+
+  if (reason === 'initializing') {
+    const b = overlayWindow.getBounds();
+    log.info('overlay pre-show: visible=%s minimized=%s bounds=(%d,%d %dx%d)',
+      overlayWindow.isVisible(), overlayWindow.isMinimized(), b.x, b.y, b.width, b.height);
+  }
+
+  const { x, y, width, height } = overlayWindow.getBounds();
+  const clamped = clampToVisibleArea(x, y, width, height);
+  if (clamped.x !== x || clamped.y !== y) {
+    log.info('overlay: position reclamped (%d,%d) -> (%d,%d) [%s]', x, y, clamped.x, clamped.y, reason);
+    overlayWindow.setPosition(clamped.x, clamped.y);
+    store.set('widget.x', clamped.x);
+    store.set('widget.y', clamped.y);
+  }
+
+  if (overlayWindow.isMinimized()) {
+    log.warn('overlay: window was minimized — restoring [%s]', reason);
+    overlayWindow.restore();
+  }
+
+  const wasVisible = overlayWindow.isVisible();
+  // Windows can silently drop the TOPMOST flag (fullscreen apps, UAC, DWM restarts)
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  overlayWindow.showInactive();
+  overlayWindow.moveTop();
+  if (wasVisible) {
+    // showInactive() is a no-op on an already-visible window — force a repaint in
+    // case the compositor surface went stale while the window sat on screen.
+    overlayWindow.webContents.invalidate();
+  }
 }
 
 function broadcastState(state: RecordingState): void {
@@ -318,6 +417,31 @@ function broadcastState(state: RecordingState): void {
 
   trayManager.updateRecordingState(state);
 
+  // Manage overlay visibility BEFORE sending the state event, so the renderer starts
+  // its enter animation inside a window that is already shown and composited.
+  const activeWidget = (store.get('widget') ?? DEFAULT_SETTINGS.widget).activeWidget;
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    if (state === 'idle') {
+      if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
+      // Maxi hides at idle (after the 350ms fade-out); voicebar stays visible
+      if (activeWidget === 'maxi' && overlayWindow.isVisible()) {
+        overlayHideTimeout = setTimeout(() => {
+          // Re-check the active widget: a maxi→voicebar switch while this timer was
+          // pending must not hide the always-visible voicebar window forever.
+          const widgetNow = (store.get('widget') ?? DEFAULT_SETTINGS.widget).activeWidget;
+          if (widgetNow === 'maxi' && overlayWindow && !overlayWindow.isDestroyed()) {
+            overlayWindow.hide();
+          } else if (widgetNow !== 'maxi') {
+            log.info('overlay hide skipped — widget switched to %s while fade-out timer was pending', widgetNow);
+          }
+          overlayHideTimeout = null;
+        }, 350);
+      }
+    } else {
+      ensureOverlayVisible(state);
+    }
+  }
+
   for (const win of BrowserWindow.getAllWindows()) {
     try {
       win.webContents.send(IPC.RECORDING_STATE_CHANGED, state);
@@ -325,36 +449,24 @@ function broadcastState(state: RecordingState): void {
       // Window webContents may have been destroyed between getAllWindows() and send()
     }
   }
-
-  // Maxi widget: visible for all active states, hidden only on idle
-  const activeWidget = (store.get('widget') ?? DEFAULT_SETTINGS.widget).activeWidget;
-  if (activeWidget === 'maxi' && overlayWindow) {
-    if (state === 'idle') {
-      if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
-      if (overlayWindow.isVisible()) {
-        overlayHideTimeout = setTimeout(() => {
-          if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
-          overlayHideTimeout = null;
-        }, 350);
-      }
-    } else {
-      if (overlayHideTimeout) { clearTimeout(overlayHideTimeout); overlayHideTimeout = null; }
-      // Re-clamp position and force show unconditionally — guards against cases where
-      // isVisible() reports true but the window is on a stale display or its GPU
-      // compositor froze after a display config change.
-      const { x, y, width, height } = overlayWindow.getBounds();
-      const clamped = clampToVisibleArea(x, y, width, height);
-      if (clamped.x !== x || clamped.y !== y) {
-        overlayWindow.setPosition(clamped.x, clamped.y);
-        store.set('widget.x', clamped.x);
-        store.set('widget.y', clamped.y);
-      }
-      overlayWindow.showInactive();
-    }
-  }
 }
 
 function setupRecordingIpc(): void {
+  ipcMain.on(IPC.RENDERER_READY, (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    mainRendererReady = true;
+    if (pendingHotkeyToggleAt === null) return;
+    const age = Date.now() - pendingHotkeyToggleAt;
+    pendingHotkeyToggleAt = null;
+    if (age <= 10_000) {
+      log.info('renderer ready — replaying hotkey toggle queued %dms ago', age);
+      // Plain toggle replay: RECORDING_INIT re-syncs state and HotkeyService polarity
+      sendToggleToRenderer();
+    } else {
+      log.info('renderer ready — dropping stale queued hotkey toggle (%dms old)', age);
+    }
+  });
+
   ipcMain.on(IPC.RECORDING_INIT, () => {
     if (currentState === 'initializing' || currentState === 'recording') return;
     // Sync HotkeyService for non-hotkey sources (overlay button, main window button)
@@ -567,6 +679,14 @@ app.on('ready', () => {
         win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
       }
     },
+    // Escape hatch for a widget stranded where the user can't see it (powered-off
+    // display that Windows still enumerates, exotic DPI layouts): center on primary
+    // and force recomposition. Safe to call at any time.
+    onResetWidgetPosition: () => {
+      log.info('tray: reset widget position requested');
+      reclampOverlay(true);
+      recoverOverlayCompositor();
+    },
   });
   trayManager.setAutoStart(autoStartEnabled);
   trayManager.setAudioCues(
@@ -656,11 +776,39 @@ app.on('ready', () => {
     overlayWindow.webContents.invalidate();
     const activeWidget = (store.get('widget') ?? DEFAULT_SETTINGS.widget).activeWidget;
     const shouldBeVisible = activeWidget === 'voicebar' || currentState !== 'idle';
+    log.info('overlay: compositor recovery (invalidate%s)', shouldBeVisible ? ' + hide/show' : '');
     if (shouldBeVisible) {
       overlayWindow.hide();
       overlayWindow.showInactive();
     }
   };
+
+  // At Windows logon (auto-start) the overlay is created while DWM/GPU are still
+  // settling — the transparent window's first composited frame can be silently lost,
+  // and no display event ever follows a plain boot to trigger the recovery below.
+  overlayWindow?.webContents.once('did-finish-load', () => {
+    setTimeout(recoverOverlayCompositor, 2000);
+  });
+
+  // Sleep/resume and the lock screen can freeze the transparent window's GPU surface
+  // without emitting any display-metrics event.
+  powerMonitor.on('resume', () => {
+    log.info('power: resumed from sleep — recovering overlay compositor');
+    recoverOverlayCompositor();
+  });
+  powerMonitor.on('unlock-screen', () => {
+    log.info('power: screen unlocked — recovering overlay compositor');
+    recoverOverlayCompositor();
+  });
+
+  // Chromium restarts a crashed GPU process automatically, but the transparent overlay's
+  // surface may come back blank — recompose once the new GPU process has settled.
+  app.on('child-process-gone', (_event, details) => {
+    if (details.type === 'GPU') {
+      log.warn('GPU process gone (reason=%s) — scheduling overlay compositor recovery', details.reason);
+      setTimeout(recoverOverlayCompositor, 1500);
+    }
+  });
 
   screen.on('display-added', () => {
     log.info('display-added — reclamping overlay and main window');

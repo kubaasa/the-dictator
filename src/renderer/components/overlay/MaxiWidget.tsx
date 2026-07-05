@@ -439,7 +439,10 @@ export function MaxiWidget({ voiceLevel, bandsRef, state, shortcuts, hotkeyMode,
   );
 }
 
-function ShortcutEntry({ label, raw }: { label: string; raw: string }) {
+function ShortcutEntry({ label, raw }: { label: string; raw?: string }) {
+  // Stores persisted by older versions may lack a shortcut key — a crash here
+  // would take down the whole overlay tree into the ErrorBoundary
+  if (!raw) return null;
   const keys = raw.split('+').map(formatKey);
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>

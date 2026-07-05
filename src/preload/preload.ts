@@ -34,6 +34,7 @@ export interface DictatorAPI {
 
   onHotkeyToggle: (callback: () => void) => () => void;
   onHotkeyCancel: (callback: () => void) => () => void;
+  signalReady: () => void;
 
   requestToggleRecording: () => void;
   requestCancelRecording: () => void;
@@ -157,6 +158,8 @@ const api: DictatorAPI = {
     ipcRenderer.on(IPC.HOTKEY_CANCEL, handler);
     return () => ipcRenderer.removeListener(IPC.HOTKEY_CANCEL, handler);
   },
+
+  signalReady: () => ipcRenderer.send(IPC.RENDERER_READY),
 
   requestToggleRecording: () => ipcRenderer.send(IPC.OVERLAY_TOGGLE),
   requestCancelRecording: () => ipcRenderer.send(IPC.OVERLAY_CANCEL),

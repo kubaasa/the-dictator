@@ -646,6 +646,9 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
         startRecording();
       }
     });
+    // Tell main the hotkey listener now exists — a toggle pressed before this moment
+    // (auto-start at logon) is queued in main and replayed on this signal.
+    window.dictator.signalReady();
     return unsub;
   }, [startRecording, stopRecording]);
 

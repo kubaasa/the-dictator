@@ -20,22 +20,29 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
   );
   const [hotkeyMode, setHotkeyMode] = useState<HotkeyMode>('toggle');
   useEffect(() => {
-    window.dictator.getSettings().then((settings) => {
+    let cancelled = false;
+    const apply = (settings: AppSettings) => {
       if (settings.widget) setActiveWidget(settings.widget.activeWidget);
       if (settings.hotkey) {
         setShortcuts(settings.hotkey.shortcuts);
         setHotkeyMode(settings.hotkey.mode);
       }
-    }).catch((err) => log.error('Failed to load settings in OverlayWindow:', err));
+    };
 
-    const unsub = window.dictator.onSettingsChange((settings) => {
-      if (settings.widget) setActiveWidget(settings.widget.activeWidget);
-      if (settings.hotkey) {
-        setShortcuts(settings.hotkey.shortcuts);
-        setHotkeyMode(settings.hotkey.mode);
-      }
-    });
-    return unsub;
+    // getSettings can reject during a cold boot (IPC/store still initializing) — retry,
+    // otherwise a maxi user is stuck with the default voicebar until settings change
+    const load = (attempt: number) => {
+      window.dictator.getSettings()
+        .then((settings) => { if (!cancelled) apply(settings); })
+        .catch((err) => {
+          log.error(`Failed to load settings in OverlayWindow (attempt ${attempt}):`, err);
+          if (!cancelled && attempt < 3) setTimeout(() => load(attempt + 1), 1000 * attempt);
+        });
+    };
+    load(1);
+
+    const unsub = window.dictator.onSettingsChange(apply);
+    return () => { cancelled = true; unsub(); };
   }, []);
 
   if (activeWidget === 'maxi') {

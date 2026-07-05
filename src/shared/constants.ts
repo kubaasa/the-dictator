@@ -12,6 +12,8 @@ export const IPC = {
   HOTKEY_TOGGLE: 'hotkey:toggle',
   HOTKEY_CANCEL: 'hotkey:cancel',
 
+  RENDERER_READY: 'renderer:ready',
+
   TRANSCRIPTION_CHECK_READY: 'transcription:check-ready',
   TRANSCRIPTION_START_BUFFER: 'transcription:start-buffer',
   TRANSCRIPTION_RESULT: 'transcription:result',

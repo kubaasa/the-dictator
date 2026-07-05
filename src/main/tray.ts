@@ -8,6 +8,7 @@ interface TrayCallbacks {
   onAutoStartToggle: (enabled: boolean) => void;
   onAudioCuesToggle: (enabled: boolean) => void;
   onMuteOthersToggle: (enabled: boolean) => void;
+  onResetWidgetPosition: () => void;
 }
 
 export class TrayManager {
@@ -151,6 +152,10 @@ export class TrayManager {
           this.callbacks?.onMuteOthersToggle(this.muteOthersEnabled);
           this.updateMenu();
         },
+      },
+      {
+        label: 'Reset Widget Position',
+        click: () => this.callbacks?.onResetWidgetPosition(),
       },
       this.getUpdateMenuItem(),
       {

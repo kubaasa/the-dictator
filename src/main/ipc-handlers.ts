@@ -170,8 +170,16 @@ export function registerIpcHandlers(
   function scheduleIdle(delay: number): void {
     if (idleTransitionTimeout) clearTimeout(idleTransitionTimeout);
     idleTransitionTimeout = setTimeout(() => {
-      broadcastState('idle');
       idleTransitionTimeout = null;
+      // Armed only from 'error'/'done'. If the state moved on before firing (e.g. a
+      // new recording started inside the delay window), broadcasting 'idle' now would
+      // hide the widget mid-session while the mic keeps recording.
+      const state = getCurrentState();
+      if (state !== 'error' && state !== 'done') {
+        log.warn('stale idle timer skipped (state=%s)', state);
+        return;
+      }
+      broadcastState('idle');
     }, delay);
   }
 
