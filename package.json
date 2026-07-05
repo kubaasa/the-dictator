@@ -41,7 +41,8 @@
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.1",
     "typescript": "~4.5.4",
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "vitest": "^4.1.9"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
