@@ -4,6 +4,15 @@ Release notes are kept in plain text so they render correctly in the in-app
 update window (electron-updater shows the GitHub release body verbatim — no
 Markdown or HTML formatting).
 
+## 1.3.4
+
+- Fixed: auto-paste stopped working in VS Code and Cursor terminals running
+  Claude Code (2.1.269 or newer). The app used to send Shift+Insert to
+  VS Code-based editors, but their terminals now hand that key to the running
+  program instead of pasting once it enables the kitty keyboard protocol. The
+  app now sends a regular Ctrl+V everywhere, which VS Code handles itself for
+  both the editor and the terminal.
+
 ## 1.3.3
 
 - Fixed: sometimes the recording widget did not appear on screen even though
