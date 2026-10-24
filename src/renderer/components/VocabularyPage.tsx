@@ -88,8 +88,8 @@ export function VocabularyPage() {
         ? { ...e, input: trimmed, replacement: trimmedReplacement }
         : e,
     );
-    await save(updated);
-    setEditingId(null);
+    const ok = await save(updated);
+    if (ok) setEditingId(null);
   }, [editInput, editReplacement, editingId, entries, save]);
 
   const cancelEdit = useCallback(() => {
