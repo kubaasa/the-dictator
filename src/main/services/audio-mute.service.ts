@@ -11,6 +11,7 @@ const log = logger.scope('AudioMute');
 const MAX_SPAWN_ATTEMPTS = 3;
 const READY_TIMEOUT_MS = 5000;
 const CMD_TIMEOUT_MS = 3000;
+const SHUTDOWN_GRACE_MS = 2000;
 const IGNORED_EVENTS = new Set(['reMuted', 'deviceEvent']);
 
 interface HelperEvent {
@@ -38,6 +39,9 @@ export class AudioMuteService {
   private pending: PendingCmd | null = null;
   private queue: Array<() => void> = [];
   private muting = false;
+  // 'start' round-trip in flight; stopMuting awaits it so a stop issued during the helper's
+  // session enumeration (Escape, short PTT tap) can't slip past `muting === false`.
+  private startPromise: Promise<void> | null = null;
   private destroyed = false;
   private initialized = false;
 
@@ -80,7 +84,17 @@ export class AudioMuteService {
       return;
     }
     if (this.muting) return;
+    if (this.startPromise) return this.startPromise;
 
+    this.startPromise = this.sendStart();
+    try {
+      await this.startPromise;
+    } finally {
+      this.startPromise = null;
+    }
+  }
+
+  private async sendStart(): Promise<void> {
     const excludePids = this.computeExcludePids();
     try {
       // excludeRootPid: helper enumerates all descendant PIDs of our main Electron process
@@ -106,6 +120,7 @@ export class AudioMuteService {
 
   async stopMuting(): Promise<void> {
     if (this.destroyed || process.platform !== 'win32') return;
+    if (this.startPromise) await this.startPromise;
     if (!this.muting) return;
     this.muting = false;
 
@@ -129,16 +144,22 @@ export class AudioMuteService {
     }
   }
 
-  // Closing stdin lets the helper restore via its own EOF handler before exiting —
-  // we don't need to await stop() from before-quit.
+  // Closing stdin lets the helper restore via its own EOF handler before exiting, so
+  // before-quit doesn't need to await stop(). kill() right after end() would be a
+  // TerminateProcess that skips that handler, hence the grace period; the timer is
+  // unref'd so it never delays the app's own exit.
   shutdown(): void {
     this.destroyed = true;
-    if (this.proc) {
-      try { this.proc.stdin?.end(); } catch { /* ignore */ }
-      try { this.proc.kill(); } catch { /* ignore */ }
-      this.proc = null;
-      this.ready = false;
-    }
+    const proc = this.proc;
+    if (!proc) return;
+    this.proc = null;
+    this.ready = false;
+    try { proc.stdin?.end(); } catch { /* ignore */ }
+    const killTimer = setTimeout(() => {
+      try { proc.kill(); } catch { /* ignore */ }
+    }, SHUTDOWN_GRACE_MS);
+    killTimer.unref();
+    proc.once('exit', () => clearTimeout(killTimer));
   }
 
   private computeExcludePids(): number[] {
@@ -224,7 +245,6 @@ export class AudioMuteService {
         this.drainStdout((ev) => {
           if (ev.event === 'ready' && !this.ready) {
             this.ready = true;
-            this.spawnAttempts = 0;
             clearTimeout(readyTimer);
             log.info('Helper ready');
             resolve();
@@ -276,10 +296,19 @@ export class AudioMuteService {
       const p = this.pending;
       this.pending = null;
       clearTimeout(p.timer);
+      // A completed round-trip proves the helper is healthy; resetting on 'ready' alone let a
+      // helper that crashes on every 'start' respawn forever.
+      this.spawnAttempts = 0;
       p.resolve(ev);
-      const next = this.queue.shift();
-      if (next) next();
+      this.runNextQueued();
     }
+  }
+
+  // Every path that frees the pending slot must call this, otherwise commands queued behind
+  // a timed-out or failed write never get sent and their promises never settle.
+  private runNextQueued(): void {
+    const next = this.queue.shift();
+    if (next) next();
   }
 
   private sendAndAwait(payload: Record<string, unknown>, expect: string, timeoutMs: number): Promise<HelperEvent> {
@@ -302,6 +331,7 @@ export class AudioMuteService {
           if (this.pending === entry) {
             this.pending = null;
             reject(new Error(`Helper "${expect}" timeout`));
+            this.runNextQueued();
           }
         }, timeoutMs);
         this.pending = entry;
@@ -309,8 +339,11 @@ export class AudioMuteService {
           this.proc.stdin.write(JSON.stringify(payload) + '\n');
         } catch (err) {
           clearTimeout(entry.timer);
-          if (this.pending === entry) this.pending = null;
           reject(err instanceof Error ? err : new Error(String(err)));
+          if (this.pending === entry) {
+            this.pending = null;
+            this.runNextQueued();
+          }
         }
       };
       if (this.pending) {
