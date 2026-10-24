@@ -1,19 +1,6 @@
 import * as Sentry from '@sentry/electron/main';
 import { app } from 'electron';
-
-const API_KEY_PATTERNS = [
-  /sk-proj-[A-Za-z0-9_-]+/g,
-  /sk-ant-[A-Za-z0-9_-]+/g,
-  /gsk_[A-Za-z0-9_-]+/g,
-];
-
-function redact(text: string): string {
-  let s = text;
-  for (const p of API_KEY_PATTERNS) {
-    s = s.replace(p, (m) => m.slice(0, 8) + '***');
-  }
-  return s;
-}
+import { redactApiKeys as redact } from './logger';
 
 export function initSentry(): void {
   Sentry.init({
