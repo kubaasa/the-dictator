@@ -197,6 +197,10 @@ export function useAudioRecorder(
   // After every await in startRecording, we check if the session is still current.
   // If not, the setup was superseded (e.g. cancel during getUserMedia) and we bail out.
   const isSettingUpRef = useRef(false);
+  // stopRecording awaits the worklet flush (up to 1 s when the pipeline is stalled) before it
+  // releases the stream/context refs. A startRecording in that window would populate the same
+  // refs and then have them torn down by the tail of the stop, so starts are refused until done.
+  const isStoppingRef = useRef(false);
   const pendingStopRef = useRef(false);
   const sessionIdRef = useRef(0);
 
@@ -321,6 +325,10 @@ export function useAudioRecorder(
 
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current || isSettingUpRef.current) return;
+    if (isStoppingRef.current) {
+      recLog.warn('start ignored: previous recording is still flushing');
+      return;
+    }
 
     const thisSession = ++sessionIdRef.current;
     isSettingUpRef.current = true;
@@ -599,6 +607,7 @@ export function useAudioRecorder(
 
     if (!isRecordingRef.current) return;
     isRecordingRef.current = false;
+    isStoppingRef.current = true;
     clearWatchdog();
     setIsRecording(false);
     const elapsedMs = recordingStartTimeRef.current !== null ? Date.now() - recordingStartTimeRef.current : 0;
@@ -630,63 +639,74 @@ export function useAudioRecorder(
       mediaRecorderRef.current = null;
     }
 
-    // Signal worklet to flush remaining audio, then wait for 'done' before stopping mic.
-    // Tracks must stay alive until worklet finishes so in-flight frames aren't dropped.
-    if (workletNodeRef.current) {
-      await new Promise<void>((resolve) => {
-        const port = workletNodeRef.current?.port;
-        if (!port) { resolve(); return; }
-        const prevHandler = port.onmessage;
-        port.onmessage = (ev) => {
-          if (prevHandler) prevHandler.call(port, ev);
-          if (ev.data?.type === 'done') {
+    let audioContext: AudioContext | null = null;
+    let chunks: Float32Array[] = [];
+    let totalLength = 0;
+    let hasAudio = false;
+    try {
+      // Signal worklet to flush remaining audio, then wait for 'done' before stopping mic.
+      // Tracks must stay alive until worklet finishes so in-flight frames aren't dropped.
+      if (workletNodeRef.current) {
+        await new Promise<void>((resolve) => {
+          const port = workletNodeRef.current?.port;
+          if (!port) { resolve(); return; }
+          const prevHandler = port.onmessage;
+          let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+          const finish = () => {
+            if (safetyTimer) clearTimeout(safetyTimer);
             port.onmessage = null;
             resolve();
-          }
-        };
-        port.postMessage('stop');
-        setTimeout(() => { port.onmessage = null; resolve(); }, 1000); // safety timeout
-      });
+          };
+          port.onmessage = (ev) => {
+            if (prevHandler) prevHandler.call(port, ev);
+            if (ev.data?.type === 'done') finish();
+          };
+          port.postMessage('stop');
+          safetyTimer = setTimeout(finish, 1000);
+        });
+      }
+
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+      }
+
+      audioContext = audioContextRef.current;
+      audioContextRef.current = null;
+      chunks = chunksRef.current;
+      chunksRef.current = [];
+
+      // Broadcast state change IMMEDIATELY after stopping tracks so the overlay
+      // releases its own mic stream without waiting for the rest of cleanup.
+      totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+      hasAudio = totalLength > 0 && !!audioContext;
+      if (!hasAudio) {
+        recLog.warn(`empty recording: elapsed=${elapsedMs}ms chunks=${chunks.length} levels=${levelCountRef.current}`,
+          describeCtx(audioContext), stoppedTrackInfo);
+      }
+      window.dictator.stopRecording(!hasAudio);
+
+      if (sourceRef.current) {
+        sourceRef.current.disconnect();
+        sourceRef.current = null;
+      }
+      if (workletNodeRef.current) {
+        workletNodeRef.current.disconnect();
+        workletNodeRef.current = null;
+      }
+
+      // Close persistent AudioContext so Windows fully releases the microphone device.
+      // A new context + worklet will be created on the next recording start.
+      if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
+        persistentCtxRef.current.close().catch(() => { /* ignore */ });
+        persistentCtxRef.current = null;
+        workletReadyRef.current = false;
+      }
+    } finally {
+      isStoppingRef.current = false;
     }
 
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      mediaStreamRef.current = null;
-    }
-
-    const audioContext = audioContextRef.current;
-    audioContextRef.current = null;
-    const chunks = chunksRef.current;
-    chunksRef.current = [];
-
-    // Broadcast state change IMMEDIATELY after stopping tracks so the overlay
-    // releases its own mic stream without waiting for the rest of cleanup.
-    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
-    const hasAudio = totalLength > 0 && !!audioContext;
-    if (!hasAudio) {
-      recLog.warn(`empty recording: elapsed=${elapsedMs}ms chunks=${chunks.length} levels=${levelCountRef.current}`,
-        describeCtx(audioContext), stoppedTrackInfo);
-    }
-    window.dictator.stopRecording(!hasAudio);
-
-    if (sourceRef.current) {
-      sourceRef.current.disconnect();
-      sourceRef.current = null;
-    }
-    if (workletNodeRef.current) {
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current = null;
-    }
-
-    // Close persistent AudioContext so Windows fully releases the microphone device.
-    // A new context + worklet will be created on the next recording start.
-    if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
-      persistentCtxRef.current.close().catch(() => { /* ignore */ });
-      persistentCtxRef.current = null;
-      workletReadyRef.current = false;
-    }
-
-    if (hasAudio) {
+    if (hasAudio && audioContext) {
       const merged = new Float32Array(totalLength);
       let offset = 0;
       for (const chunk of chunks) {
