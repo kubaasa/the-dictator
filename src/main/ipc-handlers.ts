@@ -62,10 +62,12 @@ function looksLikeCliCommand(replacement: string): boolean {
 //   "a | b | c"   any of the alternatives triggers the replacement
 //   "komit*"      trailing * matches any word ending; when the replacement also ends
 //                 with *, the spoken ending is kept ("komit*" → "commit*": komita → commita)
-//   spaces between words also match hyphens and repeated spaces ("cloud-dsp", "cloud  dsp")
+//   spaces and hyphens between words match each other and repeated spaces
+//   ("cloud dsp" ↔ "cloud-dsp" ↔ "cloud  dsp")
 interface VocabularyPattern {
   entry: VocabularyEntry;
   source: string;
+  inputLength: number;
   keepSuffix: boolean;
 }
 
@@ -85,8 +87,10 @@ function buildVocabularyPatterns(vocabulary: VocabularyEntry[]): VocabularyPatte
       const base = wildcard ? alt.slice(0, -1).trim() : alt;
       if (!base) continue;
 
+      // Split on whitespace or a hyphen joining two word characters, so "cloud-dsp" and
+      // "cloud dsp" build the same pattern; leading/trailing hyphens ("-v") stay literal.
       const escapedWords = base
-        .split(/\s+/)
+        .split(/\s+|(?<=[\p{L}\p{N}])-(?=[\p{L}\p{N}])/u)
         .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
         .join('[\\s-]+');
       // Lookarounds instead of \b: \b ignores non-ASCII letters (Polish) and never
@@ -101,24 +105,28 @@ function buildVocabularyPatterns(vocabulary: VocabularyEntry[]): VocabularyPatte
       patterns.push({
         entry,
         source: `${boundaryStart}${escapedWords}${suffix}${boundaryEnd}${trailing}`,
+        inputLength: base.length,
         keepSuffix: wildcard && replacementKeepsSuffix,
       });
     }
   }
-  // Longest input first, so "cloud dsp" wins over "cloud" regardless of list order.
-  return patterns.sort((a, b) => b.source.length - a.source.length);
+  // Longest spoken input first, so "cloud dsp" wins over "cloud" regardless of list order.
+  // Sorting by the regex source would rank by escaping and CLI/wildcard decorations instead.
+  return patterns.sort((a, b) => b.inputLength - a.inputLength);
 }
 
 // Mirrors Whisper's sentence-initial capital on plain-word replacements ("Komity" → "Commity"),
 // never on identifiers that are deliberately lowercase (n8n, emails, CLI flags).
 function matchCapitalization(matched: string, replacement: string): string {
   if (!/^\p{Lu}/u.test(matched)) return replacement;
-  if (!/^\p{Ll}[\p{L}\s]*$/u.test(replacement)) return replacement;
+  if (!/^\p{Ll}[\p{L}\s-]*$/u.test(replacement)) return replacement;
   return replacement.charAt(0).toUpperCase() + replacement.slice(1);
 }
 
 // Single pass over the text with one combined regex: each position is visited once,
-// so replacements never chain (A→B, B→C). Returns the applied entries for logging.
+// so replacements never chain (A→B, B→C). Idempotent: text that already reads as the
+// replacement is left alone, so "claude → Claude Code" never produces "Claude Code Code",
+// whether Whisper wrote the full name or the AI pass already saw it replaced.
 function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]): string {
   if (!vocabulary || vocabulary.length === 0) return text;
   const patterns = buildVocabularyPatterns(vocabulary);
@@ -133,7 +141,10 @@ function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]
 
   const applied = new Map<string, number>();
   const result = text.replace(combined, (...args: unknown[]) => {
+    // String.replace callback: (match, ...captures, offset, input, groups)
     const groups = args[args.length - 1] as Record<string, string | undefined>;
+    const input = args[args.length - 2] as string;
+    const offset = args[args.length - 3] as number;
     const matched = args[0] as string;
     const index = patterns.findIndex((_, i) => groups[`m${i}`] !== undefined);
     if (index === -1) return matched;
@@ -142,6 +153,13 @@ function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]
     let replacement = entry.replacement as string;
     if (replacement.endsWith('*')) replacement = replacement.slice(0, -1);
     if (keepSuffix) replacement += groups[`s${index}`] ?? '';
+
+    // Only a replacement longer than the match can already be present beyond it ("Claude" inside
+    // "Claude Code"); an equal-length one is a casing fix ("cloud dsp" → "Cloud DSP") and must run.
+    const alreadyReplaced =
+      replacement.length > matched.length &&
+      input.slice(offset, offset + replacement.length).toLowerCase() === replacement.toLowerCase();
+    if (alreadyReplaced) return matched;
 
     const key = `"${entry.input}" → "${entry.replacement}"`;
     applied.set(key, (applied.get(key) ?? 0) + 1);
