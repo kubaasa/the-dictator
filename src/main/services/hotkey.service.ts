@@ -144,6 +144,7 @@ export class HotkeyService {
         binding.keys = this.parseShortcut(shortcutStr);
       }
     }
+    this.resetPressedKeys();
   }
 
   setMode(mode: HotkeyMode): void {
@@ -154,6 +155,14 @@ export class HotkeyService {
       this.onRecordingStop();
     }
     this.mode = mode;
+    this.resetPressedKeys();
+  }
+
+  // uiohook never sees a keyup consumed by another desktop (UAC prompt, lock screen, RDP
+  // switch), so that key would stay "pressed" and the exact-combo check in checkBindings
+  // would reject every shortcut until the user happens to press and release it again.
+  resetPressedKeys(): void {
+    this.pressedKeys.clear();
   }
 
   notifyRecordingStarted(): void {
