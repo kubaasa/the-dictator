@@ -25,6 +25,7 @@
   --color-bg: #0a0a0a;
   --color-surface: #141414;
   --color-surface-hover: #1a1a1a;
+  --color-surface-sunken: #0f0f0f;
   --color-border: #262626;
   --color-border-strong: #404040;
   --color-text: #f5f5f5;
@@ -35,6 +36,8 @@
   --color-accent-soft: rgb(220 38 38 / 0.05);
   --color-ok: #22c55e;
   --color-ok-text: #4ade80;
+  --color-warn: #f59e0b;
+  --color-warn-text: #fbbf24;
   --shadow-glow-accent: 0 0 24px rgb(220 38 38 / 0.22), 0 0 48px rgb(220 38 38 / 0.08);
 
   /* Overlay widget: always dark, independent of the app theme (it floats over terminals) */
