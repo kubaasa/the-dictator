@@ -1,5 +1,5 @@
 import OpenAI, { toFile } from 'openai';
-import type { AppSettings, VocabularyEntry } from '../../shared/types';
+import type { AppSettings } from '../../shared/types';
 import { app } from 'electron';
 import Store from 'electron-store';
 import * as path from 'node:path';
@@ -314,38 +314,17 @@ export class TranscriptionService {
     return this.groqClient;
   }
 
-  private getVocabularyPromptHint(): string {
-    const vocab = this.store.get('vocabulary') as (VocabularyEntry | string)[];
-    if (!Array.isArray(vocab) || vocab.length === 0) return '';
-    const words = vocab
-      .map(entry => typeof entry === 'string' ? entry : entry.input)
-      .filter(Boolean);
-    if (words.length === 0) return '';
-    return words.join(', ');
-  }
-
-  /**
-   * Build Groq Whisper prompt: a style-formatted sentence (guides the model to
-   * produce consistent capitalization and punctuation) + vocabulary hints.
-   */
-  private buildGroqPrompt(): string {
-    const language = (this.store.get('transcription.language') as string) ?? 'auto';
-    const vocabHint = this.getVocabularyPromptHint();
-
-    const STYLE_HINTS: Record<string, string> = {
-      pl: 'Witaj. Dyktowanie tekstu po polsku, z poprawną interpunkcją.',
-      en: 'Hello. Dictating text with proper punctuation and capitalization.',
-    };
-    const styleHint = STYLE_HINTS[language] ?? STYLE_HINTS['en'];
-
-    return [styleHint, vocabHint].filter(Boolean).join(' ');
-  }
-
+  // No `prompt` is sent to Whisper on purpose. A style sentence + comma-separated vocabulary
+  // list used to be passed as the prompt; re-transcribing saved recordings showed it makes
+  // whisper-large-v3 collapse the second 30 s decoding window into subtitle-credit
+  // hallucinations ("Wszelkie prawa zastrzeżone.", "Dyskusja o…") and drop the final
+  // sentences — deterministically on 6/6 affected files, and even on a 9 s recording.
+  // Without a prompt all of them transcribed in full. Vocabulary is still applied after
+  // transcription via applyVocabularyReplacements (ipc-handlers.ts).
   private async transcribeGroqFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
-      const prompt = this.buildGroqPrompt();
 
       const float32 = ipcBufferToFloat32(audioBuffer);
       const wavBuffer = encodeWavFast(float32, sampleRate);
@@ -354,7 +333,6 @@ export class TranscriptionService {
       const response = await client.audio.transcriptions.create({
         model: 'whisper-large-v3',
         file,
-        prompt,
         ...(language !== 'auto' && { language }),
       });
 
@@ -366,7 +344,6 @@ export class TranscriptionService {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
-      const prompt = this.buildGroqPrompt();
 
       const buf = Buffer.isBuffer(compressedAudio) ? compressedAudio : Buffer.from(compressedAudio);
       const file = await toFile(buf, 'audio.webm', { type: 'audio/webm' });
@@ -374,7 +351,6 @@ export class TranscriptionService {
       const response = await client.audio.transcriptions.create({
         model: 'whisper-large-v3',
         file,
-        prompt,
         ...(language !== 'auto' && { language }),
       });
 
@@ -405,16 +381,8 @@ export class TranscriptionService {
       options.stride_length_s = 5;
     }
 
+    // No initial_prompt here either — same hallucination mechanism as in the Groq path above.
     if (language !== 'auto') options.language = language;
-    const vocabHint = this.getVocabularyPromptHint();
-    const langHints: Record<string, string> = {
-      pl: 'Dyktowanie tekstu po polsku.',
-    };
-    const langHint = langHints[language] ?? '';
-    const promptParts = [langHint, vocabHint].filter(Boolean);
-    if (promptParts.length > 0) {
-      options.initial_prompt = promptParts.join(' ');
-    }
 
     // Cap output tokens based on audio duration to prevent hallucination loops.
     // Normal speech: ~2-4 tokens/s, 8 tokens/s is a safe margin.

@@ -456,9 +456,12 @@ export function registerIpcHandlers(
         }),
       ]);
 
-      // Safety net: filter known Whisper hallucinations that appear on near-silence audio
+      // Safety net: filter known Whisper hallucinations that appear on near-silence audio.
+      // Single-word tags and the subtitle-credit phrases Whisper emits on noise-only recordings
+      // (seen as the entire transcript in history, e.g. "Wszelkie prawa zastrzeżone.").
       const HALLUCINATION_RE = /^\s*[[(]?(muzyka|music|cisza|silence|szum|noise|applause|oklaski|śmiech|laughter)[\])]?\s*$/i;
-      if (!rawText || HALLUCINATION_RE.test(rawText)) {
+      const CREDITS_RE = /^\s*(wsz(elkie|ystkie) prawa zastrzeżone|napisy stworzone przez społeczność amara\.org|dzięku(ję|jemy) za (oglądanie|uwagę)|zdjęcia i montaż|thanks? (you )?for watching|subtitles by the amara\.org community)[.!]?\s*$/i;
+      if (!rawText || HALLUCINATION_RE.test(rawText) || CREDITS_RE.test(rawText)) {
         log.info('Whisper returned empty or hallucinated text: "%s" — skipping', rawText ?? '');
         const noSpeechMsg = 'No speech detected — recording contained only silence or background noise.';
         for (const win of BrowserWindow.getAllWindows()) {
@@ -506,7 +509,13 @@ export function registerIpcHandlers(
 
       broadcastState('done');
       scheduleIdle(400);
-      log.info('Transcription done. autoPaste=%s, chars=%d', autoPaste, text.length);
+      // words/s of the raw transcript vs audio length: normal dictation lands around 1.6–2.0,
+      // a value well below ~1.3 on a long recording means Whisper dropped part of the speech.
+      const rawWords = rawText.trim().split(/\s+/).filter(Boolean).length;
+      log.info(
+        'Transcription done. autoPaste=%s, chars=%d, audio=%ss, rawWords=%d, wps=%s',
+        autoPaste, text.length, audioDurationSec.toFixed(1), rawWords, (rawWords / audioDurationSec).toFixed(2),
+      );
 
       clipboard.writeText(text);
 
