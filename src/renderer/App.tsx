@@ -71,7 +71,7 @@ function MainApp() {
   const [activeView, setActiveView] = useState<ActiveView>('home');
   const micSelector = useMicrophoneSelector();
   const [callMode, setCallMode] = useState(false);
-  const audioRecorder = useAudioRecorder(micSelector.selectedDeviceId, callMode);
+  const audioRecorder = useAudioRecorder(micSelector.resolveDeviceId, callMode);
   const [showFirstRun, setShowFirstRun] = useState(false);
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [updateState, setUpdateState] = useState<import('../shared/types').UpdateState | null>(null);

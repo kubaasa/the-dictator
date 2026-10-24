@@ -19,7 +19,7 @@ import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
 import { AudioMuteService } from './services/audio-mute.service';
 import { DEFAULT_SETTINGS, type AppSettings, type RecordingState } from '../shared/types';
-import { IPC } from '../shared/constants';
+import { AUTO_MIC_DEVICE_ID, IPC } from '../shared/constants';
 
 process.on('uncaughtException', (error) => {
   log.error('Uncaught exception:', error);
@@ -76,6 +76,18 @@ if (typeof store.get('audio.soundEnabled') !== 'boolean') {
 }
 if (typeof store.get('audio.callMode') !== 'boolean') {
   store.set('audio.callMode', DEFAULT_SETTINGS.audio.callMode);
+}
+// Auto mic mode replaces the implicit Windows default ('' or Chromium's 'default'). A device
+// picked in the dropdown is stored together with its label, so a labelled 'default' is an
+// explicit choice and is kept, like hardware ids.
+const savedMicId = store.get('audio.deviceId');
+if ((savedMicId === '' || savedMicId === 'default') && typeof store.get('audio.deviceLabel') !== 'string') {
+  store.set('audio.deviceId', AUTO_MIC_DEVICE_ID);
+}
+// Saved prompts moved under `dictation` in v1.1; the stale top-level copy makes settings:set
+// reject any payload that echoes the full settings object.
+if (store.has('savedPrompts' as keyof AppSettings)) {
+  store.delete('savedPrompts' as keyof AppSettings);
 }
 if (typeof store.get('transcription.preferredCloudLanguage') !== 'string') {
   const existingLang = store.get('transcription.language') as string | undefined;

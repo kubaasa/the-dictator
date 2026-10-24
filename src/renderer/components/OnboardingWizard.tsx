@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { TranscriptionEngine } from '../../shared/types';
+import { AUTO_MIC_DEVICE_ID } from '../../shared/constants';
+import { resolveAutoMic } from '../utils/mic-devices';
 import { ApiKeyInput } from './ApiKeyInput';
 import appIcon from '../../../assets/icon.png';
 
@@ -387,8 +389,8 @@ function StepMicTest({
       }));
     setDevices(mics);
     setSelectedDeviceId((prev) => {
-      if (!prev || !mics.find((m) => m.deviceId === prev)) {
-        return mics[0]?.deviceId ?? null;
+      if (!prev || (prev !== AUTO_MIC_DEVICE_ID && !mics.find((m) => m.deviceId === prev))) {
+        return AUTO_MIC_DEVICE_ID;
       }
       return prev;
     });
@@ -415,6 +417,11 @@ function StepMicTest({
         setMicPermission('denied');
         setMicError('Microphone access blocked by Windows. Enable it in Settings > Privacy & Security > Microphone.');
         return;
+      }
+
+      if (deviceId === AUTO_MIC_DEVICE_ID) {
+        deviceId = resolveAutoMic(await navigator.mediaDevices.enumerateDevices());
+        if (!activeRef.current) return;
       }
 
       const audioConstraints: MediaTrackConstraints = {
@@ -550,14 +557,8 @@ function StepMicTest({
 
   useEffect(() => {
     refreshDevices().then(() => {
-      // selectedDeviceId is set inside refreshDevices via setState,
-      // but we need the value now — read from enumerateDevices directly
-      navigator.mediaDevices.enumerateDevices().then((all) => {
-        const firstMic = all.find((d) => d.kind === 'audioinput');
-        const micId = firstMic?.deviceId ?? null;
-        onDeviceSelect(micId);
-        startMicTest(micId);
-      });
+      onDeviceSelect(AUTO_MIC_DEVICE_ID);
+      startMicTest(AUTO_MIC_DEVICE_ID);
     });
 
     navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
@@ -599,6 +600,7 @@ function StepMicTest({
               onChange={(e) => handleDeviceChange(e.target.value)}
               className="w-full appearance-none rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-2 pr-8 font-mono text-xs text-neutral-200 outline-none transition-colors hover:border-neutral-600 focus:border-red-700"
             >
+              <option value={AUTO_MIC_DEVICE_ID}>Automatic (follows your headphones)</option>
               {devices.map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
                   {d.label}
@@ -765,7 +767,8 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
       },
       audio: {
         ...current.audio,
-        deviceId: selectedMicId ?? '',
+        deviceId: selectedMicId ?? AUTO_MIC_DEVICE_ID,
+        deviceLabel: undefined,
       },
       general: {
         ...current.general,

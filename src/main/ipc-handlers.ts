@@ -6,7 +6,7 @@ import logger from './services/logger';
 import { IPC } from '../shared/constants';
 
 const log = logger.scope('IPC');
-import type { AppSettings, RecordingState, WidgetType, RecordingEntry, VocabularyEntry } from '../shared/types';
+import type { AppSettings, SettingsPatch, RecordingState, WidgetType, RecordingEntry, VocabularyEntry } from '../shared/types';
 import { TranscriptionService } from './services/transcription.service';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
@@ -231,7 +231,7 @@ export function registerIpcHandlers(
     return decryptSettingsForRenderer(store.store);
   });
 
-  ipcMain.handle(IPC.SETTINGS_SET, (_event, settings: Partial<AppSettings>) => {
+  ipcMain.handle(IPC.SETTINGS_SET, (_event, settings: SettingsPatch) => {
     const ALLOWED_KEYS = new Set<string>([
       'transcription', 'ai', 'hotkey', 'dictation', 'audio', 'vocabulary', 'widget', 'general',
     ]);

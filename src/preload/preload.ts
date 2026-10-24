@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import 'electron-log/preload';
 import '@sentry/electron/preload';
 import { IPC } from '../shared/constants';
-import type { AppSettings, RecordingState, TranscriptionResult, RecordingEntry, HistoryStats, UpdateState } from '../shared/types';
+import type { AppSettings, SettingsPatch, RecordingState, TranscriptionResult, RecordingEntry, HistoryStats, UpdateState } from '../shared/types';
 
 export interface DictatorAPI {
   initRecording: () => void;
@@ -26,7 +26,7 @@ export interface DictatorAPI {
   onModelError: (callback: (msg: string) => void) => () => void;
 
   getSettings: () => Promise<AppSettings>;
-  setSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>;
+  setSettings: (settings: SettingsPatch) => Promise<AppSettings>;
   onSettingsChange: (callback: (settings: AppSettings) => void) => () => void;
 
   sendVoiceActivity: (level: number, bands?: number[]) => void;

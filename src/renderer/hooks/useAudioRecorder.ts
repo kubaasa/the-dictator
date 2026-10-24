@@ -163,7 +163,10 @@ interface UseAudioRecorderReturn {
   clearError: () => void;
 }
 
-export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): UseAudioRecorderReturn {
+export function useAudioRecorder(
+  resolveDeviceId: () => Promise<string | null>,
+  callMode?: boolean,
+): UseAudioRecorderReturn {
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState('');
   const [errorType, setErrorType] = useState('');
@@ -350,6 +353,11 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
         window.dictator.stopRecording();
         return;
       }
+
+      // Resolved from a fresh enumeration so a headset switched seconds ago is honoured even
+      // if no 'devicechange' event reached the selector yet.
+      const deviceId = await resolveDeviceId();
+      if (sessionIdRef.current !== thisSession) return;
 
       let stream: MediaStream;
       try {
@@ -581,7 +589,7 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
       setErrorType('');
       window.dictator.reportMicError(message);
     }
-  }, [deviceId, callMode, getOrCreateAudioContext]);
+  }, [resolveDeviceId, callMode, getOrCreateAudioContext]);
 
   const stopRecording = useCallback(async () => {
     if (isSettingUpRef.current) {

@@ -1,6 +1,6 @@
 import { safeStorage } from 'electron';
 import Store from 'electron-store';
-import type { AppSettings } from '../../shared/types';
+import type { AppSettings, SettingsPatch } from '../../shared/types';
 import logger from './logger';
 
 const log = logger.scope('SecureStorage');
@@ -53,7 +53,7 @@ export function getApiKey(store: Store<AppSettings>, keyPath: ApiKeyPath): strin
   return decryptValue(value);
 }
 
-export function encryptSettingsKeys(settings: Partial<AppSettings>): void {
+export function encryptSettingsKeys(settings: SettingsPatch): void {
   if (!safeStorage.isEncryptionAvailable()) return;
 
   if (settings.transcription && 'groqApiKey' in settings.transcription) {

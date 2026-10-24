@@ -98,3 +98,6 @@ export const AI_MODEL_DESCRIPTIONS: Record<string, string> = {
   'claude-sonnet-4-6': 'Powerful & balanced',
   'claude-haiku-4-5-20251001': 'Fast & lightweight',
 };
+
+/** audio.deviceId sentinel: use the mic of the headset the user listens through (see resolveAutoMic). */
+export const AUTO_MIC_DEVICE_ID = 'auto';

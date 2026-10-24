@@ -1,3 +1,8 @@
+import { AUTO_MIC_DEVICE_ID } from './constants';
+
+/** Payload of settings:set — each top-level section is shallow-merged into the stored one. */
+export type SettingsPatch = { [K in keyof AppSettings]?: Partial<AppSettings[K]> };
+
 export interface TranscriptionResult {
   id?: string;
   text: string;
@@ -86,7 +91,10 @@ export interface AppSettings {
     autoPaste: boolean;
   };
   audio: {
+    /** AUTO_MIC_DEVICE_ID, or a Chromium input device id ('default', 'communications', hardware). */
     deviceId: string;
+    /** Label of a manually chosen device, shown while that device is unplugged. */
+    deviceLabel?: string;
     soundEnabled: boolean;
     /** When true, enables echo cancellation, noise suppression, and auto gain — filters out
      *  the other person's voice during Slack/Teams/Zoom calls at the cost of slightly lower
@@ -189,7 +197,7 @@ Respond with ONLY the reformatted message wrapped in the required tags.`,
     autoPaste: true,
   },
   audio: {
-    deviceId: '',
+    deviceId: AUTO_MIC_DEVICE_ID,
     soundEnabled: true,
     callMode: false,
     muteOthersWhileRecording: true,
