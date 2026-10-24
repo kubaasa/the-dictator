@@ -144,7 +144,7 @@ export function TimecodeDisplay() {
   }, []);
 
   return (
-    <span className="font-mono text-xs text-green-600 tracking-wider">
+    <span className="font-mono text-xs text-ok tracking-wider">
       {time}
     </span>
   );

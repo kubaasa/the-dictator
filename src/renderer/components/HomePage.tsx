@@ -164,14 +164,14 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
         {statCards.map((stat, i) => (
           <div
             key={i}
-            className="relative rounded-xl border border-neutral-800 bg-[#141414] flex flex-row items-center hover:border-neutral-700 hover:bg-[#1A1A1A] transition-all duration-200 cursor-default overflow-hidden"
+            className="relative rounded-xl border border-border bg-surface flex flex-row items-center hover:border-border-strong hover:bg-surface-hover transition-all duration-200 cursor-default overflow-hidden"
             style={{ padding: 'clamp(0.5rem, 1.2vw, 1.25rem)', gap: 'clamp(0.5rem, 1vw, 1rem)' }}
           >
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-red-600/20" />
-            <span className="text-red-700 shrink-0" style={{ fontSize: 'clamp(0.875rem, 1.5vw, 1.25rem)' }}>{stat.icon}</span>
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-accent/35" />
+            <span className="text-accent-strong shrink-0" style={{ fontSize: 'clamp(0.875rem, 1.5vw, 1.25rem)' }}>{stat.icon}</span>
             <div className="flex flex-col min-w-0" style={{ gap: 'clamp(0.125rem, 0.3vw, 0.25rem)' }}>
-              <span className="font-mono font-semibold uppercase text-neutral-400 whitespace-nowrap" style={{ fontSize: 'clamp(0.5rem, 0.9vw, 0.75rem)', letterSpacing: 'clamp(0.05em, 0.15vw, 0.15em)' }}>{stat.label}</span>
-              <span className="font-mono font-bold text-white leading-none" style={{ fontSize: 'clamp(1rem, 2vw, 1.5rem)' }}>{stat.value}</span>
+              <span className="font-mono font-semibold uppercase text-text-muted whitespace-nowrap" style={{ fontSize: 'clamp(0.5rem, 0.9vw, 0.75rem)', letterSpacing: 'clamp(0.05em, 0.15vw, 0.15em)' }}>{stat.label}</span>
+              <span className="font-mono font-bold text-text leading-none" style={{ fontSize: 'clamp(1rem, 2vw, 1.5rem)' }}>{stat.value}</span>
             </div>
           </div>
         ))}
@@ -179,10 +179,10 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
 
       {showEmptyState && (
         <div className="flex flex-col items-center gap-2 mt-4 animate-fade-in">
-          <p className="font-mono text-sm tracking-[0.2em] uppercase text-neutral-500">
+          <p className="font-mono text-sm tracking-[0.2em] uppercase text-text-muted">
             [ make your first recording ]
           </p>
-          <svg className="h-5 w-5 text-red-600/60 animate-bounce" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+          <svg className="h-5 w-5 text-accent/60 animate-bounce" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3" />
           </svg>
         </div>
@@ -198,12 +198,14 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
             onClick={isRecording ? stopRecording : startRecording}
             disabled={recordingState === 'transcribing'}
             aria-label={isRecording ? 'Stop recording' : recordingState === 'transcribing' ? 'Transcribing in progress' : 'Start recording'}
-            className={`btn-noise relative flex h-[134px] w-[134px] items-center justify-center rounded-full border-2 bg-zinc-950 ${
+            className={`btn-noise relative flex h-24 w-24 items-center justify-center rounded-full border-2 bg-bg ${
               isRecording ? 'animate-rec-glitch' : showEmptyState ? 'animate-first-run-glow' : ''
-            } ${recordingState === 'transcribing' ? 'cursor-not-allowed' : 'hover:bg-zinc-900/80'}`}
+            } ${recordingState === 'transcribing' ? 'cursor-not-allowed' : 'hover:bg-surface'}`}
             style={{
-              borderColor: recordingState === 'transcribing' ? '#27272a' : '#DC2626',
+              borderColor: recordingState === 'transcribing' ? 'var(--color-border)' : 'var(--color-accent)',
               opacity: recordingState === 'transcribing' ? 0.4 : 1,
+              // Quiet glow at rest; the recording and first-run keyframes animate their own box-shadow
+              boxShadow: !isRecording && !showEmptyState && recordingState !== 'transcribing' ? 'var(--shadow-glow-accent)' : undefined,
               transition: 'border-color 300ms, opacity 300ms, box-shadow 500ms',
             }}
           >
@@ -211,14 +213,14 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
               !isRecording && recordingState !== 'transcribing' ? 'opacity-100' : 'opacity-0'
             }`}>
               <svg className="h-full w-full" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="9" fill="#DC2626" />
+                <circle cx="12" cy="12" r="8" fill="var(--color-accent)" />
               </svg>
             </div>
 
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
               isRecording ? 'opacity-100' : 'opacity-0'
             }`}>
-              <svg className="h-11 w-11 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="h-8 w-8 text-text" fill="currentColor" viewBox="0 0 24 24">
                 <rect x="6" y="6" width="12" height="12" rx="2" />
               </svg>
             </div>
@@ -226,7 +228,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
             <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${
               recordingState === 'transcribing' ? 'opacity-100' : 'opacity-0'
             }`}>
-              <svg className="h-10 w-10 text-zinc-500 animate-spin" fill="none" viewBox="0 0 24 24">
+              <svg className="h-8 w-8 text-text-dim animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z" />
               </svg>
@@ -235,14 +237,14 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
         </div>
 
         <div className="flex flex-col items-center gap-2" aria-live="polite" aria-atomic="true">
-          <p key={`${recordingState}-${isRecording}`} className="font-mono text-base font-semibold tracking-[0.25em] uppercase text-neutral-300 animate-fade-in">
+          <p key={`${recordingState}-${isRecording}`} className="font-mono text-base font-semibold tracking-[0.25em] uppercase text-text animate-fade-in">
             {recordingState === 'transcribing'
               ? '[ TRANSCRIBING... ]'
               : isRecording
               ? '[ RECORDING ]'
               : '[ CLICK TO RECORD ]'}
           </p>
-          <p key={`sub-${isRecording}`} className="font-mono text-sm text-neutral-600 tracking-widest animate-fade-in">
+          <p key={`sub-${isRecording}`} className="font-mono text-sm text-text-muted tracking-widest animate-fade-in">
             {isRecording ? 'click to stop' : toggleShortcut.replace(/\+/g, ' + ')}
           </p>
         </div>
@@ -250,7 +252,7 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
 
       {recentEntries.length > 0 && (
         <div className="mx-auto w-full max-w-xl px-6 flex-1 min-h-0 flex flex-col animate-fade-in">
-          <p className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-neutral-600 mb-2 shrink-0">Recent</p>
+          <p className="font-mono text-xs font-semibold uppercase tracking-[0.2em] text-text-muted mb-2 shrink-0">Recent</p>
           <div className="flex flex-col gap-1.5 overflow-y-auto min-h-0">
             {recentEntries.map((entry) => {
               const isNew = entry.id === newEntryId;
@@ -259,15 +261,15 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
                 key={entry.id}
                 onClick={() => navigator.clipboard.writeText(entry.text)}
                 onAnimationEnd={isNew ? () => setNewEntryId(null) : undefined}
-                className={`group flex items-center gap-3 rounded-lg border border-neutral-800 bg-[#141414] px-4 py-2.5 text-left transition-colors hover:border-neutral-700 hover:bg-[#1A1A1A] shrink-0 ${isNew ? 'animate-entry-new' : ''}`}
+                className={`group flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-hover shrink-0 ${isNew ? 'animate-entry-new' : ''}`}
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-sm text-neutral-300 group-hover:text-neutral-100 transition-colors">
+                  <p className="truncate text-[13px] text-text-muted group-hover:text-text transition-colors">
                     {entry.text}
                   </p>
-                  <p className="font-mono text-xs text-neutral-600 mt-0.5">
+                  <p className="font-mono text-xs text-text-muted mt-0.5">
                     {new Date(entry.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    {entry.appName && <span className="ml-2 text-neutral-700">{entry.appName}</span>}
+                    {entry.appName && <span className="ml-2 text-text-dim">{entry.appName}</span>}
                   </p>
                 </div>
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity">

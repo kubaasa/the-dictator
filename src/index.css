@@ -21,6 +21,22 @@
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'Inter', system-ui, sans-serif;
 
+  /* Main window, dark theme only (the camera look does not translate to a light surface) */
+  --color-bg: #0a0a0a;
+  --color-surface: #141414;
+  --color-surface-hover: #1a1a1a;
+  --color-border: #262626;
+  --color-border-strong: #404040;
+  --color-text: #f5f5f5;
+  --color-text-muted: #a3a3a3;
+  --color-text-dim: #8a8a8a;
+  --color-accent: #dc2626;
+  --color-accent-strong: #ef4444;
+  --color-accent-soft: rgb(220 38 38 / 0.05);
+  --color-ok: #22c55e;
+  --color-ok-text: #4ade80;
+  --shadow-glow-accent: 0 0 24px rgb(220 38 38 / 0.22), 0 0 48px rgb(220 38 38 / 0.08);
+
   /* Overlay widget: always dark, independent of the app theme (it floats over terminals) */
   --color-widget-surface: rgb(16 17 20 / 0.94);
   --color-widget-border: rgb(255 255 255 / 0.14);
@@ -147,7 +163,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid rgba(220, 38, 38, 0.5);
+  outline: 2px solid color-mix(in oklab, var(--color-accent) 50%, transparent);
   outline-offset: 2px;
 }
 
