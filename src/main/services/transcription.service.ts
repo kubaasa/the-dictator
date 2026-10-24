@@ -399,8 +399,10 @@ export class TranscriptionService {
     if (this.transcriptionCount % TranscriptionService.PIPELINE_RESET_INTERVAL === 0) {
       this.pipe = null;
       this.loadedModelId = null;
-      // loadFromCache() guards against concurrent loads via loadingPromise — don't null it here
-      this.loadFromCache().catch((e) => log.warn('Background model reload failed:', e));
+      // loadFromCache() guards against concurrent loads via loadingPromise — don't null it here.
+      // Reload the model that actually ran (fallback included), not the selected one: without
+      // the override this kicked off a background download of an undownloaded selection.
+      this.loadFromCache(modelId).catch((e) => log.warn('Background model reload failed:', e));
     }
 
     return text;
