@@ -114,6 +114,25 @@ class RecorderProcessor extends AudioWorkletProcessor {
 registerProcessor('recorder-processor', RecorderProcessor);
 `;
 
+const recLog = log.scope('Recorder');
+
+// ~18% of recordings ended with zero worklet samples and no error in the logs. Diagnostics
+// below (track/context one-liners, watchdog, empty-stop summary) exist so the next occurrence
+// explains itself in main.log instead of silently going idle.
+const PIPELINE_WATCHDOG_MS = 1500;
+
+function describeTrack(track: MediaStreamTrack | undefined): string {
+  if (!track) return 'track=none';
+  const s = track.getSettings();
+  return `track="${track.label}" state=${track.readyState} muted=${track.muted} enabled=${track.enabled}`
+    + ` rate=${s.sampleRate ?? '?'} aec=${s.echoCancellation ?? '?'} ns=${s.noiseSuppression ?? '?'}`;
+}
+
+function describeCtx(ctx: AudioContext | null): string {
+  if (!ctx) return 'ctx=none';
+  return `ctx=${ctx.state} time=${ctx.currentTime.toFixed(3)} rate=${ctx.sampleRate} latency=${ctx.baseLatency.toFixed(4)}`;
+}
+
 function classifyMicError(err: unknown): string {
   if (err instanceof DOMException) {
     switch (err.name) {
@@ -161,6 +180,16 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
   const persistentCtxRef = useRef<AudioContext | null>(null);
   const workletReadyRef = useRef(false);
 
+  const levelCountRef = useRef(0);
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearWatchdog() {
+    if (watchdogRef.current) {
+      clearTimeout(watchdogRef.current);
+      watchdogRef.current = null;
+    }
+  }
+
   // Race condition guards for push-to-talk — sessionIdRef is a monotonic counter.
   // After every await in startRecording, we check if the session is still current.
   // If not, the setup was superseded (e.g. cancel during getUserMedia) and we bail out.
@@ -182,6 +211,7 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
   // Used by both cancelRecording and the no-input handler to avoid duplicated logic.
   function teardownRecording() {
     sessionIdRef.current++;
+    clearWatchdog();
     isRecordingRef.current = false;
     isSettingUpRef.current = false;
     pendingStopRef.current = false;
@@ -255,9 +285,24 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
       try { await persistentCtxRef.current.close(); } catch { /* ignore */ }
     }
 
-    const ctx = new AudioContext({ sampleRate: 16000 });
+    // sinkId 'none': render on a timer, detached from any output device. The default sink
+    // follows the system output endpoint, which changes mid-start on Bluetooth headsets
+    // (A2DP→HFP switch triggered by opening the mic) — a context created in that window never
+    // started rendering, so the worklet produced zero samples and the recording went idle.
+    // TS 4.5 lib.dom predates AudioContextOptions.sinkId, hence the cast.
+    let ctx: AudioContext;
+    try {
+      ctx = new AudioContext({ sampleRate: 16000, sinkId: { type: 'none' } } as AudioContextOptions);
+    } catch (sinkErr) {
+      recLog.warn('AudioContext with sinkId none failed, falling back to default sink:', sinkErr);
+      ctx = new AudioContext({ sampleRate: 16000 });
+    }
     persistentCtxRef.current = ctx;
     workletReadyRef.current = false;
+
+    ctx.addEventListener('statechange', () => recLog.info('context statechange:', describeCtx(ctx)));
+    ctx.addEventListener('error', (ev) => recLog.error('context error event:', ev, describeCtx(ctx)));
+    recLog.info('context created:', describeCtx(ctx));
 
     const blob = new Blob([WORKLET_PROCESSOR_CODE], { type: 'application/javascript' });
     const workletUrl = URL.createObjectURL(blob);
@@ -394,6 +439,14 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
         return;
       }
 
+      const micTrack = stream.getAudioTracks()[0];
+      recLog.info('mic stream acquired:', describeTrack(micTrack));
+      if (micTrack) {
+        micTrack.addEventListener('mute', () => recLog.warn('mic track muted:', describeTrack(micTrack)));
+        micTrack.addEventListener('unmute', () => recLog.info('mic track unmuted:', describeTrack(micTrack)));
+        micTrack.addEventListener('ended', () => recLog.warn('mic track ended:', describeTrack(micTrack)));
+      }
+
       recordingIdRef.current = Date.now().toString();
       pendingAudioRef.current = null;
       pendingResultIdRef.current = null;
@@ -463,6 +516,7 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
         if (e.data.type === 'audio') {
           chunksRef.current.push(e.data.samples);
         } else if (e.data.type === 'level') {
+          levelCountRef.current++;
           window.dictator.sendVoiceActivity(e.data.level, e.data.bands ? Array.from(e.data.bands) : undefined);
         } else if (e.data.type === 'no-input') {
           log.warn('AudioWorklet: no audio input detected — mic may have been taken by another app');
@@ -482,6 +536,24 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
       source.connect(workletNode);
       workletNode.connect(silentGain);
       silentGain.connect(audioContext.destination);
+
+      levelCountRef.current = 0;
+      const wiredCtx = audioContext;
+      const wiredTime = wiredCtx.currentTime;
+      recLog.info('pipeline wired:', describeCtx(wiredCtx));
+      // Dead-pipeline detector: a healthy 16kHz context advances currentTime and posts
+      // ~90 level messages in 1.5s. Log only — evidence first, recovery once the cause is proven.
+      clearWatchdog();
+      watchdogRef.current = setTimeout(() => {
+        watchdogRef.current = null;
+        if (sessionIdRef.current !== thisSession || !isRecordingRef.current) return;
+        const advanced = wiredCtx.currentTime - wiredTime;
+        if (advanced < 0.5 || levelCountRef.current === 0) {
+          recLog.warn(`pipeline stalled after ${PIPELINE_WATCHDOG_MS}ms: advanced=${advanced.toFixed(3)}s`
+            + ` levels=${levelCountRef.current} chunks=${chunksRef.current.length}`,
+            describeCtx(wiredCtx), describeTrack(mediaStreamRef.current?.getAudioTracks()[0]));
+        }
+      }, PIPELINE_WATCHDOG_MS);
 
       isSettingUpRef.current = false;
 
@@ -519,11 +591,15 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
 
     if (!isRecordingRef.current) return;
     isRecordingRef.current = false;
+    clearWatchdog();
     setIsRecording(false);
+    const elapsedMs = recordingStartTimeRef.current !== null ? Date.now() - recordingStartTimeRef.current : 0;
     if (recordingStartTimeRef.current !== null) {
-      setLastDurationSeconds((Date.now() - recordingStartTimeRef.current) / 1000);
+      setLastDurationSeconds(elapsedMs / 1000);
       recordingStartTimeRef.current = null;
     }
+    // Snapshot before the tracks are stopped below — afterwards readyState is always 'ended'
+    const stoppedTrackInfo = describeTrack(mediaStreamRef.current?.getAudioTracks()[0]);
     setRecordingStartTime(null);
 
     const snapshotRecordingId = recordingIdRef.current;
@@ -579,6 +655,10 @@ export function useAudioRecorder(deviceId?: string | null, callMode?: boolean): 
     // releases its own mic stream without waiting for the rest of cleanup.
     const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
     const hasAudio = totalLength > 0 && !!audioContext;
+    if (!hasAudio) {
+      recLog.warn(`empty recording: elapsed=${elapsedMs}ms chunks=${chunks.length} levels=${levelCountRef.current}`,
+        describeCtx(audioContext), stoppedTrackInfo);
+    }
     window.dictator.stopRecording(!hasAudio);
 
     if (sourceRef.current) {

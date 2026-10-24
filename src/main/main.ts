@@ -807,7 +807,12 @@ app.on('ready', () => {
     if (details.type === 'GPU') {
       log.warn('GPU process gone (reason=%s) — scheduling overlay compositor recovery', details.reason);
       setTimeout(recoverOverlayCompositor, 1500);
+      return;
     }
+    // Chromium's Audio Service runs as a Utility process — a crash there silently kills
+    // every AudioContext in the renderers, so keep a trace of it in the log.
+    log.warn('child process gone: type=%s name=%s reason=%s exitCode=%s',
+      details.type, details.name ?? details.serviceName ?? '?', details.reason, details.exitCode);
   });
 
   screen.on('display-added', () => {
