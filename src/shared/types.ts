@@ -14,6 +14,8 @@ export interface RecordingEntry {
   id: string;
   date: string;
   text: string;
+  /** Whisper output before vocabulary replacements and AI processing. */
+  rawText?: string;
   wordCount: number;
   /** Word count from raw transcription (before AI processing). Used for accurate stats. */
   rawWordCount: number;

@@ -57,44 +57,101 @@ function looksLikeCliCommand(replacement: string): boolean {
   );
 }
 
-// Single-pass replacement prevents chains (A→B, B→C won't cascade)
-function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]): string {
-  if (!vocabulary || vocabulary.length === 0) return text;
+// Vocabulary input mini-syntax (documented on the Vocabulary page):
+//   "a | b | c"   any of the alternatives triggers the replacement
+//   "komit*"      trailing * matches any word ending; when the replacement also ends
+//                 with *, the spoken ending is kept ("komit*" → "commit*": komita → commita)
+//   spaces between words also match hyphens and repeated spaces ("cloud-dsp", "cloud  dsp")
+interface VocabularyPattern {
+  entry: VocabularyEntry;
+  source: string;
+  keepSuffix: boolean;
+}
 
-  const replacementMap = new Map<string, string>();
-  const patterns: string[] = [];
+const VOCAB_WORD_CHAR = '[\\p{L}\\p{N}_]';
 
+function buildVocabularyPatterns(vocabulary: VocabularyEntry[]): VocabularyPattern[] {
+  const patterns: VocabularyPattern[] = [];
   for (const entry of vocabulary) {
     if (entry.replacement == null) continue;
+    const cli = looksLikeCliCommand(entry.replacement);
+    const replacementKeepsSuffix = entry.replacement.endsWith('*');
 
-    const escaped = entry.input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // \b doesn't work with non-ASCII (Polish etc.) — use whitespace/punctuation boundaries instead
-    // eslint-disable-next-line no-control-regex
-    const hasNonAscii = /[^\x00-\x7F]/.test(entry.input);
-    const basePattern = hasNonAscii
-      ? `(?<=^|[\\s.,;:!?"""''()\\[\\]])${escaped}(?=$|[\\s.,;:!?"""''()\\[\\]])`
-      : `\\b${escaped}\\b`;
+    for (const rawAlt of entry.input.split('|')) {
+      const alt = rawAlt.trim();
+      if (!alt) continue;
+      const wildcard = alt.endsWith('*');
+      const base = wildcard ? alt.slice(0, -1).trim() : alt;
+      if (!base) continue;
 
-    // For CLI-like replacements, consume trailing sentence punctuation as part of the match
-    // so it disappears together with the input fragment.
-    const pattern = looksLikeCliCommand(entry.replacement)
-      ? `${basePattern}[.,!?;:]?`
-      : basePattern;
+      const escapedWords = base
+        .split(/\s+/)
+        .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('[\\s-]+');
+      // Lookarounds instead of \b: \b ignores non-ASCII letters (Polish) and never
+      // matches next to inputs that start/end with symbols ("c++", "@claude").
+      const boundaryStart = `(?<!${VOCAB_WORD_CHAR})`;
+      const boundaryEnd = `(?!${VOCAB_WORD_CHAR})`;
+      const suffix = wildcard ? '(\\p{L}*)' : '';
+      // CLI commands shouldn't carry the sentence-final period Whisper adds from intonation,
+      // but punctuation inside a sentence ("cloud dsp, a potem…") must survive.
+      const trailing = cli ? '(?:[.!?](?=\\s*$))?' : '';
 
-    patterns.push(`(?:${pattern})`);
-    replacementMap.set(entry.input.toLowerCase(), entry.replacement);
+      patterns.push({
+        entry,
+        source: `${boundaryStart}${escapedWords}${suffix}${boundaryEnd}${trailing}`,
+        keepSuffix: wildcard && replacementKeepsSuffix,
+      });
+    }
   }
+  // Longest input first, so "cloud dsp" wins over "cloud" regardless of list order.
+  return patterns.sort((a, b) => b.source.length - a.source.length);
+}
 
+// Mirrors Whisper's sentence-initial capital on plain-word replacements ("Komity" → "Commity"),
+// never on identifiers that are deliberately lowercase (n8n, emails, CLI flags).
+function matchCapitalization(matched: string, replacement: string): string {
+  if (!/^\p{Lu}/u.test(matched)) return replacement;
+  if (!/^\p{Ll}[\p{L}\s]*$/u.test(replacement)) return replacement;
+  return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+}
+
+// Single pass over the text with one combined regex: each position is visited once,
+// so replacements never chain (A→B, B→C). Returns the applied entries for logging.
+function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]): string {
+  if (!vocabulary || vocabulary.length === 0) return text;
+  const patterns = buildVocabularyPatterns(vocabulary);
   if (patterns.length === 0) return text;
 
-  // Combined regex — each match position visited only once, no chaining
-  const combinedRegex = new RegExp(patterns.join('|'), 'gi');
-  return text.replace(combinedRegex, (match) => {
-    // Strip trailing punctuation that the CLI pattern may have consumed,
-    // so the lookup key matches entry.input (normal patterns don't capture it).
-    const normalized = match.replace(/[.,!?;:]$/, '').toLowerCase();
-    return replacementMap.get(normalized) ?? match;
+  // Each alternative gets its own named group (m<i>) and, for wildcards, a suffix group (s<i>)
+  // — the only way to learn which alternative fired inside a combined alternation.
+  const source = patterns
+    .map((p, i) => `(?<m${i}>${p.source.replace('(\\p{L}*)', `(?<s${i}>\\p{L}*)`)})`)
+    .join('|');
+  const combined = new RegExp(source, 'giu');
+
+  const applied = new Map<string, number>();
+  const result = text.replace(combined, (...args: unknown[]) => {
+    const groups = args[args.length - 1] as Record<string, string | undefined>;
+    const matched = args[0] as string;
+    const index = patterns.findIndex((_, i) => groups[`m${i}`] !== undefined);
+    if (index === -1) return matched;
+
+    const { entry, keepSuffix } = patterns[index];
+    let replacement = entry.replacement as string;
+    if (replacement.endsWith('*')) replacement = replacement.slice(0, -1);
+    if (keepSuffix) replacement += groups[`s${index}`] ?? '';
+
+    const key = `"${entry.input}" → "${entry.replacement}"`;
+    applied.set(key, (applied.get(key) ?? 0) + 1);
+    return matchCapitalization(matched, replacement);
   });
+
+  if (applied.size > 0) {
+    const summary = [...applied.entries()].map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(', ');
+    log.info('Vocabulary: %d replacement(s) applied: %s', [...applied.values()].reduce((a, b) => a + b, 0), summary);
+  }
+  return result;
 }
 
 export function getOverlaySize(widget: WidgetType): [number, number] {
@@ -475,11 +532,15 @@ export function registerIpcHandlers(
       }
 
       broadcastState('processing');
+      // Vocabulary runs before AI so the model sees the intended spellings instead of
+      // "correcting" the trigger phrase; a second pass only if the model rewrote the text.
+      const vocabEntries = (store.get('vocabulary') as VocabularyEntry[]) ?? [];
+      const vocabText = applyVocabularyReplacements(rawText, vocabEntries);
       let text: string;
       try {
         let aiTimeoutId: ReturnType<typeof setTimeout>;
         text = await Promise.race([
-          aiService.process(rawText).then((result) => {
+          aiService.process(vocabText).then((result) => {
             clearTimeout(aiTimeoutId);
             return result;
           }),
@@ -489,15 +550,15 @@ export function registerIpcHandlers(
         ]);
       } catch (aiErr) {
         log.warn('AI processing failed, using raw text:', aiErr);
-        text = rawText;
+        text = vocabText;
         const aiMsg = formatApiError(aiErr);
         for (const win of BrowserWindow.getAllWindows()) {
           win.webContents.send(IPC.NOTIFICATION_ERROR, `AI processing failed: ${aiMsg} Using raw transcription.`);
         }
       }
-
-      const vocabEntries = (store.get('vocabulary') as VocabularyEntry[]) ?? [];
-      text = applyVocabularyReplacements(text, vocabEntries);
+      if (text !== vocabText) {
+        text = applyVocabularyReplacements(text, vocabEntries);
+      }
 
       // Capture the focused window FIRST — before any Electron UI operations
       // (broadcastState, clipboard, scheduleIdle) that may shift OS focus.
@@ -544,6 +605,7 @@ export function registerIpcHandlers(
         id: entryId,
         date: new Date().toISOString(),
         text,
+        rawText,
         wordCount,
         rawWordCount,
         durationSeconds,

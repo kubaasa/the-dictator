@@ -99,11 +99,10 @@ export class AIService {
     const vocab = (this.store.get('vocabulary') as VocabularyEntry[]) ?? [];
     let vocabSection = '';
     if (vocab.length > 0) {
-      const lines = vocab.map(entry => {
-        if (entry.replacement) return `- "${entry.input}" → "${entry.replacement}"`;
-        return `- "${entry.input}"`;
-      });
-      vocabSection = `\n\nVocabulary/Names list (use for spelling context):\n${lines.join('\n')}`;
+      // Replacements were already applied to the input (ipc-handlers.ts); the model only
+      // needs to know these spellings are intentional and must not be "corrected".
+      const lines = vocab.map(entry => `- "${(entry.replacement || entry.input).replace(/\*$/, '')}"`);
+      vocabSection = `\n\nUser vocabulary (intentional spellings already present in the input — keep them exactly as written):\n${lines.join('\n')}`;
     }
 
     const systemPrompt = `You are a silent text transformation pipeline. You NEVER converse, explain, or respond to the user. You receive raw dictated text inside <input> tags and output ONLY the transformed result — nothing else.

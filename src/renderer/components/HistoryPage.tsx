@@ -145,6 +145,20 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
             </p>
           </div>
 
+          {entry.rawText && entry.rawText !== entry.text && (
+            <div className="mx-5 border-t border-neutral-800/30 py-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
+                  Whisper raw
+                </span>
+                <CopyButton text={entry.rawText} iconOnly />
+              </div>
+              <p className="font-mono text-xs text-neutral-500 leading-relaxed max-h-32 overflow-y-auto select-text whitespace-pre-wrap">
+                {entry.rawText}
+              </p>
+            </div>
+          )}
+
           {deleteError && (
             <div className="mx-5 px-0 py-1.5 text-sm text-red-400" role="alert">
               {deleteError}

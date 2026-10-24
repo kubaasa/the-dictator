@@ -119,7 +119,8 @@ export function VocabularyPage() {
       <section>
         <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-1">Vocabulary</h2>
         <p className="text-sm text-neutral-500 mb-4">
-          This helps The Dictator recognize people&apos;s names, company names, acronyms, slang, or words from other languages.
+          Replaces phrases in the transcript after Whisper has run. Put in the left field exactly what Whisper
+          writes (see &quot;Whisper raw&quot; in History), and in the right field what you want instead.
         </p>
         <div className="text-xs text-neutral-600 mb-6">
           <span className="block text-neutral-500 font-medium mb-2">Examples:</span>
@@ -212,7 +213,7 @@ export function VocabularyPage() {
                   <>
                     <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
                       <span className="truncate font-mono text-neutral-200">{entry.input}</span>
-                      {entry.replacement != null && (
+                      {entry.replacement != null ? (
                         <>
                           <span className="flex-shrink-0 text-neutral-600">&rarr;</span>
                           {entry.replacement ? (
@@ -221,6 +222,8 @@ export function VocabularyPage() {
                             <span className="truncate font-mono text-neutral-500 italic">(remove)</span>
                           )}
                         </>
+                      ) : (
+                        <span className="truncate font-mono text-neutral-600 italic">(no replacement — inactive, click edit)</span>
                       )}
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-2">

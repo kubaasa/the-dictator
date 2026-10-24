@@ -40,6 +40,7 @@ export class HistoryService {
         text TEXT NOT NULL,
         word_count INTEGER DEFAULT 0,
         raw_word_count INTEGER DEFAULT 0,
+        raw_text TEXT,
         duration_seconds REAL DEFAULT 0,
         app_name TEXT,
         audio_path TEXT,
@@ -68,6 +69,9 @@ export class HistoryService {
       target.exec('ALTER TABLE recordings ADD COLUMN raw_word_count INTEGER DEFAULT 0');
       target.exec('UPDATE recordings SET raw_word_count = word_count WHERE raw_word_count = 0');
     }
+    if (!columns.some((c) => c.name === 'raw_text')) {
+      target.exec('ALTER TABLE recordings ADD COLUMN raw_text TEXT');
+    }
   }
 
   add(entry: RecordingEntry): void {
@@ -76,12 +80,13 @@ export class HistoryService {
     log.debug('Adding entry:', entry.id);
     this.db.prepare(`
       INSERT OR REPLACE INTO recordings
-        (id, date, text, word_count, raw_word_count, duration_seconds, app_name, audio_path, mode)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, date, text, raw_text, word_count, raw_word_count, duration_seconds, app_name, audio_path, mode)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       entry.id,
       entry.date,
       entry.text,
+      entry.rawText ?? null,
       entry.wordCount,
       entry.rawWordCount,
       entry.durationSeconds,
@@ -268,6 +273,7 @@ export class HistoryService {
       id,
       date,
       text,
+      rawText: (row.raw_text as string | null) ?? undefined,
       wordCount,
       rawWordCount: typeof row.raw_word_count === 'number' ? row.raw_word_count : wordCount,
       durationSeconds: typeof row.duration_seconds === 'number' ? row.duration_seconds : 0,
