@@ -1,180 +1,110 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { RecordingState } from '../../../shared/types';
+import { formatShortcut } from './keys';
 
 interface VoiceBarProps {
   voiceLevel: number;
   state: RecordingState;
   errorMessage?: string;
+  shortcut?: string;
   onToggleRecording?: () => void;
+  /** Render inline without IPC drag or the full-window hit zone (WidgetPage preview). */
+  preview?: boolean;
+  /** Preview only: show the hover content without a real pointer. */
+  forceHover?: boolean;
 }
 
-const BAR_COUNT = 6;
-const BASE_COLOR = 'rgba(255,255,255,0.85)';
-const ERROR_COLOR = '#DC2626';
+const BAR_COUNT = 9;
 const MIN_BAR_H = 2;
 const MAX_BAR_H = 24;
+const DOT_COUNT = 5;
+
+// Main switches done -> idle after 400 ms; the paste confirmation stays readable a bit longer
+const DONE_HOLD_MS = 1200;
+// A press that moves less than this before release is a click, not a drag
+const CLICK_TOLERANCE_PX = 4;
 
 const LERP_ATTACK  = 0.75;
 const LERP_RELEASE = 0.18;
 
-const HANNING_WEIGHTS = Array.from({ length: BAR_COUNT }, () => 1.0);
-
-const IDLE_SCALES = HANNING_WEIGHTS.map(w =>
-  ((MIN_BAR_H + w * 3) / MAX_BAR_H).toFixed(4)
-);
-
-const CASCADE_PEAK_SCALE = (MAX_BAR_H * 0.7 / MAX_BAR_H).toFixed(4);
-const CASCADE_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) =>
-  (i * 0.05).toFixed(3)
-);
-const CASCADE_DELAYS_REV = Array.from({ length: BAR_COUNT }, (_, i) =>
-  ((BAR_COUNT - 1 - i) * 0.05).toFixed(3)
-);
-
-const PROX_V = 20;
-const PROX_H = 30;
+// Hit-zone padding around the 168x36 pill fills the 210x62 overlay window
+const PROX_V = 13;
+const PROX_H = 21;
 
 const BARS = Array.from({ length: BAR_COUNT }, (_, i) => {
-  const norm = i / (BAR_COUNT - 1);
-  const dist = Math.abs(norm - 0.5) * 2;
-
+  const dist = Math.abs(i / (BAR_COUNT - 1) - 0.5) * 2;
   const envelope = 1 - Math.pow(dist, 1.8) * 0.55;
-
   const seed = Math.sin(i * 127.1 + 311.7) * 43758.5453;
   const rand = seed - Math.floor(seed);
-
-  const multiplier = 0.75 + rand * 0.25;
-  const jitter = 0.95 + rand * 0.1;
-  const idleScale = (0.08 + envelope * 0.07).toFixed(3);
-
-  return { envelope, multiplier, rand, jitter, idleScale };
+  return { rand, multiplier: (0.75 + rand * 0.25) * envelope };
 });
 
-const KEYFRAMES = `
-@keyframes vb-wave {
-  0%, 100% { transform: scaleY(0.15); }
-  50%      { transform: scaleY(0.85); }
-}
-@keyframes vb-error-shake {
-  0%        { transform: translateX(0); }
-  20%       { transform: translateX(4px); }
-  40%       { transform: translateX(-4px); }
-  60%       { transform: translateX(3px); }
-  80%, 100% { transform: translateX(0); }
-}
-@keyframes vb-cascade {
-  0%   { transform: scaleY(0.05) translateZ(0); opacity: 0; }
-  20%  { opacity: 1; }
-  45%  { transform: scaleY(var(--cascade-peak, 0.7)) translateZ(0); }
-  100% { transform: scaleY(var(--init-idle, 0.21)) translateZ(0); opacity: 0.88; }
-}
-@keyframes vb-error-flicker {
-  0%, 12%, 40%, 57%, 74%, 90%, 100% { opacity: 1; }
-  3%  { opacity: 0.4; }
-  6%  { opacity: 0.9; }
-  9%  { opacity: 0.3; }
-  55% { opacity: 0.7; }
-  72% { opacity: 0.4; }
-  92% { opacity: 0.6; }
-}
-@keyframes vb-processing-pulse {
-  0%, 100% { opacity: 0.5; }
-  50%      { opacity: 1; }
-}
-`;
+const DOTS = Array.from({ length: DOT_COUNT }, (_, i) => i);
 
-type AnimPhase = 'idle' | 'entering' | 'active' | 'exiting';
+const REST_SCALE = (MIN_BAR_H / MAX_BAR_H).toFixed(4);
 
-export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }: VoiceBarProps) {
-  const barWidth = 3;
-  const gap      = 3;
+type Visual = 'idle' | 'hover' | 'bars' | 'processing' | 'done' | 'error';
 
+const BORDER_CLASS: Record<Visual, string> = {
+  idle: 'border-widget-border',
+  bars: 'border-widget-border',
+  processing: 'border-widget-border',
+  hover: 'border-widget-border-strong',
+  done: 'border-widget-ok/45',
+  error: 'border-widget-error/75',
+};
+
+const ARIA_LABEL: Record<Visual, string> = {
+  idle: 'Start recording',
+  hover: 'Start recording',
+  bars: 'Stop recording',
+  processing: 'Processing',
+  done: 'Pasted',
+  error: 'Error',
+};
+
+export function VoiceBar({
+  voiceLevel, state, errorMessage, shortcut, onToggleRecording, preview = false, forceHover = false,
+}: VoiceBarProps) {
   const isInitializing = state === 'initializing';
   const isRecording    = state === 'recording';
   const isTranscribing = state === 'transcribing' || state === 'processing';
   const isDone         = state === 'done';
   const isError        = state === 'error';
-  const isIdle         = !isInitializing && !isRecording && !isTranscribing && !isDone && !isError;
+  const isIdle         = state === 'idle';
 
   const [isProximate, setIsProximate] = useState(false);
+  const [holdDone, setHoldDone] = useState(false);
 
-  const [errorFlash, setErrorFlash] = useState(false);
-  const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
-  const [cascadeKey, setCascadeKey] = useState(0);
+  const leaveTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doneTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragMouseUpRef = useRef<((e: MouseEvent) => void) | null>(null);
+  const pressRef       = useRef<{ x: number; y: number } | null>(null);
 
-  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dragMouseUpRef = useRef<(() => void) | null>(null);
-  const errorFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevIsActiveRef = useRef(false);
-  const animTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const isActive = isInitializing || isRecording || isTranscribing || isError;
-
-  // Sticky state: remember last content during exit animation to prevent flash
-  const wasErrorRef = useRef(false);
-  const wasProcessingRef = useRef(false);
-
-  if (isActive && !prevIsActiveRef.current) {
-    wasErrorRef.current = false;
-    wasProcessingRef.current = false;
-  }
-  if (isError) wasErrorRef.current = true;
-  if (isTranscribing) wasProcessingRef.current = true;
-
-  const isExiting = animPhase === 'exiting';
-  const showError = isError || (wasErrorRef.current && isExiting);
-  const showProcessing = isTranscribing || (!showError && wasProcessingRef.current && isExiting);
+  const toggleableRef = useRef(false);
+  toggleableRef.current = isIdle || isRecording;
+  const toggleRef = useRef(onToggleRecording);
+  toggleRef.current = onToggleRecording;
 
   useEffect(() => {
-    const wasActive = prevIsActiveRef.current;
-    prevIsActiveRef.current = isActive;
-
-    if (animTimerRef.current) {
-      clearTimeout(animTimerRef.current);
-      animTimerRef.current = null;
-    }
-
-    if (isActive && (!wasActive || animPhase === 'exiting')) {
-      setAnimPhase('entering');
-      animTimerRef.current = setTimeout(() => setAnimPhase('active'), 270);
-    } else if (!isActive && wasActive) {
-      setAnimPhase('exiting');
-      animTimerRef.current = setTimeout(() => setAnimPhase('idle'), 250);
-    }
-
-    return () => {
-      if (animTimerRef.current) {
-        clearTimeout(animTimerRef.current);
-        animTimerRef.current = null;
-      }
-    };
-  }, [isActive]);
-
-  useEffect(() => {
-    if (isInitializing) setCascadeKey(k => k + 1);
-  }, [isInitializing]);
-
-  // Expand on error — show error for 3s then collapse
-  useEffect(() => {
-    if (isError) {
-      setErrorFlash(true);
-      errorFlashTimer.current = setTimeout(() => setErrorFlash(false), 3000);
-    } else {
-      setErrorFlash(false);
-    }
-    return () => { if (errorFlashTimer.current) clearTimeout(errorFlashTimer.current); };
-  }, [isError]);
-
-  useEffect(() => {
-    if (isDone) setIsProximate(false);
+    if (!isDone) return;
+    setHoldDone(true);
+    if (doneTimer.current) clearTimeout(doneTimer.current);
+    doneTimer.current = setTimeout(() => {
+      doneTimer.current = null;
+      setHoldDone(false);
+    }, DONE_HOLD_MS);
   }, [isDone]);
 
-  const barElemsRef   = useRef<(HTMLDivElement | null)[]>([]);
-  const smoothedRef   = useRef<Float32Array>(new Float32Array(BAR_COUNT).fill(MIN_BAR_H));
-  const voiceLevelRef = useRef(0);
-  const rafRef        = useRef<number>(0);
+  const hover = preview ? forceHover : isProximate;
+  const showDone = (isDone || holdDone) && !isInitializing && !isRecording && !isTranscribing && !isError;
 
-  useEffect(() => { voiceLevelRef.current = voiceLevel; }, [voiceLevel]);
+  const visual: Visual = isError ? 'error'
+    : showDone ? 'done'
+    : isTranscribing ? 'processing'
+    : (isInitializing || isRecording) ? 'bars'
+    : hover ? 'hover'
+    : 'idle';
 
   const handleEnter = useCallback(() => {
     if (leaveTimer.current) { clearTimeout(leaveTimer.current); leaveTimer.current = null; }
@@ -193,31 +123,46 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
   useEffect(() => {
     return () => {
       if (leaveTimer.current) clearTimeout(leaveTimer.current);
+      if (doneTimer.current) clearTimeout(doneTimer.current);
       if (dragMouseUpRef.current) {
         document.removeEventListener('mouseup', dragMouseUpRef.current);
         dragMouseUpRef.current = null;
       }
-      window.dictator.widgetDragEnd();
+      if (!preview) window.dictator.widgetDragEnd();
     };
-  }, []);
+  }, [preview]);
 
-  const handleWrapperMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+  // One gesture for the whole pill: drag moves the window, a release without movement toggles recording
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (preview) return;
 
-    const offsetX = e.screenX - window.screenX;
-    const offsetY = e.screenY - window.screenY;
-    window.dictator.widgetDragStart(offsetX, offsetY);
+    pressRef.current = { x: e.screenX, y: e.screenY };
+    window.dictator.widgetDragStart(e.screenX - window.screenX, e.screenY - window.screenY);
 
-    const onUp = () => {
+    const onUp = (ev: MouseEvent) => {
       window.dictator.widgetDragEnd();
       document.removeEventListener('mouseup', onUp);
       dragMouseUpRef.current = null;
+
+      const press = pressRef.current;
+      pressRef.current = null;
+      const moved = !press
+        || Math.abs(ev.screenX - press.x) > CLICK_TOLERANCE_PX
+        || Math.abs(ev.screenY - press.y) > CLICK_TOLERANCE_PX;
+      if (!moved && toggleableRef.current) toggleRef.current?.();
     };
 
     dragMouseUpRef.current = onUp;
     document.addEventListener('mouseup', onUp);
-  }, []);
+  }, [preview]);
+
+  const barElemsRef   = useRef<(HTMLDivElement | null)[]>([]);
+  const smoothedRef   = useRef<Float32Array>(new Float32Array(BAR_COUNT).fill(MIN_BAR_H));
+  const voiceLevelRef = useRef(0);
+  const rafRef        = useRef<number>(0);
+
+  useEffect(() => { voiceLevelRef.current = voiceLevel; }, [voiceLevel]);
 
   // Voice-level driven visualization — uses IPC voiceLevel from the recording worklet
   // instead of opening a second mic stream (which blocks on many Windows audio drivers).
@@ -249,9 +194,7 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
       for (let i = 0; i < BAR_COUNT; i++) {
         const el = barElemsRef.current[i];
         if (el) {
-          const scaleY = (smoothedRef.current[i] / MAX_BAR_H).toFixed(4);
-          el.style.transform = `scaleY(${scaleY}) translateZ(0)`;
-          el.style.transition = 'none';
+          el.style.transform = `scaleY(${(smoothedRef.current[i] / MAX_BAR_H).toFixed(4)}) translateZ(0)`;
           el.style.animation = 'none';
         }
       }
@@ -266,211 +209,117 @@ export function VoiceBar({ voiceLevel, state, errorMessage, onToggleRecording }:
     };
   }, [isRecording]);
 
-  const isExpanded = isProximate || isInitializing || isRecording || isTranscribing || isDone || errorFlash;
+  // Idle collapses to a 64x8 sliver; expanding is quick, collapsing after the pointer leaves is slower
+  const collapsed = visual === 'idle';
+  const pillClass = [
+    'flex items-center justify-center overflow-hidden rounded-full border bg-widget-surface shadow-widget',
+    'transition-[width,height,opacity,border-color] ease-out',
+    collapsed ? 'h-2 w-16 opacity-60' : 'h-9 w-[168px] opacity-100',
+    BORDER_CLASS[visual],
+  ].join(' ');
 
-  const collapsedH = 12;
-  const expandedH  = MAX_BAR_H + gap * 6;
-
-  const pillHeight = isExpanded ? expandedH : collapsedH;
-
-  return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <style>{KEYFRAMES}</style>
-
-      {/* Proximity wrapper: rgba bg forces mouse events on Electron transparent window */}
+  const content = (
+    <div
+      role="button"
+      aria-label={visual === 'error' && errorMessage ? errorMessage : ARIA_LABEL[visual]}
+      title={visual === 'error' ? errorMessage : undefined}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+      onMouseMove={handleMove}
+      onMouseDown={handleMouseDown}
+      className={preview ? 'inline-flex' : 'flex items-center justify-center rounded-full'}
+      // rgba background forces mouse events on an Electron transparent window
+      style={preview ? undefined : { padding: `${PROX_V}px ${PROX_H}px`, background: 'rgba(0,0,0,0.01)', cursor: 'default' }}
+    >
       <div
-        onMouseEnter={handleEnter}
-        onMouseLeave={handleLeave}
-        onMouseMove={handleMove}
-        onMouseDown={handleWrapperMouseDown}
+        className={pillClass}
         style={{
-          padding: `${PROX_V}px ${PROX_H}px`,
-          borderRadius: 9999,
-          background: 'rgba(0,0,0,0.01)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'default',
+          WebkitAppRegion: 'no-drag',
+          transitionDuration: collapsed ? '400ms' : '250ms',
+          animation: isError ? 'widget-shake 300ms ease-in-out' : undefined,
         } as React.CSSProperties}
       >
-        <div
-          style={{
-            position: 'relative',
-            width: 'fit-content',
-            height: pillHeight,
-            borderRadius: 9999,
-            background: 'rgba(10, 10, 10, 0.75)',
-            backdropFilter: 'blur(24px)',
-            WebkitBackdropFilter: 'blur(24px)',
-            border: 'none',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(255,255,255,0.06)',
-            WebkitAppRegion: 'no-drag',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap,
-            overflow: 'hidden',
-            padding: `0 ${gap * 3}px`,
-            boxSizing: 'border-box',
-            transition: 'height 420ms cubic-bezier(0.4, 0, 0.2, 1)',
-            animation: isError ? 'vb-error-shake 0.3s ease-in-out 2' : 'none',
-          } as React.CSSProperties}
-        >
-          {(isIdle || isRecording) && (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'transparent',
-                borderRadius: 9999,
-                pointerEvents: 'none',
-                opacity: isProximate ? 1 : 0,
-                transition: 'opacity 180ms ease, transform 180ms ease',
-                transform: isProximate ? 'scale(1)' : 'scale(0.95)',
-                zIndex: 10,
-              } as React.CSSProperties}
-            >
-              <button
-                onMouseDown={(e) => { e.preventDefault(); onToggleRecording?.(); }}
-                style={{
-                  WebkitAppRegion: 'no-drag',
-                  cursor: 'default',
-                  background: 'transparent',
-                  border: 'none',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  pointerEvents: isProximate ? 'auto' : 'none',
-                } as React.CSSProperties}
-              >
-                {isRecording ? (
-                  <svg width={Math.round(MAX_BAR_H * 0.75)} height={Math.round(MAX_BAR_H * 0.75)} viewBox="0 0 24 24">
-                    <rect x="5" y="5" width="14" height="14" rx="2.5" fill="rgba(255,255,255,0.92)" />
-                  </svg>
-                ) : (
-                  <svg width={Math.round(MAX_BAR_H * 0.75)} height={Math.round(MAX_BAR_H * 0.75)} viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10" fill="none" stroke="#EF4444" strokeWidth="1.5" />
-                    <circle cx="12" cy="12" r="6" fill="#EF4444" />
-                  </svg>
-                )}
-              </button>
+        {!collapsed && (
+        <div key={visual} className="flex items-center justify-center animate-[widget-fade-in_180ms_ease-out]">
+          {visual === 'hover' && (
+            <div className="flex items-center gap-2.5">
+              <MicIcon />
+              {shortcut && (
+                <span className="font-mono text-[11px] text-widget-fg-muted">{formatShortcut(shortcut)}</span>
+              )}
             </div>
           )}
 
-          {showError ? (
-            <div
-              title={errorMessage}
-              aria-label={errorMessage || 'Error'}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0 4px',
-                minWidth: BAR_COUNT * barWidth + (BAR_COUNT - 1) * gap,
-                opacity: isExpanded ? 1 : 0,
-                transition: 'opacity 200ms ease-out',
-                animation: 'vb-error-flicker 2s linear infinite',
-              }}>
-              <svg
-                width={18}
-                height={18}
-                viewBox="0 0 24 24"
-                style={{ flexShrink: 0 }}
-              >
-                <line x1="6" y1="6" x2="18" y2="18" stroke={ERROR_COLOR} strokeWidth={2.5} strokeLinecap="round" />
-                <line x1="18" y1="6" x2="6" y2="18" stroke={ERROR_COLOR} strokeWidth={2.5} strokeLinecap="round" />
-              </svg>
+          {visual === 'bars' && (
+            <div className="flex h-6 items-center gap-[3px]">
+              {BARS.map((_, i) => (
+                <div
+                  key={i}
+                  ref={el => { barElemsRef.current[i] = el; }}
+                  className="w-[3px] rounded-full bg-widget-fg will-change-transform"
+                  style={{
+                    height: MAX_BAR_H,
+                    transformOrigin: 'center',
+                    transform: `scaleY(${REST_SCALE})`,
+                    animation: isInitializing ? `widget-cascade 350ms ease-out ${(i * 0.04).toFixed(2)}s both` : undefined,
+                  }}
+                />
+              ))}
             </div>
-          ) : showProcessing ? (
-            BARS.map((_, i) => (
-              <div
-                key={`proc-${i}-${cascadeKey}`}
-                ref={el => { barElemsRef.current[i] = el; }}
-                style={{
-                  width: barWidth,
-                  height: MAX_BAR_H,
-                  borderRadius: barWidth / 2,
-                  background: BASE_COLOR,
-                  transformOrigin: 'center',
-                  flexShrink: 0,
-                  willChange: 'transform',
-                  backfaceVisibility: 'hidden',
-                  transform: 'scaleY(0.05) translateZ(0)',
-                  animation: `vb-cascade 350ms ease-out ${CASCADE_DELAYS_REV[i]}s both`,
-                  transition: 'none',
-                  opacity: isExpanded ? 0.92 : 0,
-                  '--init-idle': IDLE_SCALES[i],
-                  '--cascade-peak': CASCADE_PEAK_SCALE,
-                } as React.CSSProperties}
-              />
-            ))
-          ) : (
-            BARS.map((bar, i) => {
-                const { idleScale } = bar;
-
-                let transform: string | undefined;
-                let animation = 'none';
-                let transition = 'transform 0.3s ease-out, opacity 180ms ease-out';
-                let barOpacity: number;
-                const barColor = BASE_COLOR;
-
-                if (isInitializing) {
-                  transform = `scaleY(0.05) translateZ(0)`;
-                  animation = `vb-cascade 350ms ease-out ${CASCADE_DELAYS[i]}s both`;
-                  transition = 'none';
-                  barOpacity = 0.92;
-
-                } else if (isIdle) {
-                  transform = `scaleY(${idleScale})`;
-                  barOpacity = 0.88;
-
-                } else if (isRecording) {
-                  transform = `scaleY(${(MIN_BAR_H / MAX_BAR_H).toFixed(4)})`;
-                  // Keep opacity transition for smooth bar reveal when hover ends
-                  transition = 'opacity 180ms ease-out';
-                  barOpacity = 0.92;
-
-                } else if (isDone) {
-                  transform = 'scaleY(0.05)';
-                  barOpacity = 0;
-
-                } else {
-                  transform = 'scaleY(0.3)';
-                  barOpacity = 0.9;
-                }
-
-                const buttonVisible = isProximate && (isIdle || isRecording);
-                const finalOpacity = buttonVisible ? 0 : (isExpanded ? barOpacity : 0);
-
-                return (
-                  <div
-                    key={isInitializing ? `${i}-${cascadeKey}` : i}
-                    ref={el => { barElemsRef.current[i] = el; }}
-                    style={{
-                      width: barWidth,
-                      height: MAX_BAR_H,
-                      borderRadius: barWidth / 2,
-                      background: barColor,
-                      transformOrigin: 'center',
-                      flexShrink: 0,
-                      willChange: 'transform',
-                      backfaceVisibility: 'hidden',
-                      transform,
-                      animation,
-                      transition,
-                      opacity: finalOpacity,
-                      ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--cascade-peak': CASCADE_PEAK_SCALE }),
-                    } as React.CSSProperties}
-                  />
-                );
-              })
           )}
+
+          {visual === 'processing' && <PulsingDots />}
+
+          {visual === 'done' && (
+            <div className="flex items-center gap-2">
+              <CheckIcon />
+              <span className="text-xs font-medium text-widget-fg">Pasted</span>
+            </div>
+          )}
+
+          {visual === 'error' && <span className="text-xs font-medium text-widget-fg">Error</span>}
         </div>
+        )}
       </div>
     </div>
+  );
+
+  if (preview) return content;
+
+  return (
+    <div className="flex h-screen w-screen select-none items-center justify-center font-sans">
+      {content}
+    </div>
+  );
+}
+
+function PulsingDots() {
+  return (
+    <div className="flex items-center gap-2.5">
+      {DOTS.map(i => (
+        <span
+          key={i}
+          className="h-1 w-1 rounded-full bg-widget-fg"
+          style={{ animation: `widget-pulse 1.2s ease-in-out ${(i * 0.15).toFixed(2)}s infinite` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="stroke-widget-fg" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="stroke-widget-ok" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </svg>
   );
 }

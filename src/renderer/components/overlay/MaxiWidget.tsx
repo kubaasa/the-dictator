@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { RecordingState, HotkeyMode, AppSettings } from '../../../shared/types';
+import { formatKey } from './keys';
 
 const NUM_BANDS = 8;
 
@@ -24,16 +25,6 @@ const LERP_RELEASE = 0.18;
 
 const ERROR_RED = '#DC2626';
 const BASE_COLOR = 'rgba(255,255,255,0.85)';
-
-const KEY_ALIASES: Record<string, string> = {
-  BracketRight: ']', BracketLeft: '[', Backquote: '`', Backslash: '\\',
-  Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/',
-  Minus: '-', Equal: '=', Escape: 'Esc', Space: 'Space',
-};
-
-function formatKey(k: string): string {
-  return KEY_ALIASES[k] ?? k;
-}
 
 // Hanning window: w(i) = sin²(π * i / (N-1)) — spindle/diamond shape
 const HANNING_WEIGHTS = Array.from({ length: BAR_COUNT }, (_, i) =>

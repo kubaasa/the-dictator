@@ -63,6 +63,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
       voiceLevel={voiceLevel}
       state={state}
       errorMessage={error}
+      shortcut={shortcuts.toggleRecording}
       onToggleRecording={() => window.dictator.requestToggleRecording()}
     />
   );
