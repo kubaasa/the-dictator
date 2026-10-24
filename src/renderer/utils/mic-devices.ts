@@ -49,9 +49,16 @@ export function deviceNameFromLabel(label: string): string {
     .toLowerCase();
 }
 
-function namesMatch(a: string, b: string): boolean {
-  if (!a || !b) return false;
-  return a === b || a.startsWith(b) || b.startsWith(a);
+/**
+ * 0 = no match, 1 = one name is a prefix of the other (HFP labels sometimes keep a residue the
+ * output label lacks), 2 = exact. Prefix matches rank by how little the names differ, so a
+ * headset whose name is a prefix of another's ("airpods" / "airpods pro") can't steal its mic.
+ */
+function nameMatchScore(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 2;
+  if (a.startsWith(b) || b.startsWith(a)) return 1 / (1 + Math.abs(a.length - b.length));
+  return 0;
 }
 
 /**
@@ -67,13 +74,13 @@ export function resolveAutoMic(all: MediaDeviceInfo[]): string {
   if (!defaultOutput?.label || !BLUETOOTH_SUFFIX.test(defaultOutput.label)) return 'default';
 
   const outputName = deviceNameFromLabel(defaultOutput.label);
-  const match = all.find(
-    (d) =>
-      d.kind === 'audioinput' &&
-      !VIRTUAL_DEVICE_IDS.has(d.deviceId) &&
-      namesMatch(deviceNameFromLabel(d.label), outputName),
-  );
-  return match?.deviceId ?? 'default';
+  let best: { deviceId: string; score: number } | null = null;
+  for (const d of all) {
+    if (d.kind !== 'audioinput' || VIRTUAL_DEVICE_IDS.has(d.deviceId)) continue;
+    const score = nameMatchScore(deviceNameFromLabel(d.label), outputName);
+    if (score > (best?.score ?? 0)) best = { deviceId: d.deviceId, score };
+  }
+  return best?.deviceId ?? 'default';
 }
 
 /**
