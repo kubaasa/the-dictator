@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow, shell, clipboard, app, screen, net } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import * as Sentry from '@sentry/electron/main';
@@ -219,7 +220,8 @@ export function registerIpcHandlers(
   const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
 
-  let transcriptionInProgress = false;
+  // Transcriptions run one at a time; later buffers wait here instead of being rejected.
+  let transcriptionQueue: Promise<unknown> = Promise.resolve();
 
   // Deduplicated idle-transition timeout — prevents stale setTimeout callbacks
   // from resetting state after a new recording has already started
@@ -446,13 +448,7 @@ export function registerIpcHandlers(
     return { ready: true };
   });
 
-  ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, async (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer) => {
-    if (transcriptionInProgress) {
-      event.sender.send(IPC.TRANSCRIPTION_ERROR, 'Transcription already in progress');
-      return;
-    }
-    transcriptionInProgress = true;
-
+  async function transcribeBuffer(event: IpcMainInvokeEvent, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer): Promise<void> {
     const engine = (store.get('transcription.engine') as string) ?? 'local';
     const language = (store.get('transcription.language') as string) ?? 'auto';
     const aiEnabled = (store.get('dictation.aiPostProcessing') as boolean) ?? true;
@@ -462,7 +458,6 @@ export function registerIpcHandlers(
     Sentry.setTag('ai.enabled', String(aiEnabled));
     Sentry.setTag('ai.provider', aiEnabled ? aiProvider : 'none');
 
-    try {
     // Silence detection: skip transcription if audio is below speech threshold.
     // Prevents Whisper hallucinations like [muzyka], [music], [cisza] on silence.
     const samples = new Float32Array(audioBuffer);
@@ -624,9 +619,14 @@ export function registerIpcHandlers(
       scheduleIdle(1500);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, msg);
     }
-    } finally {
-      transcriptionInProgress = false;
-    }
+  }
+
+  // A recording stopped while the previous one is still transcribing used to be rejected,
+  // which dropped the audio with no history row and no visible error.
+  ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer) => {
+    const run = transcriptionQueue.then(() => transcribeBuffer(event, audioBuffer, sampleRate, recordingId, compressedAudio));
+    transcriptionQueue = run.catch(() => undefined);
+    return run;
   });
 
   ipcMain.handle(IPC.AUDIO_SAVE, async (_event, id: string, audioBuffer: ArrayBuffer) => {
