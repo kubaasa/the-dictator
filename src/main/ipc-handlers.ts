@@ -221,6 +221,9 @@ export function registerIpcHandlers(
 
   let transcriptionInProgress = false;
 
+  // How long the widgets show the paste confirmation before the state returns to idle
+  const DONE_STATE_MS = 1500;
+
   // Deduplicated idle-transition timeout — prevents stale setTimeout callbacks
   // from resetting state after a new recording has already started
   let idleTransitionTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -468,7 +471,7 @@ export function registerIpcHandlers(
     const samples = new Float32Array(audioBuffer);
     if (samples.length === 0) {
       log.warn('Empty audio buffer received — skipping transcription');
-      const emptyMsg = 'Recording was empty — no audio captured. Try again.';
+      const emptyMsg = 'Recording was empty. No audio captured, try again.';
       for (const win of BrowserWindow.getAllWindows()) {
         win.webContents.send(IPC.NOTIFICATION_ERROR, emptyMsg);
       }
@@ -481,7 +484,7 @@ export function registerIpcHandlers(
     const rms = Math.sqrt(samples.reduce((sum, s) => sum + s * s, 0) / samples.length);
     if (rms < 0.003) {
       log.info('Audio below speech threshold (RMS=%.4f) — skipping transcription', rms);
-      const quietMsg = 'Audio too quiet — nothing to transcribe. Check your microphone.';
+      const quietMsg = 'Audio too quiet, nothing to transcribe. Check your microphone.';
       for (const win of BrowserWindow.getAllWindows()) {
         win.webContents.send(IPC.NOTIFICATION_ERROR, quietMsg);
       }
@@ -520,7 +523,7 @@ export function registerIpcHandlers(
       const CREDITS_RE = /^\s*(wsz(elkie|ystkie) prawa zastrzeżone|napisy stworzone przez społeczność amara\.org|dzięku(ję|jemy) za (oglądanie|uwagę)|zdjęcia i montaż|thanks? (you )?for watching|subtitles by the amara\.org community)[.!]?\s*$/i;
       if (!rawText || HALLUCINATION_RE.test(rawText) || CREDITS_RE.test(rawText)) {
         log.info('Whisper returned empty or hallucinated text: "%s" — skipping', rawText ?? '');
-        const noSpeechMsg = 'No speech detected — recording contained only silence or background noise.';
+        const noSpeechMsg = 'No speech detected. The recording contained only silence or background noise.';
         for (const win of BrowserWindow.getAllWindows()) {
           win.webContents.send(IPC.NOTIFICATION_ERROR, noSpeechMsg);
         }
@@ -569,7 +572,7 @@ export function registerIpcHandlers(
       const appName = pasteService.getAppName() ?? undefined;
 
       broadcastState('done');
-      scheduleIdle(400);
+      scheduleIdle(DONE_STATE_MS);
       // words/s of the raw transcript vs audio length: normal dictation lands around 1.6–2.0,
       // a value well below ~1.3 on a long recording means Whisper dropped part of the speech.
       const rawWords = rawText.trim().split(/\s+/).filter(Boolean).length;
@@ -586,13 +589,13 @@ export function registerIpcHandlers(
         } catch (pasteErr) {
           log.warn('Paste failed:', pasteErr);
           for (const win of BrowserWindow.getAllWindows()) {
-            win.webContents.send(IPC.NOTIFICATION_ERROR, 'Auto-paste failed — text is in your clipboard, use Ctrl+V.');
+            win.webContents.send(IPC.NOTIFICATION_ERROR, 'Auto-paste failed. Text is in your clipboard, use Ctrl+V.');
           }
         }
       } else if (autoPaste) {
         log.info('No paste target captured — text is in clipboard');
         for (const win of BrowserWindow.getAllWindows()) {
-          win.webContents.send(IPC.NOTIFICATION_ERROR, 'Could not detect target window — text copied to clipboard, use Ctrl+V.');
+          win.webContents.send(IPC.NOTIFICATION_ERROR, 'Could not detect the target window. Text copied to clipboard, use Ctrl+V.');
         }
       }
 

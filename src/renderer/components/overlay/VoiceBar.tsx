@@ -19,8 +19,6 @@ const MIN_BAR_H = 2;
 const MAX_BAR_H = 24;
 const DOT_COUNT = 5;
 
-// Main switches done -> idle after 400 ms; the paste confirmation stays readable a bit longer
-const DONE_HOLD_MS = 1200;
 // A press that moves less than this before release is a click, not a drag
 const CLICK_TOLERANCE_PX = 4;
 
@@ -74,10 +72,8 @@ export function VoiceBar({
   const isIdle         = state === 'idle';
 
   const [isProximate, setIsProximate] = useState(false);
-  const [holdDone, setHoldDone] = useState(false);
 
   const leaveTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const doneTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragMouseUpRef = useRef<((e: MouseEvent) => void) | null>(null);
   const pressRef       = useRef<{ x: number; y: number } | null>(null);
 
@@ -86,21 +82,10 @@ export function VoiceBar({
   const toggleRef = useRef(onToggleRecording);
   toggleRef.current = onToggleRecording;
 
-  useEffect(() => {
-    if (!isDone) return;
-    setHoldDone(true);
-    if (doneTimer.current) clearTimeout(doneTimer.current);
-    doneTimer.current = setTimeout(() => {
-      doneTimer.current = null;
-      setHoldDone(false);
-    }, DONE_HOLD_MS);
-  }, [isDone]);
-
   const hover = preview ? forceHover : isProximate;
-  const showDone = (isDone || holdDone) && !isInitializing && !isRecording && !isTranscribing && !isError;
 
   const visual: Visual = isError ? 'error'
-    : showDone ? 'done'
+    : isDone ? 'done'
     : isTranscribing ? 'processing'
     : (isInitializing || isRecording) ? 'bars'
     : hover ? 'hover'
@@ -123,7 +108,6 @@ export function VoiceBar({
   useEffect(() => {
     return () => {
       if (leaveTimer.current) clearTimeout(leaveTimer.current);
-      if (doneTimer.current) clearTimeout(doneTimer.current);
       if (dragMouseUpRef.current) {
         document.removeEventListener('mouseup', dragMouseUpRef.current);
         dragMouseUpRef.current = null;
@@ -164,7 +148,7 @@ export function VoiceBar({
 
   useEffect(() => { voiceLevelRef.current = voiceLevel; }, [voiceLevel]);
 
-  // Voice-level driven visualization — uses IPC voiceLevel from the recording worklet
+  // Voice-level driven visualization: uses IPC voiceLevel from the recording worklet
   // instead of opening a second mic stream (which blocks on many Windows audio drivers).
   useEffect(() => {
     if (!isRecording) {
@@ -178,7 +162,7 @@ export function VoiceBar({
       const t = performance.now() / 1000;
       for (let i = 0; i < BAR_COUNT; i++) {
         const { rand, multiplier } = BARS[i];
-        // Three overlapping sine waves per bar — each bar oscillates independently,
+        // Three overlapping sine waves per bar: each bar oscillates independently,
         // creating organic waveform-like motion instead of uniform expansion/contraction
         const w1 = Math.sin(t * 2.3 + i * 0.9 + rand * 6.28);
         const w2 = Math.sin(t * 3.7 + i * 1.4 + rand * 4.19) * 0.6;
