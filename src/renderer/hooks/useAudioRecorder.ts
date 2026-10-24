@@ -133,6 +133,23 @@ function describeCtx(ctx: AudioContext | null): string {
   return `ctx=${ctx.state} time=${ctx.currentTime.toFixed(3)} rate=${ctx.sampleRate} latency=${ctx.baseLatency.toFixed(4)}`;
 }
 
+const WHISPER_SAMPLE_RATE = 16000;
+
+// The MediaRecorder capture runs on the mic track directly, independent of the AudioContext
+// that feeds the worklet, so it survives a stalled context. Decoding it through an offline
+// context resamples to 16 kHz, which is what the worklet would have produced.
+async function decodeCompressedAudio(compressed: ArrayBuffer): Promise<Float32Array | null> {
+  if (compressed.byteLength === 0) return null;
+  try {
+    const ctx = new OfflineAudioContext(1, 1, WHISPER_SAMPLE_RATE);
+    const decoded = await ctx.decodeAudioData(compressed.slice(0));
+    return decoded.length > 0 ? decoded.getChannelData(0) : null;
+  } catch (err) {
+    log.warn('Compressed audio could not be decoded:', err);
+    return null;
+  }
+}
+
 function classifyMicError(err: unknown): string {
   if (err instanceof DOMException) {
     switch (err.name) {
@@ -643,6 +660,7 @@ export function useAudioRecorder(
     let chunks: Float32Array[] = [];
     let totalLength = 0;
     let hasAudio = false;
+    let recovered: { samples: Float32Array; compressed: ArrayBuffer } | null = null;
     try {
       // Signal worklet to flush remaining audio, then wait for 'done' before stopping mic.
       // Tracks must stay alive until worklet finishes so in-flight frames aren't dropped.
@@ -680,6 +698,27 @@ export function useAudioRecorder(
       // releases its own mic stream without waiting for the rest of cleanup.
       totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
       hasAudio = totalLength > 0 && !!audioContext;
+
+      // Worklet produced nothing (stalled context) — fall back to the MediaRecorder capture
+      // before telling main the recording was empty.
+      if (!hasAudio && compressedBlobPromise) {
+        try {
+          const compressed = await Promise.race([
+            compressedBlobPromise,
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('MediaRecorder flush timeout')), 5000)),
+          ]);
+          const samples = await decodeCompressedAudio(compressed);
+          if (samples) {
+            recLog.warn(`worklet produced no samples, using MediaRecorder capture: elapsed=${elapsedMs}ms`
+              + ` decoded=${(samples.length / WHISPER_SAMPLE_RATE).toFixed(1)}s`, describeCtx(audioContext), stoppedTrackInfo);
+            recovered = { samples, compressed };
+            hasAudio = true;
+          }
+        } catch (e) {
+          log.warn('MediaRecorder fallback unavailable:', e);
+        }
+      }
+
       if (!hasAudio) {
         recLog.warn(`empty recording: elapsed=${elapsedMs}ms chunks=${chunks.length} levels=${levelCountRef.current}`,
           describeCtx(audioContext), stoppedTrackInfo);
@@ -706,18 +745,27 @@ export function useAudioRecorder(
       isStoppingRef.current = false;
     }
 
-    if (hasAudio && audioContext) {
+    if (!hasAudio) return;
+
+    let pcm: ArrayBuffer;
+    let sampleRate: number;
+    let compressedAudio: ArrayBuffer | undefined;
+    if (recovered) {
+      pcm = recovered.samples.buffer as ArrayBuffer;
+      sampleRate = WHISPER_SAMPLE_RATE;
+      compressedAudio = recovered.compressed;
+    } else {
       const merged = new Float32Array(totalLength);
       let offset = 0;
       for (const chunk of chunks) {
         merged.set(chunk, offset);
         offset += chunk.length;
       }
+      pcm = merged.buffer;
+      sampleRate = audioContext?.sampleRate ?? WHISPER_SAMPLE_RATE;
 
-      const sampleRate = audioContext.sampleRate;
       // Wait for compressed WebM/Opus blob (~8x smaller than WAV for API upload).
       // Timeout guard: proceed without compressed audio if onstop never fires.
-      let compressedAudio: ArrayBuffer | undefined;
       if (compressedBlobPromise) {
         try {
           compressedAudio = await Promise.race([
@@ -728,16 +776,17 @@ export function useAudioRecorder(
           log.warn('Compressed audio unavailable, proceeding with raw buffer:', e);
         }
       }
-      window.dictator.transcribeBuffer(merged.buffer, sampleRate, snapshotRecordingId, compressedAudio)
-        .catch((err: unknown) => {
-          log.error('transcribeBuffer failed:', err);
-          // Reset recording state so UI doesn't stay stuck in transcribing/processing
-          isRecordingRef.current = false;
-          setIsRecording(false);
-          setRecordingStartTime(null);
-          setError(err instanceof Error ? err.message : 'Transcription failed — please try again');
-        });
     }
+
+    window.dictator.transcribeBuffer(pcm, sampleRate, snapshotRecordingId, compressedAudio)
+      .catch((err: unknown) => {
+        log.error('transcribeBuffer failed:', err);
+        // Reset recording state so UI doesn't stay stuck in transcribing/processing
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        setRecordingStartTime(null);
+        setError(err instanceof Error ? err.message : 'Transcription failed — please try again');
+      });
   }, []);
 
   const cancelRecording = useCallback(() => {
