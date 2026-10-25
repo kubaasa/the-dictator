@@ -1,312 +1,157 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import log from 'electron-log/renderer';
-import type { ReactNode } from 'react';
-import type { WidgetType } from '../../shared/types';
+import type { AppSettings, HotkeyMode, WidgetType } from '../../shared/types';
+import { DEFAULT_SETTINGS } from '../../shared/types';
+import { VoiceBar } from './overlay/VoiceBar';
+import { MaxiWidget } from './overlay/MaxiWidget';
 
-const WIDGETS: { id: WidgetType; label: string; description: string }[] = [
-  { id: 'voicebar', label: 'Mini', description: 'Floating pill — hover to interact' },
-  { id: 'maxi', label: 'Maxi', description: 'Detailed card with waveform & shortcuts' },
-];
+const PREVIEW_LEVEL = 0.55;
+const MAXI_PREVIEW_SCALE = 0.62;
+const MAXI_PREVIEW_WIDTH = 480;
+const MAXI_PREVIEW_HEIGHT = 100;
 
-function WhiteWaveBars() {
-  const heights = [8, 14, 6, 16, 10, 12];
-  return (
-    <svg className="inline-block" width="42" height="20" viewBox="0 0 42 20">
-      {heights.map((h, i) => (
-        <rect
-          key={i}
-          x={3 + i * 6.5}
-          y={10 - h / 2}
-          width="3"
-          height={h}
-          rx="1.5"
-          fill="rgba(255,255,255,0.85)"
-          opacity={0.85}
-        />
-      ))}
-    </svg>
-  );
+interface Fact {
+  label: string;
+  text: string;
 }
 
-type FeatureRow = {
-  feature: string;
-  mini: string | boolean | ReactNode;
-  maxi: string | boolean | ReactNode;
+const FACTS: Record<WidgetType, Fact[]> = {
+  voicebar: [
+    { label: 'Idle', text: 'Thin sliver, 64 × 8 px' },
+    { label: 'Hover', text: 'Mic and shortcut, click to record' },
+    { label: 'Done', text: '"Pasted" with a green border' },
+  ],
+  maxi: [
+    { label: 'Idle', text: 'Hidden' },
+    { label: 'Recording', text: 'Timer, 50 bars and shortcut pill' },
+    { label: 'Done', text: 'Pasted text with a green border' },
+  ],
 };
 
-const COMPARISON: FeatureRow[] = [
-  { feature: 'Audio bars',          mini: '6 (flat)',              maxi: '60 (Hanning shape)' },
-  { feature: 'Form factor',         mini: 'Compact pill',          maxi: 'Wide card' },
-  { feature: 'Hover to interact',   mini: true,                    maxi: false },
-  { feature: 'Keyboard shortcuts',  mini: false,                   maxi: true },
-  { feature: 'REC indicator',       mini: false,                   maxi: true },
-  { feature: 'Error details',       mini: '✕ icon',                maxi: 'Full message' },
-  { feature: 'Processing state',    mini: <WhiteWaveBars />,       maxi: <span className="font-mono text-sm text-neutral-400">Processing...</span> },
-  { feature: 'Enter/exit animation',mini: true,                    maxi: true },
-  { feature: 'Drag & drop',         mini: true,                    maxi: true },
+const WIDGETS: { id: WidgetType; label: string }[] = [
+  { id: 'voicebar', label: 'Mini' },
+  { id: 'maxi', label: 'Maxi' },
 ];
 
 export function WidgetPage() {
   const [activeWidget, setActiveWidget] = useState<WidgetType>('voicebar');
+  const [shortcuts, setShortcuts] = useState<AppSettings['hotkey']['shortcuts']>(DEFAULT_SETTINGS.hotkey.shortcuts);
+  const [hotkeyMode, setHotkeyMode] = useState<HotkeyMode>(DEFAULT_SETTINGS.hotkey.mode);
   const [loaded, setLoaded] = useState(false);
-  const [showTooltip, setShowTooltip] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+  const bandsRef = useRef<number[] | null>(null);
 
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
-      if (s.widget) {
-        setActiveWidget(s.widget.activeWidget);
+      if (s.widget) setActiveWidget(s.widget.activeWidget);
+      if (s.hotkey) {
+        setShortcuts({ ...DEFAULT_SETTINGS.hotkey.shortcuts, ...s.hotkey.shortcuts });
+        setHotkeyMode(s.hotkey.mode);
       }
-      if (!s.general?.widgetTooltipShown) {
-        setShowTooltip(true);
-      }
+      if (!s.general?.widgetTooltipShown) setShowHint(true);
       setLoaded(true);
-    }).catch((err) => log.error('Failed to load settings in WidgetPage:', err));
+    }).catch((err) => {
+      log.error('Failed to load settings in WidgetPage:', err);
+      setLoaded(true);
+    });
   }, []);
 
-  const dismissTooltip = useCallback(async () => {
-    setShowTooltip(false);
+  const dismissHint = useCallback(async () => {
+    setShowHint(false);
     const s = await window.dictator.getSettings();
     window.dictator.setSettings({ general: { ...s.general, widgetTooltipShown: true } });
   }, []);
 
-  const save = useCallback(
-    (widget: WidgetType) => {
-      setActiveWidget(widget);
-      window.dictator.setSettings({ widget: { activeWidget: widget } });
-    },
-    [],
-  );
+  const save = useCallback((widget: WidgetType) => {
+    setActiveWidget(widget);
+    window.dictator.setSettings({ widget: { activeWidget: widget } });
+  }, []);
 
   if (!loaded) return null;
 
   return (
     <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
-      <div className="flex flex-col gap-8">
+      <div className="flex max-w-[860px] flex-col gap-5">
 
-        {showTooltip && (
-          <div className="flex items-start gap-3 rounded-xl border border-green-600/30 bg-green-600/5 px-4 py-3">
-            <svg className="mt-0.5 h-5 w-5 shrink-0 text-green-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
-            </svg>
-            <p className="flex-1 font-mono text-sm leading-relaxed text-neutral-300">
-              The recording widget floats on your screen — always on top.
-              Hover over it to see the options.
-            </p>
+        {showHint && (
+          <div className="flex items-center gap-3 rounded-[10px] border border-border bg-surface px-3.5 py-2.5 text-[13px] text-text-muted">
+            <span className="flex-1">The widget floats above every window. Drag it anywhere, hover it to see the options.</span>
             <button
-              onClick={dismissTooltip}
-              className="shrink-0 rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+              onClick={dismissHint}
               aria-label="Dismiss"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-dim transition-colors hover:bg-border hover:text-text"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         )}
 
-        <section>
-          <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
-            Overlay Widget
-          </h2>
+        <div role="radiogroup" aria-label="Overlay widget" className="grid grid-cols-2 gap-3.5">
+          {WIDGETS.map((w) => {
+            const selected = activeWidget === w.id;
+            return (
+              <div
+                key={w.id}
+                role="radio"
+                aria-checked={selected}
+                tabIndex={0}
+                onClick={() => save(w.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); save(w.id); } }}
+                className={`flex cursor-pointer flex-col gap-3.5 rounded-xl border bg-surface p-4 text-left transition-colors ${
+                  selected ? 'border-text' : 'border-border hover:border-border-strong'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-4 w-4 items-center justify-center rounded-full border-[1.5px] ${selected ? 'border-text' : 'border-border-strong'}`}
+                  >
+                    {selected && <span className="h-2 w-2 rounded-full bg-text" />}
+                  </span>
+                  <span className="text-sm font-semibold text-text">{w.label}</span>
+                </span>
 
-          <div className="grid grid-cols-2 gap-3">
-            {WIDGETS.map((w) => {
-              const isActive = activeWidget === w.id;
-              return (
-                <button
-                  key={w.id}
-                  onClick={() => save(w.id)}
-                  className={`group relative flex flex-col items-center gap-3 rounded-xl border p-5 transition-all duration-200 cursor-pointer ${
-                    isActive
-                      ? 'border-red-600/50 bg-red-600/5'
-                      : 'border-neutral-800 bg-[#141414] hover:border-neutral-700'
-                  }`}
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none flex h-[132px] items-center justify-center overflow-hidden rounded-lg bg-bg"
                 >
-                  {isActive && (
-                    <span className="absolute top-3 right-3 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-red-500">
-                      Active
+                  {w.id === 'voicebar' ? (
+                    <VoiceBar voiceLevel={PREVIEW_LEVEL} state="recording" preview />
+                  ) : (
+                    <span
+                      className="block"
+                      style={{ width: MAXI_PREVIEW_WIDTH * MAXI_PREVIEW_SCALE, height: MAXI_PREVIEW_HEIGHT * MAXI_PREVIEW_SCALE }}
+                    >
+                      <span className="inline-block origin-top-left" style={{ transform: `scale(${MAXI_PREVIEW_SCALE})` }}>
+                        <MaxiWidget
+                          voiceLevel={PREVIEW_LEVEL}
+                          bandsRef={bandsRef}
+                          state="recording"
+                          shortcuts={shortcuts}
+                          hotkeyMode={hotkeyMode}
+                          preview
+                        />
+                      </span>
                     </span>
                   )}
+                </span>
 
-                  <div className="flex items-center justify-center h-12">
-                    {w.id === 'voicebar' ? (
-                      <MiniPreview active={isActive} />
-                    ) : (
-                      <MaxiPreview active={isActive} />
-                    )}
-                  </div>
-
-                  <div className="flex flex-col items-center gap-1">
-                    <span className={`font-mono text-lg font-semibold ${
-                      isActive ? 'text-red-400' : 'text-neutral-200'
-                    }`}>
-                      {w.label}
+                <span className="flex flex-col gap-1.5">
+                  {FACTS[w.id].map((fact) => (
+                    <span key={fact.label} className="flex items-baseline gap-2.5 text-xs">
+                      <span className="w-[72px] shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-text-dim">{fact.label}</span>
+                      <span className="text-text">{fact.text}</span>
                     </span>
-                    <span className="text-sm text-neutral-500 text-center leading-tight">
-                      {w.description}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-        </section>
-
-        <section>
-          <h2 className="mb-4 font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">
-            Comparison
-          </h2>
-
-          <div className="rounded-xl border border-neutral-800 bg-[#141414] overflow-hidden">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-neutral-800">
-                  <th className="px-4 py-3 text-sm font-semibold text-neutral-200 bg-neutral-800/30">
-                    Feature
-                  </th>
-                  <th className="px-4 py-3 text-sm font-semibold text-neutral-200 text-center bg-neutral-800/30">
-                    Mini
-                  </th>
-                  <th className="px-4 py-3 text-sm font-semibold text-neutral-200 text-center bg-neutral-800/30">
-                    Maxi
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {COMPARISON.map((row, i) => (
-                  <tr
-                    key={row.feature}
-                    className={i < COMPARISON.length - 1 ? 'border-b border-neutral-800/50' : ''}
-                  >
-                    <td className="px-4 py-3 text-sm font-semibold text-neutral-200 bg-neutral-800/30">
-                      {row.feature}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <CellValue value={row.mini} />
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <CellValue value={row.maxi} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                  ))}
+                </span>
+              </div>
+            );
+          })}
+        </div>
 
       </div>
     </main>
-  );
-}
-
-function CellValue({ value }: { value: string | boolean | ReactNode }) {
-  if (value === true) {
-    return (
-      <svg className="inline-block" width="18" height="18" viewBox="0 0 16 16">
-        <path d="M4 8.5L6.5 11L12 5" stroke="#22C55E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      </svg>
-    );
-  }
-  if (value === false) {
-    return (
-      <svg className="inline-block" width="18" height="18" viewBox="0 0 16 16">
-        <path d="M5 5L11 11M11 5L5 11" stroke="#737373" strokeWidth="2" strokeLinecap="round" fill="none" />
-      </svg>
-    );
-  }
-  if (typeof value === 'string') {
-    return (
-      <span className="font-mono text-sm text-neutral-400">{value}</span>
-    );
-  }
-  return <>{value}</>;
-}
-
-function MiniPreview({ active }: { active: boolean }) {
-  const borderColor = active ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)';
-  const barColor = active ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.45)';
-
-  const heights = [4, 12, 7, 18, 14, 5];
-
-  return (
-    <svg width="82" height="34" viewBox="0 0 82 34">
-      <rect x="3" y="4" width="78" height="28" rx="14" fill="rgba(0,0,0,0.2)" />
-      <rect x="1" y="2" width="78" height="28" rx="14"
-        fill="#0a0a0a" stroke={borderColor} strokeWidth="1" />
-      <rect x="2" y="3" width="76" height="26" rx="13"
-        fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
-      {heights.map((h, i) => (
-        <rect
-          key={i}
-          x={21 + i * 7}
-          y={16 - h / 2}
-          width="3"
-          height={h}
-          rx="1.5"
-          fill={barColor}
-        />
-      ))}
-    </svg>
-  );
-}
-
-function MaxiPreview({ active }: { active: boolean }) {
-  const borderColor = active ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.06)';
-  const barColor = active ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.35)';
-  const accentColor = active ? '#DC2626' : 'rgba(255,255,255,0.35)';
-  const labelColor = active ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.25)';
-  const badgeFill = active ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)';
-  const badgeStroke = active ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.08)';
-  const badgeText = active ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)';
-
-  const barCount = 30;
-  const barW = 2;
-  const barGap = 1.5;
-  const totalBarsW = barCount * barW + (barCount - 1) * barGap;
-  const barsStartX = 1 + (128 - totalBarsW) / 2;
-
-  return (
-    <svg width="132" height="48" viewBox="0 0 132 48">
-      <rect x="3" y="3" width="128" height="44" rx="8" fill="rgba(0,0,0,0.2)" />
-      <rect x="1" y="1" width="128" height="44" rx="8"
-        fill="#0a0a0a" stroke={borderColor} strokeWidth="1" />
-      <rect x="2" y="2" width="126" height="42" rx="7"
-        fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
-
-      <text x="9" y="12" fontFamily="'Courier New', monospace" fontSize="6" fontWeight="700"
-        fill={accentColor} letterSpacing="0.5">[</text>
-      <circle cx="15.5" cy="10" r="2" fill={accentColor} opacity={active ? 1 : 0.5} />
-      <text x="19" y="12" fontFamily="'Courier New', monospace" fontSize="6" fontWeight="700"
-        fill={accentColor} letterSpacing="0.5">REC]</text>
-
-      {[2, 3, 5, 8, 14, 7, 16, 11, 18, 9, 15, 17, 6, 14, 18, 16, 8, 17, 12, 15, 10, 18, 7, 13, 16, 9, 6, 4, 3, 1.5].map((h, i) => (
-        <rect
-          key={i}
-          x={barsStartX + i * (barW + barGap)}
-          y={25 - h / 2}
-          width={barW}
-          height={h}
-          rx="1"
-          fill={barColor}
-        />
-      ))}
-
-      <text x="30" y="42" fontFamily="'Courier New', monospace" fontSize="5"
-        fill={labelColor}>Stop</text>
-      <rect x="46" y="37" width="12" height="7" rx="1.5"
-        fill={badgeFill} stroke={badgeStroke} strokeWidth="0.5" />
-      <text x="48.5" y="42.5" fontFamily="'Courier New', monospace" fontSize="4.5"
-        fill={badgeText}>F2</text>
-
-      <line x1="62" y1="38" x2="62" y2="44" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
-
-      <text x="66" y="42" fontFamily="'Courier New', monospace" fontSize="5"
-        fill={labelColor}>Cancel</text>
-      <rect x="87" y="37" width="14" height="7" rx="1.5"
-        fill={badgeFill} stroke={badgeStroke} strokeWidth="0.5" />
-      <text x="89" y="42.5" fontFamily="'Courier New', monospace" fontSize="4.5"
-        fill={badgeText}>Esc</text>
-    </svg>
   );
 }

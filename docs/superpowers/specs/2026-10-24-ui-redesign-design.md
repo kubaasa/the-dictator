@@ -78,6 +78,11 @@ Made during implementation:
   `|` and `*` are dimmed in values. "+ Add entry" opens an inline row at the bottom (Enter adds and
   keeps the row open, Esc closes); it is open from the start when the list is empty. Delete is the
   shared K1 trash on hover. The syntax legend (`a | b`, `word*`, hyphens) replaces the old help text.
+- **Widget (W-A "Dwie karty"):** two radio cards (light border when selected), each with a live preview of
+  the real widget in its recording state (`VoiceBar` and `MaxiWidget` with `preview`, Maxi scaled to
+  62 %) on a dark strip, plus three state facts (idle / hover or recording / done). The comparison table,
+  hand-drawn SVG thumbnails and the green first-visit banner are gone; the first-visit hint is a neutral
+  one-liner with a dismiss button.
 - **Shared `ui/` components:** `ConfirmDeleteButton` (K1 trash, "Sure?", 3 s revert, sizes md/sm) and
   `SectionHeading` (mono title + optional meta) are used by ApiKeyInput, History, Shortcuts, Vocabulary.
 
@@ -105,18 +110,16 @@ Done:
   copy button on Home).
 - Shortcuts page (`ShortcutsPage.tsx`), Vocabulary page (`VocabularyPage.tsx`), `ui/ConfirmDeleteButton`,
   `ui/SectionHeading`.
+- Widget page (`WidgetPage.tsx`), `MaxiWidget` `preview` prop.
 
 Remaining, in order:
 
-1. `WidgetPage`: comparison table is outdated ("6 (flat)", "✕ icon"); thumbnails should render the
-   real widgets (`VoiceBar` already has `preview`/`forceHover` props; `MaxiWidget` has none); Mini/Maxi
-   cards use Z3 selection.
-2. `OnboardingWizard`: restyle; drop its own "valid" message now that `ApiKeyInput` shows "Verified".
-3. Small components: `Toast`, `UpToDatePopup` (should become a toast), `ForceUpdateModal`,
+1. `OnboardingWizard`: restyle; drop its own "valid" message now that `ApiKeyInput` shows "Verified".
+2. Small components: `Toast`, `UpToDatePopup` (should become a toast), `ForceUpdateModal`,
    `CopyButton`, `RecIndicator` / `RecEffects`, `ErrorBoundary` inline styles in `App.tsx`.
-4. `index.css`: old keyframes and helpers with hard-coded colours (`rec-glitch`, `first-run-glow`,
+3. `index.css`: old keyframes and helpers with hard-coded colours (`rec-glitch`, `first-run-glow`,
    `entry-glow`, `temperature-slider`, scrollbars).
-5. Close: `npm run lint`, `npx -y -p typescript@5.9.3 tsc --noEmit`, sweep for loose colours.
+4. Close: `npm run lint`, `npx -y -p typescript@5.9.3 tsc --noEmit`, sweep for loose colours.
 
 Open ideas (not decided):
 
@@ -145,7 +148,7 @@ Open ideas (not decided):
   (removed from the widgets).
 - Mini had no recording signal, no paste confirmation and a silent error; Maxi used three font
   families and switched from bars to text when processing. Both are fixed.
-- `WidgetPage` thumbnails are hand-drawn SVGs that diverge from the real widgets (still open).
+- `WidgetPage` thumbnails were hand-drawn SVGs that diverged from the real widgets (fixed: live previews).
 - `UpToDatePopup` is a blocking modal for a 4-second confirmation (still open).
 
 Keep: RAF-driven bar updates, LERP, sticky exit state, hit-zone hack, drag, enter/exit timings;

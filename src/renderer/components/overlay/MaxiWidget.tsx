@@ -12,7 +12,10 @@ interface MaxiWidgetProps {
   hotkeyMode: HotkeyMode;
   errorMessage?: string;
   resultText?: string;
+  preview?: boolean;
 }
+
+const PREVIEW_ELAPSED_MS = 12_000;
 
 const BAR_COUNT = 50;
 const MIN_BAR_H = 2.5;
@@ -56,7 +59,7 @@ function formatTimer(ms: number): string {
 }
 
 export function MaxiWidget({
-  voiceLevel, bandsRef, state, shortcuts, hotkeyMode, errorMessage, resultText,
+  voiceLevel, bandsRef, state, shortcuts, hotkeyMode, errorMessage, resultText, preview = false,
 }: MaxiWidgetProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
@@ -108,6 +111,10 @@ export function MaxiWidget({
 
   // Recording timer: starts with 'recording', freezes afterwards, resets on the next session
   useEffect(() => {
+    if (preview) {
+      setElapsedMs(PREVIEW_ELAPSED_MS);
+      return;
+    }
     if (isInitializing) {
       recStartRef.current = null;
       setElapsedMs(0);
@@ -118,7 +125,7 @@ export function MaxiWidget({
       setElapsedMs(performance.now() - (recStartRef.current ?? performance.now()));
     }, 250);
     return () => clearInterval(id);
-  }, [isInitializing, isRecording]);
+  }, [isInitializing, isRecording, preview]);
 
   // Voice-level driven visualization: uses IPC voiceLevel from the recording worklet
   // instead of opening a second mic stream (which blocks on many Windows audio drivers).
@@ -183,11 +190,12 @@ export function MaxiWidget({
         document.removeEventListener('mouseup', dragMouseUpRef.current);
         dragMouseUpRef.current = null;
       }
-      window.dictator.widgetDragEnd();
+      if (!preview) window.dictator.widgetDragEnd();
     };
-  }, []);
+  }, [preview]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (preview) return;
     e.preventDefault();
     window.dictator.widgetDragStart(e.screenX - window.screenX, e.screenY - window.screenY);
     setIsDragging(true);
@@ -199,7 +207,7 @@ export function MaxiWidget({
     };
     dragMouseUpRef.current = onUp;
     document.addEventListener('mouseup', onUp);
-  }, []);
+  }, [preview]);
 
   const recShortcut = hotkeyMode === 'push-to-talk' ? shortcuts.pushToTalk : shortcuts.toggleRecording;
   const recLabel = hotkeyMode === 'push-to-talk' ? 'Hold to Rec' : 'Stop';
@@ -226,23 +234,8 @@ export function MaxiWidget({
     BORDER_CLASS[visual],
   ].join(' ');
 
-  return (
-    <div className="flex h-screen w-screen select-none items-center justify-center font-sans">
-      {/* Transparent hit zone, required for mouse events on Electron transparent window */}
-      <div
-        onMouseDown={handleMouseDown}
-        className="flex flex-col items-center gap-2.5 rounded-[40px] p-2"
-        style={{
-          background: 'rgba(0,0,0,0.01)',
-          cursor: isDragging ? 'grabbing' : 'grab',
-          transformOrigin: 'center',
-          opacity: animPhase === 'idle' ? 0 : undefined,
-          animation:
-            animPhase === 'entering' ? 'widget-enter 200ms ease-out both' :
-            animPhase === 'exiting'  ? 'widget-exit 250ms ease-in both'   :
-            'none',
-        }}
-      >
+  const stack = (
+    <>
         <div
           className={capsuleClass}
           style={{
@@ -311,6 +304,31 @@ export function MaxiWidget({
         <div className={`flex h-[26px] items-center gap-3.5 rounded-full border border-widget-border/70 bg-widget-surface px-3.5 ${shortcutRow ? '' : 'invisible'}`}>
           {shortcutRow}
         </div>
+    </>
+  );
+
+  if (preview) {
+    return <div className="inline-flex select-none flex-col items-center gap-2.5 font-sans">{stack}</div>;
+  }
+
+  return (
+    <div className="flex h-screen w-screen select-none items-center justify-center font-sans">
+      {/* Transparent hit zone, required for mouse events on Electron transparent window */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="flex flex-col items-center gap-2.5 rounded-[40px] p-2"
+        style={{
+          background: 'rgba(0,0,0,0.01)',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          transformOrigin: 'center',
+          opacity: animPhase === 'idle' ? 0 : undefined,
+          animation:
+            animPhase === 'entering' ? 'widget-enter 200ms ease-out both' :
+            animPhase === 'exiting'  ? 'widget-exit 250ms ease-in both'   :
+            'none',
+        }}
+      >
+        {stack}
       </div>
     </div>
   );
