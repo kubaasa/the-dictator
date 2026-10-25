@@ -134,6 +134,8 @@ function describeCtx(ctx: AudioContext | null): string {
 }
 
 const WHISPER_SAMPLE_RATE = 16000;
+const STOP_TAIL_MS = 300;
+const PCM_COVERAGE_FLOOR = 0.8;
 
 // The MediaRecorder capture runs on the mic track directly, independent of the AudioContext
 // that feeds the worklet, so it survives a stalled context. Decoding it through an offline
@@ -219,6 +221,8 @@ export function useAudioRecorder(
   // refs and then have them torn down by the tail of the stop, so starts are refused until done.
   const isStoppingRef = useRef(false);
   const pendingStopRef = useRef(false);
+  const pendingStartRef = useRef(false);
+  const startRecordingRef = useRef<(() => Promise<void>) | null>(null);
   const sessionIdRef = useRef(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -239,6 +243,7 @@ export function useAudioRecorder(
     isRecordingRef.current = false;
     isSettingUpRef.current = false;
     pendingStopRef.current = false;
+    pendingStartRef.current = false;
     setIsRecording(false);
     setRecordingStartTime(null);
 
@@ -343,7 +348,8 @@ export function useAudioRecorder(
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current || isSettingUpRef.current) return;
     if (isStoppingRef.current) {
-      recLog.warn('start ignored: previous recording is still flushing');
+      pendingStartRef.current = true;
+      recLog.info('start queued: previous recording is still flushing');
       return;
     }
 
@@ -616,6 +622,10 @@ export function useAudioRecorder(
     }
   }, [resolveDeviceId, callMode, getOrCreateAudioContext]);
 
+  useEffect(() => {
+    startRecordingRef.current = startRecording;
+  }, [startRecording]);
+
   const stopRecording = useCallback(async () => {
     if (isSettingUpRef.current) {
       pendingStopRef.current = true;
@@ -635,6 +645,8 @@ export function useAudioRecorder(
     // Snapshot before the tracks are stopped below — afterwards readyState is always 'ended'
     const stoppedTrackInfo = describeTrack(mediaStreamRef.current?.getAudioTracks()[0]);
     setRecordingStartTime(null);
+
+    await new Promise((resolve) => setTimeout(resolve, STOP_TAIL_MS));
 
     const snapshotRecordingId = recordingIdRef.current;
 
@@ -698,10 +710,12 @@ export function useAudioRecorder(
       // releases its own mic stream without waiting for the rest of cleanup.
       totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
       hasAudio = totalLength > 0 && !!audioContext;
+      const pcmSeconds = totalLength / (audioContext?.sampleRate ?? WHISPER_SAMPLE_RATE);
+      const pcmTooShort = elapsedMs > 1000 && pcmSeconds < (elapsedMs / 1000) * PCM_COVERAGE_FLOOR;
 
       // Worklet produced nothing (stalled context) — fall back to the MediaRecorder capture
       // before telling main the recording was empty.
-      if (!hasAudio && compressedBlobPromise) {
+      if ((!hasAudio || pcmTooShort) && compressedBlobPromise) {
         try {
           const compressed = await Promise.race([
             compressedBlobPromise,
@@ -709,7 +723,8 @@ export function useAudioRecorder(
           ]);
           const samples = await decodeCompressedAudio(compressed);
           if (samples) {
-            recLog.warn(`worklet produced no samples, using MediaRecorder capture: elapsed=${elapsedMs}ms`
+            const why = hasAudio ? `worklet pcm=${pcmSeconds.toFixed(1)}s covers <80% of elapsed` : 'worklet produced no samples';
+            recLog.warn(`${why}, using MediaRecorder capture: elapsed=${elapsedMs}ms`
               + ` decoded=${(samples.length / WHISPER_SAMPLE_RATE).toFixed(1)}s`, describeCtx(audioContext), stoppedTrackInfo);
             recovered = { samples, compressed };
             hasAudio = true;
@@ -722,8 +737,13 @@ export function useAudioRecorder(
       if (!hasAudio) {
         recLog.warn(`empty recording: elapsed=${elapsedMs}ms chunks=${chunks.length} levels=${levelCountRef.current}`,
           describeCtx(audioContext), stoppedTrackInfo);
+        const emptyMsg = 'Recording was empty — no audio captured. Try again.';
+        setError(emptyMsg);
+        setErrorType('');
+        window.dictator.reportMicError(emptyMsg);
+      } else if (!pendingStartRef.current) {
+        window.dictator.stopRecording(false);
       }
-      window.dictator.stopRecording(!hasAudio);
 
       if (sourceRef.current) {
         sourceRef.current.disconnect();
@@ -743,6 +763,10 @@ export function useAudioRecorder(
       }
     } finally {
       isStoppingRef.current = false;
+      if (pendingStartRef.current) {
+        pendingStartRef.current = false;
+        void startRecordingRef.current?.();
+      }
     }
 
     if (!hasAudio) return;
@@ -790,6 +814,7 @@ export function useAudioRecorder(
   }, []);
 
   const cancelRecording = useCallback(() => {
+    pendingStartRef.current = false;
     if (!isRecordingRef.current && !isSettingUpRef.current) return;
     teardownRecording();
     setError('');
@@ -797,6 +822,11 @@ export function useAudioRecorder(
 
   useEffect(() => {
     const unsub = window.dictator.onHotkeyToggle(() => {
+      if (isStoppingRef.current && pendingStartRef.current) {
+        pendingStartRef.current = false;
+        recLog.info('queued start cancelled by a second toggle during flush');
+        return;
+      }
       if (isRecordingRef.current || isSettingUpRef.current) {
         stopRecording();
       } else {

@@ -118,6 +118,7 @@ function sendToggleToRenderer(): void {
 }
 
 function sendCancelToRenderer(): void {
+  log.info('recording cancelled by user (state=%s)', currentState);
   if (mainWindow) {
     mainWindow.webContents.send(IPC.HOTKEY_CANCEL);
   }
