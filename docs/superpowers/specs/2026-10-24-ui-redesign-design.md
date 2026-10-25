@@ -69,6 +69,10 @@ Made during implementation:
   hover). An expanded row gets a light left bar; the full text sits below the row so it stays
   selectable, then "Whisper raw" with changed words highlighted, Copy / Copy raw, words and wpm, and
   the K1 trash button. Legacy mode badges are gone.
+- **Shortcuts (S1 "Wiersze"):** a "Recording" card with Mode (`Segmented`) and Call mode (`Switch` + one
+  line), then one card with only the shortcuts of the active mode plus Show / hide window. Fixed-width
+  shortcut field with flat keycaps; listening state has a light border, caret and "Esc cancels"; blur
+  cancels listening; reset icon only for a non-default shortcut; errors show inside the field.
 
 Rules that apply everywhere:
 
@@ -92,11 +96,12 @@ Done:
   prompt-name sanitizing (max 40 chars / 6 words, otherwise "Prompt N").
 - History page (`HistoryPage.tsx`) and `CopyButton` (tokens, `label`, `variant`; also restyles the
   copy button on Home).
+- Shortcuts page (`ShortcutsPage.tsx`).
 
 Remaining, in order:
 
-1. `ShortcutsPage`, `VocabularyPage`: tokens, `ui/` components, Z3 selection. Vocabulary is the third
-   user of the K1 trash button, time to propose a shared component.
+1. `VocabularyPage`: tokens, `ui/` components, Z3 selection. Vocabulary is the third user of the K1
+   trash button and of the mono section heading, time to propose shared components.
 2. `WidgetPage`: comparison table is outdated ("6 (flat)", "✕ icon"); thumbnails should render the
    real widgets (`VoiceBar` already has `preview`/`forceHover` props; `MaxiWidget` has none); Mini/Maxi
    cards use Z3 selection.
