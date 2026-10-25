@@ -127,12 +127,12 @@ Done:
 - Onboarding wizard (`OnboardingWizard.tsx`).
 - Small components: `Toast`, `ForceUpdateModal`, `RecEffects`, `ErrorBoundary` in `App.tsx`;
   `UpToDatePopup` replaced by a toast.
+- `index.css` cleanup: dead keyframes and the temperature slider removed, scrollbars and the record
+  button glows on tokens, the red glow on a new history entry dropped, `on-accent` token added.
 
-Remaining, in order:
-
-1. `index.css`: old keyframes and helpers with hard-coded colours (`rec-glitch`, `first-run-glow`,
-   `entry-glow`, `temperature-slider`, scrollbars).
-2. Close: `npm run lint`, `npx -y -p typescript@5.9.3 tsc --noEmit`, sweep for loose colours.
+Remaining: none. Closed on 2026-10-25 with `npm run lint`, the type-check and a colour sweep (no
+loose palette classes in components; the only literals left are the white trash icon via the
+`on-accent` token and the black effect layers in `RecEffects`).
 
 Open ideas (not decided):
 

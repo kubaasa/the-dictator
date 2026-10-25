@@ -38,29 +38,27 @@ export function Vignette() {
 interface ViewfinderCornersProps {
   color?: string;
   size?: number;
-  animated?: boolean;
 }
 
-export function ViewfinderCorners({ color = 'var(--color-border-strong)', size = 24, animated = false }: ViewfinderCornersProps) {
+export function ViewfinderCorners({ color = 'var(--color-border-strong)', size = 24 }: ViewfinderCornersProps) {
   const borderStyle = `2px solid ${color}`;
-  const cls = animated ? 'animate-corner-pulse' : '';
 
   return (
     <>
       <div
-        className={`absolute top-0 left-0 pointer-events-none ${cls}`}
+        className="absolute top-0 left-0 pointer-events-none"
         style={{ width: size, height: size, borderTop: borderStyle, borderLeft: borderStyle }}
       />
       <div
-        className={`absolute top-0 right-0 pointer-events-none ${cls}`}
+        className="absolute top-0 right-0 pointer-events-none"
         style={{ width: size, height: size, borderTop: borderStyle, borderRight: borderStyle }}
       />
       <div
-        className={`absolute bottom-0 left-0 pointer-events-none ${cls}`}
+        className="absolute bottom-0 left-0 pointer-events-none"
         style={{ width: size, height: size, borderBottom: borderStyle, borderLeft: borderStyle }}
       />
       <div
-        className={`absolute bottom-0 right-0 pointer-events-none ${cls}`}
+        className="absolute bottom-0 right-0 pointer-events-none"
         style={{ width: size, height: size, borderBottom: borderStyle, borderRight: borderStyle }}
       />
     </>

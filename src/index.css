@@ -34,6 +34,7 @@
   --color-accent: #dc2626;
   --color-accent-strong: #ef4444;
   --color-accent-soft: rgb(220 38 38 / 0.05);
+  --color-on-accent: #ffffff;
   --color-ok: #22c55e;
   --color-ok-text: #4ade80;
   --color-warn: #f59e0b;
@@ -65,7 +66,7 @@ body,
 /* Thin custom scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #404040 transparent;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
 *::-webkit-scrollbar {
   width: 6px;
@@ -75,11 +76,11 @@ body,
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #404040;
+  background: var(--color-border-strong);
   border-radius: 3px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #525252;
+  background: var(--color-text-dim);
 }
 *::-webkit-scrollbar-button {
   display: none;
@@ -149,36 +150,6 @@ body,
   to   { opacity: 0; transform: scale(0.9); }
 }
 
-@keyframes ping-slow {
-  0% {
-    transform: scale(1);
-    opacity: 0.4;
-  }
-  100% {
-    transform: scale(1.8);
-    opacity: 0;
-  }
-}
-
-@keyframes ping-slower {
-  0% {
-    transform: scale(1);
-    opacity: 0.25;
-  }
-  100% {
-    transform: scale(2.2);
-    opacity: 0;
-  }
-}
-
-.animate-ping-slow {
-  animation: ping-slow 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-.animate-ping-slower {
-  animation: ping-slower 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
 /* Draggable titlebar region for Electron */
 .drag-region {
   -webkit-app-region: drag;
@@ -222,34 +193,21 @@ textarea:focus:not(:focus-visible),
   animation: fade-in 0.35s ease-out both;
 }
 
-@keyframes idle-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(161, 161, 170, 0);
-  }
-  50% {
-    box-shadow: 0 0 0 14px rgba(161, 161, 170, 0.06);
-  }
-}
-
-.animate-idle-pulse {
-  animation: idle-pulse 3s ease-in-out infinite;
-}
-
 @keyframes rec-glitch {
   0%, 8%, 100% {
     transform: translateX(0);
     opacity: 1;
-    box-shadow: 0 0 50px rgba(220,38,38,0.4), 0 0 100px rgba(220,38,38,0.15);
+    box-shadow: 0 0 50px color-mix(in oklab, var(--color-accent) 40%, transparent), 0 0 100px color-mix(in oklab, var(--color-accent) 15%, transparent);
   }
   2% {
     transform: translateX(3px);
     opacity: 0.7;
-    box-shadow: 0 0 80px rgba(220,38,38,0.7), 0 0 150px rgba(220,38,38,0.3);
+    box-shadow: 0 0 80px color-mix(in oklab, var(--color-accent) 70%, transparent), 0 0 150px color-mix(in oklab, var(--color-accent) 30%, transparent);
   }
   5% {
     transform: translateX(-2px);
     opacity: 0.85;
-    box-shadow: 0 0 60px rgba(220,38,38,0.5);
+    box-shadow: 0 0 60px color-mix(in oklab, var(--color-accent) 50%, transparent);
   }
 }
 
@@ -267,66 +225,13 @@ textarea:focus:not(:focus-visible),
   animation: rec-blink 1s step-start infinite;
 }
 
-/* Viewfinder corner pulse (recording state) */
-@keyframes corner-pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.7; }
-}
-
-.animate-corner-pulse {
-  animation: corner-pulse 2s ease-in-out infinite;
-}
-
-/* VHS tracking noise — subtle horizontal jitter */
-@keyframes vhs-tracking {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(0.5px); }
-  50% { transform: translateX(-0.5px); }
-  75% { transform: translateX(0.3px); }
-}
-
-/* Temperature slider */
-.temperature-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 4px;
-  border-radius: 2px;
-  background: #404040;
-  outline: none;
-  cursor: pointer;
-}
-
-.temperature-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #dc2626;
-  cursor: pointer;
-  border: 2px solid #1a1a1a;
-  transition: box-shadow 0.15s ease;
-}
-
-.temperature-slider::-webkit-slider-thumb:hover {
-  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
-}
-
-.temperature-slider:focus {
-  outline: 2px solid rgba(220, 38, 38, 0.4);
-  outline-offset: 2px;
-}
-
-.temperature-slider:focus::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.25);
-}
-
 /* First-run pulsing red glow on record button */
 @keyframes first-run-glow {
   0%, 100% {
-    box-shadow: 0 0 20px rgba(220, 38, 38, 0.2), 0 0 40px rgba(220, 38, 38, 0.1);
+    box-shadow: 0 0 20px color-mix(in oklab, var(--color-accent) 20%, transparent), 0 0 40px color-mix(in oklab, var(--color-accent) 10%, transparent);
   }
   50% {
-    box-shadow: 0 0 30px rgba(220, 38, 38, 0.45), 0 0 60px rgba(220, 38, 38, 0.2);
+    box-shadow: 0 0 30px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 0 60px color-mix(in oklab, var(--color-accent) 20%, transparent);
   }
 }
 
@@ -348,22 +253,9 @@ textarea:focus:not(:focus-visible),
   }
 }
 
-@keyframes entry-glow {
-  0% {
-    box-shadow: 0 0 12px rgba(220, 38, 38, 0.3), 0 0 24px rgba(220, 38, 38, 0.1);
-    border-color: rgba(220, 38, 38, 0.4);
-  }
-  100% {
-    box-shadow: 0 0 0 rgba(220, 38, 38, 0);
-    border-color: rgba(38, 38, 38, 1);
-  }
-}
-
 .animate-entry-new {
   overflow: hidden;
-  animation:
-    entry-slide-in 0.4s ease-out both,
-    entry-glow 1.5s ease-out 0.2s both;
+  animation: entry-slide-in 0.4s ease-out both;
 }
 
 @keyframes dotFade {

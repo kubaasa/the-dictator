@@ -47,7 +47,7 @@ export function ConfirmDeleteButton({ onConfirm, label, size = 'md', disabled }:
       }`}
     >
       {confirming ? 'Sure?' : (
-        <svg className={icon} fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="#ffffff" aria-hidden="true">
+        <svg className={`${icon} stroke-on-accent`} fill="none" viewBox="0 0 24 24" strokeWidth={2.2} aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
         </svg>
       )}
