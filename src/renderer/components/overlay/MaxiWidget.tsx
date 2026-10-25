@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { RecordingState, HotkeyMode, AppSettings } from '../../../shared/types';
+import { formatShortcut } from './keys';
 
 const NUM_BANDS = 8;
 
@@ -10,45 +11,24 @@ interface MaxiWidgetProps {
   shortcuts: AppSettings['hotkey']['shortcuts'];
   hotkeyMode: HotkeyMode;
   errorMessage?: string;
+  resultText?: string;
+  preview?: boolean;
 }
 
-const BAR_COUNT  = 60;
-const BAR_WIDTH  = 3;
-const BAR_GAP    = 3;
-const MAX_BAR_H  = 88;
-const MIN_BAR_H  = 2.5;
+const PREVIEW_ELAPSED_MS = 12_000;
+
+const BAR_COUNT = 50;
+const MIN_BAR_H = 2.5;
+const MAX_BAR_H = 36;
+const DOT_COUNT = 7;
 
 // LERP smoothing: 0 = frozen, 1 = instant
 const LERP_ATTACK  = 0.75;
 const LERP_RELEASE = 0.18;
 
-const ERROR_RED = '#DC2626';
-const BASE_COLOR = 'rgba(255,255,255,0.85)';
-
-const KEY_ALIASES: Record<string, string> = {
-  BracketRight: ']', BracketLeft: '[', Backquote: '`', Backslash: '\\',
-  Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/',
-  Minus: '-', Equal: '=', Escape: 'Esc', Space: 'Space',
-};
-
-function formatKey(k: string): string {
-  return KEY_ALIASES[k] ?? k;
-}
-
-// Hanning window: w(i) = sin²(π * i / (N-1)) — spindle/diamond shape
+// Hanning window: w(i) = sin²(π * i / (N-1)), spindle/diamond shape
 const HANNING_WEIGHTS = Array.from({ length: BAR_COUNT }, (_, i) =>
   Math.pow(Math.sin(Math.PI * i / (BAR_COUNT - 1)), 2)
-);
-
-const IDLE_SCALES = HANNING_WEIGHTS.map(w =>
-  ((MIN_BAR_H + w * 6) / MAX_BAR_H).toFixed(4)
-);
-
-const INIT_PEAK_SCALE = ((MIN_BAR_H + MAX_BAR_H * 0.2) / MAX_BAR_H).toFixed(4);
-
-// Negative delays create 3 simultaneous wave phases flowing right-to-left
-const INIT_DELAYS = Array.from({ length: BAR_COUNT }, (_, i) =>
-  (-((BAR_COUNT - 1 - i) / (BAR_COUNT - 1)) * 3).toFixed(3)
 );
 
 // Per-bar pseudo-random variation for organic movement
@@ -58,59 +38,37 @@ const BAR_PROPS = Array.from({ length: BAR_COUNT }, (_, i) => {
   return { multiplier: 0.80 + rand * 0.20, jitter: 0.95 + rand * 0.1 };
 });
 
-const KEYFRAMES = `
-@keyframes rec-blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
-@keyframes maxi-error-shake {
-  0%        { transform: translateX(0); }
-  20%       { transform: translateX(4px); }
-  40%       { transform: translateX(-4px); }
-  60%       { transform: translateX(3px); }
-  80%, 100% { transform: translateX(0); }
-}
-@keyframes maxi-init {
-  0%, 100% { transform: scaleY(var(--init-idle, 0.05)); }
-  50%       { transform: scaleY(var(--init-peak, 0.35)); }
-}
-@keyframes maxi-enter {
-  from { opacity: 0; transform: scale(0.92); }
-  to   { opacity: 1; transform: scale(1.0); }
-}
-@keyframes maxi-exit {
-  from { opacity: 1; transform: scale(1.0); }
-  to   { opacity: 0; transform: scale(0.9); }
-}
-@keyframes processing-pulse {
-  0%, 100% { opacity: 0.5; }
-  50%      { opacity: 1; }
-}
-@keyframes dot-blink {
-  0%        { opacity: 0; }
-  20%, 60%  { opacity: 1; }
-  100%      { opacity: 0; }
-}
-@keyframes error-flicker {
-  0%, 12%, 40%, 57%, 74%, 90%, 100% { opacity: 1; }
-  3%  { opacity: 0.4; }
-  6%  { opacity: 0.9; }
-  9%  { opacity: 0.3; }
-  55% { opacity: 0.7; }
-  72% { opacity: 0.4; }
-  92% { opacity: 0.6; }
-}
-`;
+const DOTS = Array.from({ length: DOT_COUNT }, (_, i) => i);
+const REST_SCALE = (MIN_BAR_H / MAX_BAR_H).toFixed(4);
 
 type AnimPhase = 'idle' | 'entering' | 'active' | 'exiting';
+type Visual = 'bars' | 'processing' | 'done' | 'error';
 
-export function MaxiWidget({ voiceLevel, bandsRef, state, shortcuts, hotkeyMode, errorMessage }: MaxiWidgetProps) {
+const BORDER_CLASS: Record<Visual, string> = {
+  bars: 'border-widget-border',
+  processing: 'border-widget-border',
+  done: 'border-widget-ok/45',
+  error: 'border-widget-error/75',
+};
+
+function formatTimer(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+export function MaxiWidget({
+  voiceLevel, bandsRef, state, shortcuts, hotkeyMode, errorMessage, resultText, preview = false,
+}: MaxiWidgetProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [animPhase, setAnimPhase] = useState<AnimPhase>('idle');
+  const [elapsedMs, setElapsedMs] = useState(0);
   const prevIsActiveRef = useRef(false);
   const dragMouseUpRef = useRef<(() => void) | null>(null);
+  const recStartRef = useRef<number | null>(null);
 
-  // Audio visualization refs — updated in RAF loop, not React state
+  // Audio visualization refs, updated in RAF loop, not React state
   const rafRef         = useRef<number>(0);
   const voiceLevelRef  = useRef(0);
   const smoothedRef    = useRef<Float32Array>(new Float32Array(BAR_COUNT).fill(MIN_BAR_H));
@@ -124,24 +82,17 @@ export function MaxiWidget({ voiceLevel, bandsRef, state, shortcuts, hotkeyMode,
   const isDone         = state === 'done';
   const isError        = state === 'error';
 
-  // 'done' is NOT active — widget starts fading out immediately when transcription completes
-  const isActive = isInitializing || isRecording || isTranscribing || isError;
+  // 'done' counts as active so the paste confirmation stays on screen until main returns to idle
+  const isActive = isInitializing || isRecording || isTranscribing || isDone || isError;
 
-  // Sticky state: remember last content during exit animation to prevent flash
-  const wasErrorRef = useRef(false);
-  const wasProcessingRef = useRef(false);
+  // Sticky content: during the exit fade the state is already 'idle', keep showing what was last on screen
+  const lastVisualRef = useRef<Visual>('bars');
+  if (isError) lastVisualRef.current = 'error';
+  else if (isDone) lastVisualRef.current = 'done';
+  else if (isTranscribing) lastVisualRef.current = 'processing';
+  else if (isInitializing || isRecording) lastVisualRef.current = 'bars';
+  const visual = lastVisualRef.current;
 
-  if (isActive && !prevIsActiveRef.current) {
-    wasErrorRef.current = false;
-    wasProcessingRef.current = false;
-  }
-
-  if (isError) wasErrorRef.current = true;
-  if (isTranscribing) wasProcessingRef.current = true;
-
-  const isExiting = animPhase === 'exiting' || !isActive;
-  const showError = isError || (wasErrorRef.current && isExiting);
-  const showProcessing = isTranscribing || (!showError && wasProcessingRef.current && isExiting);
   useEffect(() => {
     const wasActive = prevIsActiveRef.current;
     prevIsActiveRef.current = isActive;
@@ -158,7 +109,25 @@ export function MaxiWidget({ voiceLevel, bandsRef, state, shortcuts, hotkeyMode,
     }
   }, [isActive]);
 
-  // Voice-level driven visualization — uses IPC voiceLevel from the recording worklet
+  // Recording timer: starts with 'recording', freezes afterwards, resets on the next session
+  useEffect(() => {
+    if (preview) {
+      setElapsedMs(PREVIEW_ELAPSED_MS);
+      return;
+    }
+    if (isInitializing) {
+      recStartRef.current = null;
+      setElapsedMs(0);
+    }
+    if (!isRecording) return;
+    if (recStartRef.current === null) recStartRef.current = performance.now();
+    const id = setInterval(() => {
+      setElapsedMs(performance.now() - (recStartRef.current ?? performance.now()));
+    }, 250);
+    return () => clearInterval(id);
+  }, [isInitializing, isRecording, preview]);
+
+  // Voice-level driven visualization: uses IPC voiceLevel from the recording worklet
   // instead of opening a second mic stream (which blocks on many Windows audio drivers).
   useEffect(() => {
     if (!isRecording) {
@@ -173,7 +142,7 @@ export function MaxiWidget({ voiceLevel, bandsRef, state, shortcuts, hotkeyMode,
       for (let i = 0; i < BAR_COUNT; i++) {
         const { multiplier, jitter } = BAR_PROPS[i];
 
-        // Interpolate 8 spectral bands (normalized shape 0-1) across 60 bars,
+        // Interpolate 8 spectral bands (normalized shape 0-1) across the bars,
         // then scale by overall voice level for amplitude
         let bandShape: number;
         if (bands && bands.length === NUM_BANDS) {
@@ -200,10 +169,8 @@ export function MaxiWidget({ voiceLevel, bandsRef, state, shortcuts, hotkeyMode,
       for (let i = 0; i < BAR_COUNT; i++) {
         const el = barElemsRef.current[i];
         if (el) {
-          const scaleY = (smoothedRef.current[i] / MAX_BAR_H).toFixed(4);
-          el.style.transform  = `scaleY(${scaleY})`;
-          el.style.transition = 'none';
-          el.style.animation  = 'none';
+          el.style.transform = `scaleY(${(smoothedRef.current[i] / MAX_BAR_H).toFixed(4)})`;
+          el.style.animation = 'none';
         }
       }
 
@@ -223,11 +190,12 @@ export function MaxiWidget({ voiceLevel, bandsRef, state, shortcuts, hotkeyMode,
         document.removeEventListener('mouseup', dragMouseUpRef.current);
         dragMouseUpRef.current = null;
       }
-      window.dictator.widgetDragEnd();
+      if (!preview) window.dictator.widgetDragEnd();
     };
-  }, []);
+  }, [preview]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (preview) return;
     e.preventDefault();
     window.dictator.widgetDragStart(e.screenX - window.screenX, e.screenY - window.screenY);
     setIsDragging(true);
@@ -239,236 +207,169 @@ export function MaxiWidget({ voiceLevel, bandsRef, state, shortcuts, hotkeyMode,
     };
     dragMouseUpRef.current = onUp;
     document.addEventListener('mouseup', onUp);
-  }, []);
+  }, [preview]);
 
-  const indicator = isRecording
-    ? { dot: true,  text: 'REC',   color: ERROR_RED }
-    : isError
-      ? { dot: false, text: 'ERROR', color: ERROR_RED }
-      : null;
-
-  const recShortcut = hotkeyMode === 'push-to-talk'
-    ? shortcuts.pushToTalk
-    : shortcuts.toggleRecording;
+  const recShortcut = hotkeyMode === 'push-to-talk' ? shortcuts.pushToTalk : shortcuts.toggleRecording;
   const recLabel = hotkeyMode === 'push-to-talk' ? 'Hold to Rec' : 'Stop';
 
-  return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <style>{KEYFRAMES}</style>
+  const shortcutRow = visual === 'bars' ? (
+    <>
+      <ShortcutEntry label={recLabel} raw={recShortcut} />
+      {hotkeyMode === 'toggle' && (
+        <>
+          <Divider />
+          <ShortcutEntry label="Cancel" raw={shortcuts.cancelRecording} />
+        </>
+      )}
+    </>
+  ) : visual === 'processing' ? (
+    <ShortcutEntry label="Cancel" raw={shortcuts.cancelRecording} />
+  ) : visual === 'error' ? (
+    <ShortcutEntry label="Dismiss" raw={shortcuts.cancelRecording} />
+  ) : null;
 
-      {/* Transparent hit zone — required for mouse events on Electron transparent window */}
+  const capsuleClass = [
+    'flex h-16 w-[480px] items-center gap-[18px] rounded-full border bg-widget-surface shadow-widget pl-6 pr-[22px]',
+    'transition-[border-color] duration-200',
+    BORDER_CLASS[visual],
+  ].join(' ');
+
+  const stack = (
+    <>
+        <div
+          className={capsuleClass}
+          style={{
+            WebkitAppRegion: 'no-drag',
+            animation: isError ? 'widget-shake 300ms ease-in-out' : undefined,
+          } as React.CSSProperties}
+        >
+          {visual === 'bars' && (
+            <>
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="h-[9px] w-[9px] shrink-0 rounded-full bg-widget-rec motion-safe:animate-widget-rec" />
+                <span className="w-10 font-mono text-[13px] text-widget-fg">{formatTimer(elapsedMs)}</span>
+              </div>
+              <div className="flex h-9 min-w-0 flex-1 items-center justify-center gap-[3px]">
+                {BAR_PROPS.map((_, i) => (
+                  <div
+                    key={i}
+                    ref={el => { barElemsRef.current[i] = el; }}
+                    className="w-[3px] shrink-0 rounded-full bg-widget-fg will-change-transform"
+                    style={{
+                      height: MAX_BAR_H,
+                      transformOrigin: 'center',
+                      transform: `scaleY(${REST_SCALE})`,
+                      animation: isInitializing ? `widget-cascade 350ms ease-out ${(i * 0.01).toFixed(2)}s both` : undefined,
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {visual === 'processing' && (
+            <>
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="h-[9px] w-[9px] shrink-0 rounded-full bg-widget-fg-dim" />
+                <span className="w-10 font-mono text-[13px] text-widget-fg-dim">{formatTimer(elapsedMs)}</span>
+              </div>
+              <div className="flex min-w-0 flex-1 items-center justify-center gap-2.5">
+                {DOTS.map(i => (
+                  <span
+                    key={i}
+                    className="h-1 w-1 rounded-full bg-widget-fg"
+                    style={{ animation: `widget-pulse 1.2s ease-in-out ${(i * 0.12).toFixed(2)}s infinite` }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {visual === 'done' && (
+            <>
+              <CheckIcon />
+              <span className="min-w-0 flex-1 truncate text-[13px] text-widget-fg-muted">{resultText}</span>
+            </>
+          )}
+
+          {visual === 'error' && (
+            <>
+              <span className="h-[9px] w-[9px] shrink-0 rounded-full bg-widget-error" />
+              <ErrorText message={errorMessage} />
+            </>
+          )}
+        </div>
+
+        {/* Always rendered so the capsule keeps its position when a state has no shortcuts */}
+        <div className={`flex h-[26px] items-center gap-3.5 rounded-full border border-widget-border/70 bg-widget-surface px-3.5 ${shortcutRow ? '' : 'invisible'}`}>
+          {shortcutRow}
+        </div>
+    </>
+  );
+
+  if (preview) {
+    return <div className="inline-flex select-none flex-col items-center gap-2.5 font-sans">{stack}</div>;
+  }
+
+  return (
+    <div className="flex h-screen w-screen select-none items-center justify-center font-sans">
+      {/* Transparent hit zone, required for mouse events on Electron transparent window */}
       <div
         onMouseDown={handleMouseDown}
+        className="flex flex-col items-center gap-2.5 rounded-[40px] p-2"
         style={{
-          padding: 8,
-          borderRadius: 24,
           background: 'rgba(0,0,0,0.01)',
           cursor: isDragging ? 'grabbing' : 'grab',
           transformOrigin: 'center',
           opacity: animPhase === 'idle' ? 0 : undefined,
           animation:
-            animPhase === 'entering' ? 'maxi-enter 200ms ease-out both' :
-            animPhase === 'exiting'  ? 'maxi-exit 250ms ease-in both'   :
+            animPhase === 'entering' ? 'widget-enter 200ms ease-out both' :
+            animPhase === 'exiting'  ? 'widget-exit 250ms ease-in both'   :
             'none',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            padding: '10px 20px 8px',
-            borderRadius: 20,
-            background: 'rgba(10, 10, 10, 0.75)',
-            backdropFilter: 'blur(24px)',
-            WebkitBackdropFilter: 'blur(24px)',
-            boxShadow: 'none',
-            border: '1px solid rgba(255,255,255,0.06)',
-            minWidth: 500,
-            animation: 'none',
-          } as React.CSSProperties}
-        >
-            <div style={{ height: 22, display: 'flex', alignItems: 'center' }}>
-                {indicator && (
-                  <span style={{
-                    fontFamily: 'monospace', fontSize: 14, fontWeight: 700,
-                    letterSpacing: '0.08em', color: indicator.color,
-                    display: 'inline-flex', alignItems: 'center',
-                  }}>
-                    [
-                    {indicator.dot && (
-                      <span style={{
-                        width: 9, height: 9, borderRadius: '50%',
-                        background: ERROR_RED, display: 'inline-block', flexShrink: 0,
-                        animation: 'rec-blink 1s step-start infinite',
-                      }} />
-                    )}
-                    {indicator.text}]
-                  </span>
-                )}
-              </div>
-
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: MAX_BAR_H,
-                gap: (showError || showProcessing) ? 0 : BAR_GAP,
-              }}>
-                {showError ? (
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '100%',
-                    gap: 8,
-                    animation: 'error-flicker 2s linear infinite',
-                  }}>
-                    {(() => {
-                      const msg = errorMessage || 'Error';
-                      const dotIdx = msg.indexOf('.');
-                      const line1 = dotIdx >= 0 ? msg.slice(0, dotIdx + 1) : msg;
-                      const line2 = dotIdx >= 0 ? msg.slice(dotIdx + 1).trim() : '';
-                      const lineStyle: React.CSSProperties = {
-                        fontFamily: "'JetBrains Mono', monospace",
-                        fontSize: 14,
-                        fontWeight: 600,
-                        letterSpacing: '0.12em',
-                        textTransform: 'uppercase',
-                        color: ERROR_RED,
-                        textAlign: 'center',
-                      };
-                      return (
-                        <>
-                          <span style={lineStyle}>[ {line1} ]</span>
-                          {line2 && <span style={{ ...lineStyle, fontSize: 12, fontWeight: 400 }}>{line2}</span>}
-                        </>
-                      );
-                    })()}
-                  </div>
-                ) : showProcessing ? (
-                  <span style={{
-                    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-                    fontSize: 16,
-                    fontWeight: 500,
-                    letterSpacing: '0.05em',
-                    color: 'rgba(255,255,255,0.6)',
-                    userSelect: 'none',
-                    animation: 'processing-pulse 2s ease-in-out infinite',
-                  }}>
-                    {'Processing'}
-                    <span style={{ display: 'inline-block', width: '1.5em', textAlign: 'left' }}>
-                      {[0, 1, 2].map(i => (
-                        <span
-                          key={i}
-                          style={{
-                            animation: 'dot-blink 1.4s infinite',
-                            animationDelay: `${i * 0.3}s`,
-                            opacity: 0,
-                          }}
-                        >.</span>
-                      ))}
-                    </span>
-                  </span>
-                ) : (
-                  Array.from({ length: BAR_COUNT }, (_, i) => {
-                    const barColor = isError ? ERROR_RED : BASE_COLOR;
-
-                    let transform: string;
-                    let animation = 'none';
-                    let transition = 'transform 0.3s ease-out';
-                    let barOpacity: number;
-                    if (isInitializing) {
-                      transform  = `scaleY(${IDLE_SCALES[i]})`;
-                      animation  = `maxi-init 1s ease-in-out ${INIT_DELAYS[i]}s infinite`;
-                      transition = 'none';
-                      barOpacity = 0.65;
-                    } else if (isRecording) {
-                      transform  = `scaleY(${(MIN_BAR_H / MAX_BAR_H).toFixed(4)})`;
-                      transition = 'none';
-                      barOpacity = 0.92;
-                    } else if (isDone) {
-                      transform  = `scaleY(${IDLE_SCALES[i]})`;
-                      barOpacity = 0.35;
-                    } else if (isError) {
-                      transform  = 'scaleY(0.3)';
-                      barOpacity = 0.9;
-                    } else {
-                      transform  = `scaleY(${IDLE_SCALES[i]})`;
-                      barOpacity = 0.35;
-                    }
-
-                    return (
-                      <div
-                        key={i}
-                        ref={el => { barElemsRef.current[i] = el; }}
-                        style={{
-                          width: BAR_WIDTH,
-                          height: MAX_BAR_H,
-                          borderRadius: 1.5,
-                          background: barColor,
-                          transformOrigin: 'center',
-                          flexShrink: 0,
-                          transform,
-                          animation,
-                          transition,
-                          opacity: barOpacity,
-                          ...(isInitializing && { '--init-idle': IDLE_SCALES[i], '--init-peak': INIT_PEAK_SCALE }),
-                        } as React.CSSProperties}
-                      />
-                    );
-                  })
-                )}
-              </div>
-
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                gap: 0, paddingTop: 7, whiteSpace: 'nowrap',
-              }}>
-                <ShortcutEntry label={recLabel}  raw={recShortcut} />
-                {hotkeyMode === 'toggle' && (
-                  <>
-                    <Divider />
-                    <ShortcutEntry label="Cancel"    raw={shortcuts.cancelRecording} />
-                  </>
-                )}
-            </div>
-        </div>
+        {stack}
       </div>
     </div>
   );
 }
 
-function ShortcutEntry({ label, raw }: { label: string; raw?: string }) {
-  // Stores persisted by older versions may lack a shortcut key — a crash here
-  // would take down the whole overlay tree into the ErrorBoundary
-  if (!raw) return null;
-  const keys = raw.split('+').map(formatKey);
+function ErrorText({ message }: { message?: string }) {
+  // First sentence becomes the title, the rest the detail line
+  const msg = message || 'Error';
+  const dotIdx = msg.indexOf('. ');
+  const title = dotIdx >= 0 ? msg.slice(0, dotIdx + 1) : msg;
+  const detail = dotIdx >= 0 ? msg.slice(dotIdx + 1).trim() : '';
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: '22px' }}>{label}</span>
-      {keys.map((k, i) => <KeyBadge key={i} k={k} />)}
-    </span>
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5" title={msg}>
+      <span className="truncate text-[13px] font-medium text-widget-fg">{title}</span>
+      {detail && <span className="truncate text-xs text-widget-fg-muted">{detail}</span>}
+    </div>
   );
 }
 
-function KeyBadge({ k }: { k: string }) {
+function ShortcutEntry({ label, raw }: { label: string; raw?: string }) {
+  // Stores persisted by older versions may lack a shortcut key, a crash here
+  // would take down the whole overlay tree into the ErrorBoundary
+  if (!raw) return null;
   return (
-    <span style={{
-      padding: '2px 6px',
-      borderRadius: 4,
-      background: 'rgba(255,255,255,0.07)',
-      border: '1px solid rgba(255,255,255,0.12)',
-      color: 'rgba(255,255,255,0.45)',
-      fontSize: 11,
-      fontFamily: 'monospace',
-      display: 'inline-block',
-    }}>
-      {k}
+    <span className="flex items-center gap-1.5 text-[11px] text-widget-fg-muted">
+      {label}
+      <kbd className="rounded border border-widget-border px-[5px] py-px font-mono text-[10px] font-normal text-widget-fg-muted">
+        {formatShortcut(raw)}
+      </kbd>
     </span>
   );
 }
 
 function Divider() {
-  return <span style={{ color: '#2a2a2a', margin: '0 9px' }}>|</span>;
+  return <span className="h-3 w-px bg-widget-border" />;
+}
+
+function CheckIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="shrink-0 stroke-widget-ok" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </svg>
+  );
 }

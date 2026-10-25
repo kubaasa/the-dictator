@@ -13,7 +13,7 @@ interface OverlayWindowProps {
 
 export function OverlayWindow({ state }: OverlayWindowProps) {
   const { level: voiceLevel, bandsRef } = useVoiceActivity();
-  const { error } = useTranscriptionResult(state);
+  const { result, error } = useTranscriptionResult(state);
   const [activeWidget, setActiveWidget] = useState<WidgetType>('voicebar');
   const [shortcuts, setShortcuts] = useState<AppSettings['hotkey']['shortcuts']>(
     () => DEFAULT_SETTINGS.hotkey.shortcuts,
@@ -54,6 +54,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
         shortcuts={shortcuts}
         hotkeyMode={hotkeyMode}
         errorMessage={error}
+        resultText={result}
       />
     );
   }
@@ -63,6 +64,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
       voiceLevel={voiceLevel}
       state={state}
       errorMessage={error}
+      shortcut={shortcuts.toggleRecording}
       onToggleRecording={() => window.dictator.requestToggleRecording()}
     />
   );

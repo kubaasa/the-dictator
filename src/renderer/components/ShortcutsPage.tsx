@@ -2,23 +2,35 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import log from 'electron-log/renderer';
 import { DEFAULT_SETTINGS, type AppSettings, type HotkeyMode } from '../../shared/types';
 import { useToast } from './Toast';
+import { Segmented } from './ui/Segmented';
+import { Switch } from './ui/Switch';
+import { FieldRow } from './ui/FieldRow';
+import { SectionHeading } from './ui/SectionHeading';
 
 type ShortcutKey = 'toggleRecording' | 'cancelRecording' | 'pushToTalk' | 'showWindow';
 
-interface ShortcutConfig {
-  key: ShortcutKey;
-  label: string;
-  description: string;
-}
+const SHORTCUT_LABELS: Record<ShortcutKey, string> = {
+  toggleRecording: 'Start / stop recording',
+  cancelRecording: 'Cancel recording',
+  pushToTalk: 'Hold to talk',
+  showWindow: 'Show / hide window',
+};
 
-const RECORDING_SHORTCUTS: ShortcutConfig[] = [
-  { key: 'toggleRecording', label: 'Toggle Recording', description: 'Start or stop voice recording' },
-  { key: 'cancelRecording', label: 'Cancel Recording', description: 'Discard current recording without transcription' },
-  { key: 'pushToTalk', label: 'Push-to-Talk', description: 'One modifier + one key — hold to record, release to stop (active only in Push-to-Talk mode)' },
-];
+const LISTENING_PLACEHOLDERS: Record<ShortcutKey, string> = {
+  toggleRecording: 'Press keys',
+  cancelRecording: 'Press any key',
+  pushToTalk: 'Modifier + key',
+  showWindow: 'Press keys',
+};
 
-const APP_SHORTCUTS: ShortcutConfig[] = [
-  { key: 'showWindow', label: 'Show / Hide Window', description: 'Bring the app window to focus or hide it' },
+const MODE_SHORTCUTS: Record<HotkeyMode, ShortcutKey[]> = {
+  toggle: ['toggleRecording', 'cancelRecording'],
+  'push-to-talk': ['pushToTalk'],
+};
+
+const MODE_OPTIONS: { value: HotkeyMode; label: string }[] = [
+  { value: 'toggle', label: 'Toggle' },
+  { value: 'push-to-talk', label: 'Push-to-talk' },
 ];
 
 const MODIFIER_CODES = new Set([
@@ -37,23 +49,16 @@ function formatKeyForDisplay(key: string): string {
   return KEY_DISPLAY_SYMBOLS[key] ?? key;
 }
 
-function KeyBadge({ label }: { label: string }) {
+function KeyCaps({ combo }: { combo: string }) {
   return (
-    <span
-      className="inline-block rounded px-2 py-0.5 font-mono text-xs text-neutral-200 bg-neutral-700 border border-neutral-600"
-      style={{ boxShadow: '0 2px 0 #111111, inset 0 1px 0 rgba(255,255,255,0.08)' }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function ShortcutDisplay({ combo }: { combo: string }) {
-  const parts = combo.split('+');
-  return (
-    <span className="flex items-center gap-1.5">
-      {parts.map((part, i) => (
-        <KeyBadge key={i} label={formatKeyForDisplay(part)} />
+    <span className="flex items-center gap-1">
+      {combo.split('+').map((part, i) => (
+        <kbd
+          key={i}
+          className="inline-flex h-6 min-w-6 items-center justify-center rounded-[5px] border border-b-2 border-border-strong bg-surface-hover px-[7px] font-mono text-xs text-text"
+        >
+          {formatKeyForDisplay(part)}
+        </kbd>
       ))}
     </span>
   );
@@ -139,11 +144,11 @@ export function ShortcutsPage() {
   const [shortcuts, setShortcuts] = useState(DEFAULT_SETTINGS.hotkey.shortcuts);
   const [hotkeyMode, setHotkeyMode] = useState<HotkeyMode>(DEFAULT_SETTINGS.hotkey.mode);
   const [callMode, setCallMode] = useState(DEFAULT_SETTINGS.audio.callMode);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [listeningFor, setListeningFor] = useState<ShortcutKey | null>(null);
   const [pendingKeys, setPendingKeys] = useState('');
   const [error, setError] = useState('');
   const { addToast } = useToast();
-  const [shakingKey, setShakingKey] = useState<ShortcutKey | null>(null);
   const inputRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -152,7 +157,11 @@ export function ShortcutsPage() {
       setShortcuts({ ...DEFAULT_SETTINGS.hotkey.shortcuts, ...stored });
       setHotkeyMode(s.hotkey?.mode ?? DEFAULT_SETTINGS.hotkey.mode);
       setCallMode(s.audio?.callMode ?? DEFAULT_SETTINGS.audio.callMode);
-    }).catch((err) => log.error('Failed to load settings in ShortcutsPage:', err));
+      setSettingsLoaded(true);
+    }).catch((err) => {
+      log.error('Failed to load settings in ShortcutsPage:', err);
+      setSettingsLoaded(true);
+    });
   }, []);
 
   const saveShortcuts = useCallback(async (newShortcuts: typeof shortcuts) => {
@@ -208,13 +217,10 @@ export function ShortcutsPage() {
       const result = isPtt ? formatPttCombo(e) : isCancelRecording ? formatSingleOrComboKey(e) : formatKeyCombo(e);
 
       if (result) {
-        const otherShortcuts = Object.entries(shortcuts)
-          .filter(([k]) => k !== listeningFor)
-          .map(([, v]) => v);
-
-        if (otherShortcuts.includes(result)) {
-          const duplicateKey = Object.entries(shortcuts).find(([k, v]) => k !== listeningFor && v === result)?.[0];
-          addToast('error', `"${result}" is already used by "${duplicateKey}"`);
+        const duplicateKey = Object.entries(shortcuts).find(([k, v]) => k !== listeningFor && v === result)?.[0];
+        if (duplicateKey) {
+          const duplicateLabel = SHORTCUT_LABELS[duplicateKey as ShortcutKey] ?? duplicateKey;
+          addToast('error', `"${result}" is already used by "${duplicateLabel}"`);
           cancelListening();
           return;
         }
@@ -231,9 +237,10 @@ export function ShortcutsPage() {
         if (e.altKey) parts.push('Alt');
 
         if (isPtt && parts.length > 1) {
-          setError('Push-to-Talk accepts only one modifier + one key');
+          setError('One modifier + one key');
         } else {
-          setPendingKeys(parts.length > 0 ? parts.join('+') + '+...' : '');
+          setError('');
+          setPendingKeys(parts.join('+'));
         }
       }
     };
@@ -248,179 +255,102 @@ export function ShortcutsPage() {
     }
   }, [listeningFor]);
 
-  const shakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => { if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current); };
-  }, []);
-
   const resetShortcut = useCallback(async (key: ShortcutKey) => {
-    if (shortcuts[key] === DEFAULT_SETTINGS.hotkey.shortcuts[key]) {
-      setShakingKey(key);
-      if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current);
-      shakeTimerRef.current = setTimeout(() => { setShakingKey(null); shakeTimerRef.current = null; }, 300);
-      return;
-    }
     const newShortcuts = { ...shortcuts, [key]: DEFAULT_SETTINGS.hotkey.shortcuts[key] };
     await saveShortcuts(newShortcuts);
     setError('');
   }, [shortcuts, saveShortcuts]);
 
-  const isInactive = (key: ShortcutKey): boolean => {
-    if (hotkeyMode === 'toggle') return key === 'pushToTalk';
-    if (hotkeyMode === 'push-to-talk') return key === 'toggleRecording' || key === 'cancelRecording';
-    return false;
-  };
+  const renderShortcutRow = (key: ShortcutKey) => {
+    const label = SHORTCUT_LABELS[key];
+    const isListening = listeningFor === key;
+    const isCustom = shortcuts[key] !== DEFAULT_SETTINGS.hotkey.shortcuts[key];
 
-  const renderShortcutRow = (config: ShortcutConfig) => {
-    const inactive = isInactive(config.key);
-    const isListening = !inactive && listeningFor === config.key;
     return (
+      <div key={key} className="flex min-h-[52px] items-center gap-2.5 pl-[18px] pr-2.5">
+        <span className="text-[13px] text-text">{label}</span>
+        <span className="flex-1" />
+
+        {isCustom && !isListening && (
+          <button
+            onClick={() => resetShortcut(key)}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-border hover:text-text"
+            title="Reset to default"
+            aria-label={`Reset ${label} shortcut to default`}
+          >
+            <svg className="h-[15px] w-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
+          </button>
+        )}
+
         <div
-          key={config.key}
-          className={`flex items-center justify-between rounded-lg border px-5 py-4 transition-opacity ${
-            inactive
-              ? 'border-neutral-800/50 bg-[#0f0f0f] opacity-35 pointer-events-none select-none'
-              : 'border-neutral-800 bg-[#141414]'
+          ref={isListening ? inputRef : undefined}
+          tabIndex={0}
+          onClick={() => startListening(key)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startListening(key); } }}
+          onBlur={() => { if (isListening) cancelListening(); }}
+          role="button"
+          aria-label={`Change ${label} shortcut`}
+          className={`flex h-[34px] w-60 shrink-0 cursor-pointer items-center gap-1 rounded-lg border px-1.5 transition-colors ${
+            isListening
+              ? 'border-text bg-surface-hover pl-2'
+              : 'justify-center border-border bg-surface-sunken hover:border-border-strong'
           }`}
         >
-          <div className="flex flex-col gap-0.5">
-            <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-200">{config.label}</span>
-            <span className="text-xs text-neutral-500">{config.description}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => resetShortcut(config.key)}
-              disabled={inactive}
-              tabIndex={inactive ? -1 : 0}
-              className={`p-1 rounded transition-colors ${
-                inactive
-                  ? 'text-neutral-700 pointer-events-none'
-                  : 'text-white hover:text-neutral-400'
-              }`}
-              title="Reset to default"
-              aria-label={`Reset ${config.label} shortcut to default`}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="5" y1="4" x2="5" y2="20" />
-                <polyline points="11 8 7 12 11 16" />
-                <path d="M7 12h10a3 3 0 0 0 0-6h-2" />
-              </svg>
-            </button>
-            <div
-              ref={isListening ? inputRef : undefined}
-              tabIndex={inactive ? -1 : 0}
-              aria-disabled={inactive}
-              onClick={() => !inactive && startListening(config.key)}
-              onKeyDown={(e) => { if (!inactive && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); startListening(config.key); } }}
-              role="button"
-              aria-label={`Change ${config.label} shortcut`}
-              className={`min-w-[200px] rounded-md border px-4 py-2 flex items-center justify-center text-sm font-mono transition-colors ${
-                isListening
-                  ? 'cursor-pointer border-red-600 bg-red-600/10 text-red-400'
-                  : inactive
-                    ? 'cursor-default border-neutral-800 bg-neutral-900 text-neutral-600'
-                    : 'cursor-pointer border-neutral-700 bg-neutral-800 text-neutral-300 hover:border-neutral-600'
-              }`}
-              style={shakingKey === config.key ? { animation: 'sc-shake 0.3s ease-in-out' } : undefined}
-            >
-              {isListening
-                ? (pendingKeys
-                    ? <ShortcutDisplay combo={pendingKeys} />
-                    : config.key === 'pushToTalk' ? 'MODIFIER + KEY...' : config.key === 'cancelRecording' ? 'PRESS ANY KEY...' : 'AWAITING INPUT...')
-                : <ShortcutDisplay combo={shortcuts[config.key]} />
-              }
-            </div>
-          </div>
+          {isListening ? (
+            <>
+              {error ? (
+                <span className="truncate text-xs text-accent-strong" role="alert">{error}</span>
+              ) : pendingKeys ? (
+                <>
+                  <KeyCaps combo={pendingKeys} />
+                  <span className="font-mono text-xs text-text-muted">+</span>
+                </>
+              ) : (
+                <span className="text-xs text-text-dim">{LISTENING_PLACEHOLDERS[key]}</span>
+              )}
+              <span aria-hidden="true" className="h-3.5 w-[1.5px] animate-pulse bg-text" />
+              {key !== 'cancelRecording' && (
+                <span className="ml-auto pr-1 text-[11px] text-text-dim">Esc cancels</span>
+              )}
+            </>
+          ) : (
+            <KeyCaps combo={shortcuts[key]} />
+          )}
         </div>
+      </div>
     );
   };
 
+  if (!settingsLoaded) return null;
+
   return (
-    <main className="flex-1 overflow-y-auto p-6 space-y-8">
-      <style>{`
-        @keyframes sc-shake {
-          0%, 100% { transform: translateX(0); }
-          20% { transform: translateX(-3px); }
-          40% { transform: translateX(3px); }
-          60% { transform: translateX(-2px); }
-          80% { transform: translateX(1px); }
-        }
-      `}</style>
+    <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
+      <div className="flex max-w-[860px] flex-col gap-6">
 
-      <section>
-        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Recording Mode</h2>
-        <div className="flex gap-3">
-          {(['toggle', 'push-to-talk'] as HotkeyMode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => saveHotkeyMode(m)}
-              className={`flex-1 rounded-lg border px-5 py-4 text-left transition-colors ${
-                hotkeyMode === m
-                  ? 'border-red-700 bg-red-900/20 text-red-400'
-                  : 'border-neutral-800 bg-[#141414] text-neutral-400 hover:border-neutral-700'
-              }`}
-            >
-              <span className="block font-mono text-xs font-semibold uppercase tracking-[0.25em] mb-1">
-                {m === 'toggle' ? 'Toggle Mode' : 'Push-to-Talk'}
-              </span>
-              <span className="text-xs text-neutral-500">
-                {m === 'toggle'
-                  ? 'Press once to start, press again to stop'
-                  : 'Hold the hotkey while speaking, release to stop'}
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Call Mode</h2>
-        <button
-          onClick={() => saveCallMode(!callMode)}
-          className={`w-full flex items-center justify-between rounded-lg border px-5 py-4 transition-colors ${
-            callMode
-              ? 'border-red-700 bg-red-900/20'
-              : 'border-neutral-800 bg-[#141414] hover:border-neutral-700'
-          }`}
-        >
-          <div className="flex flex-col gap-0.5 text-left">
-            <span className={`font-mono text-xs font-semibold uppercase tracking-[0.25em] ${callMode ? 'text-red-400' : 'text-neutral-200'}`}>
-              {callMode ? 'Enabled' : 'Disabled'}
-            </span>
-            <span className="text-xs text-neutral-500">
-              Filters out voices from calls (Slack, Teams, Zoom). Slightly reduces audio quality in quiet rooms.
-            </span>
+        <section className="flex flex-col gap-2.5">
+          <SectionHeading title="Recording" />
+          <div className="flex flex-col gap-3.5 rounded-xl border border-border bg-surface px-[18px] py-4">
+            <FieldRow label="Mode">
+              <Segmented ariaLabel="Recording mode" value={hotkeyMode} onChange={saveHotkeyMode} options={MODE_OPTIONS} />
+            </FieldRow>
+            <FieldRow label="Call mode">
+              <Switch checked={callMode} onChange={() => saveCallMode(!callMode)} ariaLabel="Call mode" />
+              <span className="text-xs text-text-dim">Filters out voices from calls (Slack, Teams, Zoom)</span>
+            </FieldRow>
           </div>
-          <div className={`relative ml-4 flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-            callMode ? 'bg-red-600' : 'bg-neutral-700'
-          }`}>
-            <div className={`h-4 w-4 rounded-full bg-white shadow transition-transform ${
-              callMode ? 'translate-x-6' : 'translate-x-1'
-            }`} />
+        </section>
+
+        <section className="flex flex-col gap-2.5">
+          <SectionHeading title="Shortcuts" />
+          <div className="divide-y divide-border/60 rounded-xl border border-border bg-surface">
+            {[...MODE_SHORTCUTS[hotkeyMode], 'showWindow' as const].map(renderShortcutRow)}
           </div>
-        </button>
-      </section>
+        </section>
 
-      <section>
-        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">Recording Shortcuts</h2>
-        <div className="space-y-3">
-          {RECORDING_SHORTCUTS.map(renderShortcutRow)}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">App Shortcuts</h2>
-        <div className="space-y-3">
-          {APP_SHORTCUTS.map(renderShortcutRow)}
-        </div>
-      </section>
-
-      {error && (
-        <p role="alert" className="text-sm text-red-400">{error}</p>
-      )}
-
+      </div>
     </main>
   );
 }

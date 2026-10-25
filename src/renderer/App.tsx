@@ -12,10 +12,9 @@ import { VocabularyPage } from './components/VocabularyPage';
 import { WidgetPage } from './components/WidgetPage';
 import { MicrophoneSelector } from './components/MicrophoneSelector';
 import { ScanLines, NoiseOverlay, Vignette, RecIndicator } from './components/RecEffects';
-import { ToastProvider } from './components/Toast';
+import { ToastProvider, useToast } from './components/Toast';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { ForceUpdateModal } from './components/ForceUpdateModal';
-import { UpToDatePopup } from './components/UpToDatePopup';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
@@ -36,12 +35,12 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: 32, color: '#f87171', fontFamily: 'monospace', background: '#0A0A0A', height: '100vh' }}>
-          <h2 style={{ marginBottom: 12 }}>Something went wrong</h2>
-          <pre style={{ fontSize: 12, color: '#a3a3a3', whiteSpace: 'pre-wrap' }}>{this.state.error.message}</pre>
+        <div className="h-screen bg-bg p-8 font-mono text-accent-strong">
+          <h2 className="mb-3 text-base font-semibold">Something went wrong</h2>
+          <pre className="whitespace-pre-wrap text-xs text-text-muted">{this.state.error.message}</pre>
           <button
             onClick={() => this.setState({ error: null })}
-            style={{ marginTop: 16, padding: '8px 16px', border: '1px solid #525252', borderRadius: 8, color: '#d4d4d4', background: '#1a1a1a', cursor: 'pointer' }}
+            className="mt-4 rounded-lg border border-border-strong bg-surface-hover px-4 py-2 text-xs font-medium text-text transition-colors hover:border-text-dim"
           >
             Try again
           </button>
@@ -50,6 +49,15 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     }
     return this.props.children;
   }
+}
+
+function UpToDateToast({ version, onShown }: { version: string; onShown: () => void }) {
+  const { addToast } = useToast();
+  useEffect(() => {
+    addToast('success', `You're up to date, v${version}`);
+    onShown();
+  }, []);
+  return null;
 }
 
 export function App() {
@@ -110,7 +118,7 @@ function MainApp() {
 
   return (
     <ToastProvider>
-    <div className="flex h-screen text-neutral-200 select-none font-sans bg-[#0A0A0A]">
+    <div className="flex h-screen text-text select-none font-sans bg-bg">
       <ScanLines />
       <NoiseOverlay />
       <Vignette />
@@ -118,14 +126,14 @@ function MainApp() {
       <Sidebar activeView={activeView} onNavigate={setActiveView} onSetupGuide={() => setShowFirstRun(true)} />
 
       <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
-        <header className="drag-region flex items-center px-5 py-3 border-b border-neutral-800/50">
+        <header className="drag-region flex items-center px-5 py-3 border-b border-border/60">
           {activeView !== 'home' && <RecIndicator compact isRecording={audioRecorder.isRecording} recordingStartTime={audioRecorder.recordingStartTime} />}
           <div className="ml-auto flex items-center gap-3">
             <MicrophoneSelector {...micSelector} />
             <div className="no-drag flex items-center gap-1">
               <button
                 onClick={() => window.dictator.minimize()}
-                className="flex h-7 w-7 items-center justify-center rounded font-mono text-sm text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+                className="flex h-7 w-7 items-center justify-center rounded font-mono text-sm text-text-dim transition-colors hover:bg-surface-hover hover:text-text"
                 title="Minimize"
                 aria-label="Minimize window"
               >
@@ -133,7 +141,7 @@ function MainApp() {
               </button>
               <button
                 onClick={() => window.dictator.closeWindow()}
-                className="flex h-7 w-7 items-center justify-center rounded font-mono text-sm text-neutral-500 transition-colors hover:bg-red-900/60 hover:text-red-300"
+                className="flex h-7 w-7 items-center justify-center rounded font-mono text-sm text-text-dim transition-colors hover:bg-accent/60 hover:text-text"
                 title="Close"
                 aria-label="Close window"
               >
@@ -154,7 +162,7 @@ function MainApp() {
       </div>
       {showFirstRun && <OnboardingWizard onComplete={(micId) => { if (micId) micSelector.setSelectedDeviceId(micId); setShowFirstRun(false); setActiveView('modes'); modelStatus.recheck(); }} onClose={isFirstRun ? undefined : () => setShowFirstRun(false)} />}
       {updateState && <ForceUpdateModal updateState={updateState} />}
-      {upToDateVersion && <UpToDatePopup version={upToDateVersion} onClose={() => setUpToDateVersion(null)} />}
+      {upToDateVersion && <UpToDateToast version={upToDateVersion} onShown={() => setUpToDateVersion(null)} />}
     </div>
     </ToastProvider>
   );

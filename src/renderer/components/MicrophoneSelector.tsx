@@ -17,7 +17,7 @@ interface MicrophoneSelectorProps {
 
 function CheckMark() {
   return (
-    <svg className="h-3 w-3 shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+    <svg className="h-3 w-3 shrink-0 text-accent-strong" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
     </svg>
   );
@@ -55,8 +55,8 @@ export function MicrophoneSelector({
   const buttonLabel = isAutoPick ? `Auto · ${activeLabel}` : activeLabel;
 
   const rowClass = (selected: boolean) =>
-    `flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-neutral-800 ${
-      selected ? 'text-red-400 font-medium' : 'text-neutral-400'
+    `flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors hover:bg-surface-hover ${
+      selected ? 'text-text font-medium' : 'text-text-muted hover:text-text'
     }`;
 
   return (
@@ -66,7 +66,7 @@ export function MicrophoneSelector({
         aria-label={`Select microphone: ${buttonLabel}`}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[11px] uppercase tracking-wider text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
         title={buttonLabel}
       >
         <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
@@ -85,7 +85,9 @@ export function MicrophoneSelector({
       </button>
 
       {isOpen && (
-        <div role="listbox" aria-label="Available microphones" className="absolute right-0 top-full z-50 mt-1 w-max min-w-[280px] max-w-[440px] overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 shadow-lg">
+        <div role="listbox" aria-label="Available microphones" className="absolute right-0 top-full z-50 mt-1 w-max min-w-[280px] max-w-[440px] overflow-hidden rounded-lg border border-border bg-surface pb-1 shadow-lg">
+          <div className="h-[2px] bg-accent/35" aria-hidden="true" />
+          <p className="px-3 pb-1 pt-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">Microphone</p>
           <button
             role="option"
             aria-selected={isAutoMode}
@@ -98,13 +100,13 @@ export function MicrophoneSelector({
             {isAutoMode ? <CheckMark /> : <span className="h-3 w-3 shrink-0" />}
             <span className="truncate">
               Automatic
-              <span className="ml-1.5 text-neutral-600">follows your headphones</span>
+              <span className="ml-1.5 text-text-dim">follows your headphones</span>
             </span>
           </button>
-          <div className="mx-3 border-t border-neutral-800" />
+          <div className="mx-3 my-1 border-t border-border" />
 
           {isUnavailable && (
-            <div role="option" aria-selected className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-600">
+            <div role="option" aria-selected className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-text-dim">
               <CheckMark />
               <span className="truncate">
                 {selectedDeviceLabel ?? 'Saved microphone'}
@@ -114,7 +116,7 @@ export function MicrophoneSelector({
           )}
 
           {devices.length === 0 ? (
-            <p className="px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-neutral-600">No microphones found</p>
+            <p className="px-3 py-2 text-[13px] text-text-dim">No microphones found</p>
           ) : (
             devices.map((device) => (
               <button

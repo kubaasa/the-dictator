@@ -38,29 +38,27 @@ export function Vignette() {
 interface ViewfinderCornersProps {
   color?: string;
   size?: number;
-  animated?: boolean;
 }
 
-export function ViewfinderCorners({ color = '#166534', size = 24, animated = false }: ViewfinderCornersProps) {
+export function ViewfinderCorners({ color = 'var(--color-border-strong)', size = 24 }: ViewfinderCornersProps) {
   const borderStyle = `2px solid ${color}`;
-  const cls = animated ? 'animate-corner-pulse' : '';
 
   return (
     <>
       <div
-        className={`absolute top-0 left-0 pointer-events-none ${cls}`}
+        className="absolute top-0 left-0 pointer-events-none"
         style={{ width: size, height: size, borderTop: borderStyle, borderLeft: borderStyle }}
       />
       <div
-        className={`absolute top-0 right-0 pointer-events-none ${cls}`}
+        className="absolute top-0 right-0 pointer-events-none"
         style={{ width: size, height: size, borderTop: borderStyle, borderRight: borderStyle }}
       />
       <div
-        className={`absolute bottom-0 left-0 pointer-events-none ${cls}`}
+        className="absolute bottom-0 left-0 pointer-events-none"
         style={{ width: size, height: size, borderBottom: borderStyle, borderLeft: borderStyle }}
       />
       <div
-        className={`absolute bottom-0 right-0 pointer-events-none ${cls}`}
+        className="absolute bottom-0 right-0 pointer-events-none"
         style={{ width: size, height: size, borderBottom: borderStyle, borderRight: borderStyle }}
       />
     </>
@@ -106,9 +104,9 @@ export function RecIndicator({ isRecording, recordingStartTime, compact = false 
       <div className={`flex items-center gap-1.5 font-mono transition-all duration-300 ${
         isRecording ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
       }`}>
-        <span className="inline-block h-2 w-2 rounded-full bg-red-600 animate-rec-blink shrink-0" />
-        <span className="text-red-500 font-bold text-[10px] uppercase tracking-wider">[REC]</span>
-        <span className="text-green-500 text-[10px] tracking-wider">{formatTimecode(elapsed)}</span>
+        <span className="inline-block h-2 w-2 rounded-full bg-accent animate-rec-blink shrink-0" />
+        <span className="text-accent-strong font-bold text-[10px] uppercase tracking-wider">[REC]</span>
+        <span className="text-ok-text text-[10px] tracking-wider">{formatTimecode(elapsed)}</span>
       </div>
     );
   }
@@ -117,9 +115,9 @@ export function RecIndicator({ isRecording, recordingStartTime, compact = false 
     <div className={`flex items-center gap-3 font-mono text-lg uppercase tracking-wider transition-all duration-300 ${
       isRecording ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
     }`}>
-      <span className="inline-block h-3 w-3 rounded-full bg-red-600 animate-rec-blink" />
-      <span className="text-red-500 font-bold">[REC]</span>
-      <span className="text-green-500">{formatTimecode(elapsed)}</span>
+      <span className="inline-block h-3 w-3 rounded-full bg-accent animate-rec-blink" />
+      <span className="text-accent-strong font-bold">[REC]</span>
+      <span className="text-ok-text">{formatTimecode(elapsed)}</span>
     </div>
   );
 }
@@ -144,7 +142,7 @@ export function TimecodeDisplay() {
   }, []);
 
   return (
-    <span className="font-mono text-xs text-green-600 tracking-wider">
+    <span className="font-mono text-xs text-ok tracking-wider">
       {time}
     </span>
   );

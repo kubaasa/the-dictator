@@ -24,11 +24,10 @@ export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
       : 'Install & Restart';
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm">
-      <div className="flex max-w-md flex-col items-center gap-6 rounded-2xl border border-neutral-700/50 bg-neutral-900 p-10 text-center shadow-2xl">
-        {/* Icon */}
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500/15">
-          <svg className="h-8 w-8 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg/90">
+      <div className="flex w-full max-w-md flex-col items-center gap-6 rounded-2xl border border-border bg-surface p-10 text-center shadow-widget">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-hover">
+          <svg className="h-7 w-7 text-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 2v10" />
             <path d="m4.93 10.93 1.41 1.41" />
             <path d="M2 18h2" />
@@ -42,12 +41,12 @@ export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
 
         {/* Title */}
         <div>
-          <h2 className="text-xl font-semibold text-neutral-100">
+          <h2 className="text-xl font-semibold text-text">
             {isDownloading ? 'Downloading Update' : 'Update Required'}
           </h2>
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="mt-1 text-sm text-text-muted">
             {isDownloading
-              ? `Version ${version} — ${percent}%`
+              ? `Version ${version}, ${percent}%`
               : `Version ${version} is ready to install`}
           </p>
         </div>
@@ -55,9 +54,9 @@ export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
         {/* Progress bar (during download) */}
         {isDownloading && (
           <div className="w-full">
-            <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
               <div
-                className="h-full bg-red-500 transition-[width] duration-300 ease-out"
+                className="h-full rounded-full bg-text transition-[width] duration-300 ease-out"
                 style={{ width: `${percent}%` }}
               />
             </div>
@@ -66,11 +65,11 @@ export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
 
         {/* Release notes */}
         {updateState.releaseNotes && (
-          <div className="w-full rounded-lg bg-neutral-800/60 p-4 text-left">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-neutral-500">
+          <div className="w-full rounded-[10px] border border-border bg-surface-sunken p-4 text-left">
+            <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
               What&apos;s new
             </p>
-            <p className="text-sm leading-relaxed text-neutral-300 whitespace-pre-line">
+            <p className="max-h-48 overflow-y-auto whitespace-pre-line text-[13px] leading-relaxed text-text">
               {updateState.releaseNotes}
             </p>
           </div>
@@ -80,7 +79,7 @@ export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
         <button
           onClick={handleInstall}
           disabled={installing || isDownloading}
-          className="w-full rounded-lg bg-red-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex h-10 w-full items-center justify-center rounded-lg border border-text bg-text px-6 text-[13px] font-semibold text-bg transition-colors hover:border-text-muted hover:bg-text-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-text disabled:hover:bg-text"
         >
           {buttonLabel}
         </button>
