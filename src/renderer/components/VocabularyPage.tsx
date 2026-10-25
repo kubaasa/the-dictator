@@ -111,7 +111,11 @@ export function VocabularyPage() {
       addToast('error', `"${value}" is already in your vocabulary`);
       return;
     }
-    await save(entries.map((e) => (e.id === entry.id ? { ...e, [current.field]: value } : e)));
+    const ok = await save(entries.map((e) => (e.id === entry.id ? { ...e, [current.field]: value } : e)));
+    if (!ok) {
+      editRef.current = current;
+      setEdit(current);
+    }
   };
 
   const addEntry = async () => {

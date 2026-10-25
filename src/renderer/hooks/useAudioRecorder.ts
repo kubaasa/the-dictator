@@ -133,6 +133,23 @@ function describeCtx(ctx: AudioContext | null): string {
   return `ctx=${ctx.state} time=${ctx.currentTime.toFixed(3)} rate=${ctx.sampleRate} latency=${ctx.baseLatency.toFixed(4)}`;
 }
 
+const WHISPER_SAMPLE_RATE = 16000;
+
+// The MediaRecorder capture runs on the mic track directly, independent of the AudioContext
+// that feeds the worklet, so it survives a stalled context. Decoding it through an offline
+// context resamples to 16 kHz, which is what the worklet would have produced.
+async function decodeCompressedAudio(compressed: ArrayBuffer): Promise<Float32Array | null> {
+  if (compressed.byteLength === 0) return null;
+  try {
+    const ctx = new OfflineAudioContext(1, 1, WHISPER_SAMPLE_RATE);
+    const decoded = await ctx.decodeAudioData(compressed.slice(0));
+    return decoded.length > 0 ? decoded.getChannelData(0) : null;
+  } catch (err) {
+    log.warn('Compressed audio could not be decoded:', err);
+    return null;
+  }
+}
+
 function classifyMicError(err: unknown): string {
   if (err instanceof DOMException) {
     switch (err.name) {
@@ -197,6 +214,10 @@ export function useAudioRecorder(
   // After every await in startRecording, we check if the session is still current.
   // If not, the setup was superseded (e.g. cancel during getUserMedia) and we bail out.
   const isSettingUpRef = useRef(false);
+  // stopRecording awaits the worklet flush (up to 1 s when the pipeline is stalled) before it
+  // releases the stream/context refs. A startRecording in that window would populate the same
+  // refs and then have them torn down by the tail of the stop, so starts are refused until done.
+  const isStoppingRef = useRef(false);
   const pendingStopRef = useRef(false);
   const sessionIdRef = useRef(0);
 
@@ -321,6 +342,10 @@ export function useAudioRecorder(
 
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current || isSettingUpRef.current) return;
+    if (isStoppingRef.current) {
+      recLog.warn('start ignored: previous recording is still flushing');
+      return;
+    }
 
     const thisSession = ++sessionIdRef.current;
     isSettingUpRef.current = true;
@@ -599,6 +624,7 @@ export function useAudioRecorder(
 
     if (!isRecordingRef.current) return;
     isRecordingRef.current = false;
+    isStoppingRef.current = true;
     clearWatchdog();
     setIsRecording(false);
     const elapsedMs = recordingStartTimeRef.current !== null ? Date.now() - recordingStartTimeRef.current : 0;
@@ -630,74 +656,116 @@ export function useAudioRecorder(
       mediaRecorderRef.current = null;
     }
 
-    // Signal worklet to flush remaining audio, then wait for 'done' before stopping mic.
-    // Tracks must stay alive until worklet finishes so in-flight frames aren't dropped.
-    if (workletNodeRef.current) {
-      await new Promise<void>((resolve) => {
-        const port = workletNodeRef.current?.port;
-        if (!port) { resolve(); return; }
-        const prevHandler = port.onmessage;
-        port.onmessage = (ev) => {
-          if (prevHandler) prevHandler.call(port, ev);
-          if (ev.data?.type === 'done') {
+    let audioContext: AudioContext | null = null;
+    let chunks: Float32Array[] = [];
+    let totalLength = 0;
+    let hasAudio = false;
+    let recovered: { samples: Float32Array; compressed: ArrayBuffer } | null = null;
+    try {
+      // Signal worklet to flush remaining audio, then wait for 'done' before stopping mic.
+      // Tracks must stay alive until worklet finishes so in-flight frames aren't dropped.
+      if (workletNodeRef.current) {
+        await new Promise<void>((resolve) => {
+          const port = workletNodeRef.current?.port;
+          if (!port) { resolve(); return; }
+          const prevHandler = port.onmessage;
+          let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+          const finish = () => {
+            if (safetyTimer) clearTimeout(safetyTimer);
             port.onmessage = null;
             resolve();
+          };
+          port.onmessage = (ev) => {
+            if (prevHandler) prevHandler.call(port, ev);
+            if (ev.data?.type === 'done') finish();
+          };
+          port.postMessage('stop');
+          safetyTimer = setTimeout(finish, 1000);
+        });
+      }
+
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+      }
+
+      audioContext = audioContextRef.current;
+      audioContextRef.current = null;
+      chunks = chunksRef.current;
+      chunksRef.current = [];
+
+      // Broadcast state change IMMEDIATELY after stopping tracks so the overlay
+      // releases its own mic stream without waiting for the rest of cleanup.
+      totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+      hasAudio = totalLength > 0 && !!audioContext;
+
+      // Worklet produced nothing (stalled context) — fall back to the MediaRecorder capture
+      // before telling main the recording was empty.
+      if (!hasAudio && compressedBlobPromise) {
+        try {
+          const compressed = await Promise.race([
+            compressedBlobPromise,
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('MediaRecorder flush timeout')), 5000)),
+          ]);
+          const samples = await decodeCompressedAudio(compressed);
+          if (samples) {
+            recLog.warn(`worklet produced no samples, using MediaRecorder capture: elapsed=${elapsedMs}ms`
+              + ` decoded=${(samples.length / WHISPER_SAMPLE_RATE).toFixed(1)}s`, describeCtx(audioContext), stoppedTrackInfo);
+            recovered = { samples, compressed };
+            hasAudio = true;
           }
-        };
-        port.postMessage('stop');
-        setTimeout(() => { port.onmessage = null; resolve(); }, 1000); // safety timeout
-      });
+        } catch (e) {
+          log.warn('MediaRecorder fallback unavailable:', e);
+        }
+      }
+
+      if (!hasAudio) {
+        recLog.warn(`empty recording: elapsed=${elapsedMs}ms chunks=${chunks.length} levels=${levelCountRef.current}`,
+          describeCtx(audioContext), stoppedTrackInfo);
+      }
+      window.dictator.stopRecording(!hasAudio);
+
+      if (sourceRef.current) {
+        sourceRef.current.disconnect();
+        sourceRef.current = null;
+      }
+      if (workletNodeRef.current) {
+        workletNodeRef.current.disconnect();
+        workletNodeRef.current = null;
+      }
+
+      // Close persistent AudioContext so Windows fully releases the microphone device.
+      // A new context + worklet will be created on the next recording start.
+      if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
+        persistentCtxRef.current.close().catch(() => { /* ignore */ });
+        persistentCtxRef.current = null;
+        workletReadyRef.current = false;
+      }
+    } finally {
+      isStoppingRef.current = false;
     }
 
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      mediaStreamRef.current = null;
-    }
+    if (!hasAudio) return;
 
-    const audioContext = audioContextRef.current;
-    audioContextRef.current = null;
-    const chunks = chunksRef.current;
-    chunksRef.current = [];
-
-    // Broadcast state change IMMEDIATELY after stopping tracks so the overlay
-    // releases its own mic stream without waiting for the rest of cleanup.
-    const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
-    const hasAudio = totalLength > 0 && !!audioContext;
-    if (!hasAudio) {
-      recLog.warn(`empty recording: elapsed=${elapsedMs}ms chunks=${chunks.length} levels=${levelCountRef.current}`,
-        describeCtx(audioContext), stoppedTrackInfo);
-    }
-    window.dictator.stopRecording(!hasAudio);
-
-    if (sourceRef.current) {
-      sourceRef.current.disconnect();
-      sourceRef.current = null;
-    }
-    if (workletNodeRef.current) {
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current = null;
-    }
-
-    // Close persistent AudioContext so Windows fully releases the microphone device.
-    // A new context + worklet will be created on the next recording start.
-    if (persistentCtxRef.current && persistentCtxRef.current.state !== 'closed') {
-      persistentCtxRef.current.close().catch(() => { /* ignore */ });
-      persistentCtxRef.current = null;
-      workletReadyRef.current = false;
-    }
-
-    if (hasAudio) {
+    let pcm: ArrayBuffer;
+    let sampleRate: number;
+    let compressedAudio: ArrayBuffer | undefined;
+    if (recovered) {
+      pcm = recovered.samples.buffer as ArrayBuffer;
+      sampleRate = WHISPER_SAMPLE_RATE;
+      compressedAudio = recovered.compressed;
+    } else {
       const merged = new Float32Array(totalLength);
       let offset = 0;
       for (const chunk of chunks) {
         merged.set(chunk, offset);
         offset += chunk.length;
       }
+      pcm = merged.buffer;
+      sampleRate = audioContext?.sampleRate ?? WHISPER_SAMPLE_RATE;
 
-      const sampleRate = audioContext.sampleRate;
       // Wait for compressed WebM/Opus blob (~8x smaller than WAV for API upload).
       // Timeout guard: proceed without compressed audio if onstop never fires.
-      let compressedAudio: ArrayBuffer | undefined;
       if (compressedBlobPromise) {
         try {
           compressedAudio = await Promise.race([
@@ -708,16 +776,17 @@ export function useAudioRecorder(
           log.warn('Compressed audio unavailable, proceeding with raw buffer:', e);
         }
       }
-      window.dictator.transcribeBuffer(merged.buffer, sampleRate, snapshotRecordingId, compressedAudio)
-        .catch((err: unknown) => {
-          log.error('transcribeBuffer failed:', err);
-          // Reset recording state so UI doesn't stay stuck in transcribing/processing
-          isRecordingRef.current = false;
-          setIsRecording(false);
-          setRecordingStartTime(null);
-          setError(err instanceof Error ? err.message : 'Transcription failed — please try again');
-        });
     }
+
+    window.dictator.transcribeBuffer(pcm, sampleRate, snapshotRecordingId, compressedAudio)
+      .catch((err: unknown) => {
+        log.error('transcribeBuffer failed:', err);
+        // Reset recording state so UI doesn't stay stuck in transcribing/processing
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        setRecordingStartTime(null);
+        setError(err instanceof Error ? err.message : 'Transcription failed — please try again');
+      });
   }, []);
 
   const cancelRecording = useCallback(() => {

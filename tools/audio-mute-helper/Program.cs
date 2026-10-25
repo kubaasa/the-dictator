@@ -26,6 +26,9 @@ public static class Program
 
     private static readonly object _lock = new();
     private static readonly object _stdoutLock = new();
+    // ScanAndMute runs from the 25 ms poll task and from IMMNotificationClient callbacks on
+    // COM threads; one scan at a time keeps the enumerator and the exclude caches consistent.
+    private static readonly object _scanLock = new();
     private static bool _muting;
     private static HashSet<int> _excludePids = new();
     private static int _excludeRootPid;
@@ -33,6 +36,9 @@ public static class Program
     private static List<MutedRef> _muted = new();
     private static Dictionary<string, MutedRef> _mutedBySid = new();
     private static Dictionary<int, MutedRef> _mutedByPid = new();
+    // First entry per app-level session identifier: the pre-mute state a later stream of the
+    // same app must inherit (see ProcessSession).
+    private static Dictionary<string, MutedRef> _firstByApp = new();
     private static CancellationTokenSource? _pollCts;
     private static MMDeviceEnumerator? _scanEnumerator;
     private static MMDeviceEnumerator? _notifEnumerator;
@@ -157,6 +163,7 @@ public static class Program
             _muted = new List<MutedRef>();
             _mutedBySid = new Dictionary<string, MutedRef>();
             _mutedByPid = new Dictionary<int, MutedRef>();
+            _firstByApp = new Dictionary<string, MutedRef>();
             _duckOptedSessions = new HashSet<string>();
             _cachedDescendants = new HashSet<int>();
             _cachedDescendantsAt = 0;
@@ -258,6 +265,14 @@ public static class Program
     /// </summary>
     private static (List<MutedRef> added, List<MutedRef> reMuted) ScanAndMute()
     {
+        lock (_scanLock)
+        {
+            return ScanAndMuteLocked();
+        }
+    }
+
+    private static (List<MutedRef> added, List<MutedRef> reMuted) ScanAndMuteLocked()
+    {
         var added = new List<MutedRef>();
         var reMuted = new List<MutedRef>();
         var liveExcludes = GetLiveExcludes();
@@ -337,6 +352,19 @@ public static class Program
 
                 var prevMuted = sv.Mute;
                 var prevVol = sv.Volume;
+                // Windows persists SimpleAudioVolume per app (session identifier, not instance),
+                // so a stream the app opens while we are muting already reads Volume=0/Mute=true.
+                // Recording that as "previous" would restore the app to silence; inherit the
+                // state captured for the same app, or failing that the same process, instead.
+                var appKey = SafeAppSessionKey(session);
+                MutedRef? sibling = null;
+                if (appKey.Length > 0) _firstByApp.TryGetValue(appKey, out sibling);
+                sibling ??= _muted.Find(m => m.Pid == pid);
+                if (sibling != null)
+                {
+                    prevVol = sibling.PrevVolume;
+                    prevMuted = sibling.PrevMuted;
+                }
                 if (!prevMuted) sv.Mute = true;
                 sv.Volume = 0f;
                 var entry = new MutedRef
@@ -351,6 +379,7 @@ public static class Program
                 _muted.Add(entry);
                 if (sid.Length > 0) _mutedBySid[sid] = entry;
                 else _mutedByPid[pid] = entry;
+                if (appKey.Length > 0 && !_firstByApp.ContainsKey(appKey)) _firstByApp[appKey] = entry;
                 added.Add(entry);
             }
         }
@@ -607,6 +636,11 @@ public static class Program
     private static string SafeSessionId(AudioSessionControl session)
     {
         try { return session.GetSessionInstanceIdentifier ?? ""; } catch { return ""; }
+    }
+
+    private static string SafeAppSessionKey(AudioSessionControl session)
+    {
+        try { return session.GetSessionIdentifier ?? ""; } catch { return ""; }
     }
 
     private static void Emit(object payload)

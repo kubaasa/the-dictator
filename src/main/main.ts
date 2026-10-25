@@ -806,10 +806,14 @@ app.on('ready', () => {
   // without emitting any display-metrics event.
   powerMonitor.on('resume', () => {
     log.info('power: resumed from sleep — recovering overlay compositor');
+    hotkeyService.resetPressedKeys();
     recoverOverlayCompositor();
   });
+  // Keys released on the secure desktop never reach uiohook; forget them on both edges.
+  powerMonitor.on('lock-screen', () => hotkeyService.resetPressedKeys());
   powerMonitor.on('unlock-screen', () => {
     log.info('power: screen unlocked — recovering overlay compositor');
+    hotkeyService.resetPressedKeys();
     recoverOverlayCompositor();
   });
 

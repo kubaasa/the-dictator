@@ -17,12 +17,22 @@ const EXCLUDED_SHELL_CLASSES = new Set([
 ]);
 
 const MARKER = '__DICTATOR_DONE__';
+const PASTE_OK = '__DICTATOR_PASTED__';
+const INIT_TIMEOUT_MS = 10000;
 
-// Add-Type definitions compiled once at PowerShell startup (saves ~200-400ms per call)
+// Win32 interop shared by the persistent process and the cold-start fallbacks, so a change
+// to either class reaches both paths.
+const WINCAP_TYPEDEF = `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;using System.Diagnostics;public class WinCapE{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern int GetClassName(IntPtr h,StringBuilder s,int n);[DllImport("user32.dll")]public static extern int GetWindowThreadProcessId(IntPtr h,out int pid);}'`;
+const PW_TYPEDEF = `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PW{[StructLayout(LayoutKind.Sequential)]public struct KI{public ushort vk;public ushort sc;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Sequential)]public struct MI{public int dx;public int dy;public uint md;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Explicit)]public struct IU{[FieldOffset(0)]public KI ki;[FieldOffset(0)]public MI mi;}[StructLayout(LayoutKind.Sequential)]public struct IP{public uint tp;public IU u;}[DllImport("user32.dll",SetLastError=true)]public static extern uint SendInput(uint n,IP[] i,int s);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);[DllImport("user32.dll")]public static extern bool IsWindow(IntPtr h);[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,IntPtr p);[DllImport("kernel32.dll")]public static extern uint GetCurrentThreadId();[DllImport("user32.dll")]public static extern bool AttachThreadInput(uint a,uint b,bool c);public static void Paste(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x11;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x56;inp[1].u.ki.fl=0;inp[2].tp=1;inp[2].u.ki.vk=0x56;inp[2].u.ki.fl=2;inp[3].tp=1;inp[3].u.ki.vk=0x11;inp[3].u.ki.fl=2;SendInput(4,inp,z);}}'`;
+
+// Add-Type definitions compiled once at PowerShell startup (saves ~200-400ms per call).
+// The ready marker is printed only once both types resolve: the loop's Invoke-Expression
+// catch swallows a failed Add-Type, so an unconditional marker would report a process
+// that cannot capture or paste as ready.
 const INIT_SCRIPT = [
-  `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;using System.Diagnostics;public class WinCapE{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern int GetClassName(IntPtr h,StringBuilder s,int n);[DllImport("user32.dll")]public static extern int GetWindowThreadProcessId(IntPtr h,out int pid);}'`,
-  `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PW{[StructLayout(LayoutKind.Sequential)]public struct KI{public ushort vk;public ushort sc;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Sequential)]public struct MI{public int dx;public int dy;public uint md;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Explicit)]public struct IU{[FieldOffset(0)]public KI ki;[FieldOffset(0)]public MI mi;}[StructLayout(LayoutKind.Sequential)]public struct IP{public uint tp;public IU u;}[DllImport("user32.dll",SetLastError=true)]public static extern uint SendInput(uint n,IP[] i,int s);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,IntPtr p);[DllImport("kernel32.dll")]public static extern uint GetCurrentThreadId();[DllImport("user32.dll")]public static extern bool AttachThreadInput(uint a,uint b,bool c);public static void Paste(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x11;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x56;inp[1].u.ki.fl=0;inp[2].tp=1;inp[2].u.ki.vk=0x56;inp[2].u.ki.fl=2;inp[3].tp=1;inp[3].u.ki.vk=0x11;inp[3].u.ki.fl=2;SendInput(4,inp,z);}}'`,
-  `Write-Output '${MARKER}'`,
+  WINCAP_TYPEDEF,
+  PW_TYPEDEF,
+  `try { [void][WinCapE]::GetForegroundWindow(); [void][PW]::GetCurrentThreadId(); Write-Output '${MARKER}' } catch { Write-Error "interop init failed: $_" }`,
 ].join('\n');
 
 const CAPTURE_CMD = `$h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder(256); [WinCapE]::GetClassName($h,$sb,256)|Out-Null; $wpid=0; [WinCapE]::GetWindowThreadProcessId($h,[ref]$wpid)|Out-Null; $pname=try{[System.Diagnostics.Process]::GetProcessById($wpid).ProcessName}catch{'unknown'}; Write-Output "$h|$($sb.ToString())|$pname"`;
@@ -31,18 +41,21 @@ const CAPTURE_CMD = `$h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.
 // (xterm.js with kitty keyboard protocol, enabled by e.g. Claude Code >= 2.1.269) now encode
 // Shift+Insert as a key sequence instead of pasting. Ctrl+V is a VS Code keybinding on
 // Windows (workbench.action.terminal.paste, in commandsToSkipShell), so it bypasses xterm.js.
+// SendInput goes to whatever window is foreground, so the target is re-checked right before
+// the keystrokes; a closed or un-focusable target throws instead of pasting somewhere else.
 function buildPasteCmd(hwnd: string): string {
   if (!/^\d+$/.test(hwnd)) {
     throw new Error(`Invalid hwnd: expected digits only, got "${hwnd}"`);
   }
-  const focus = `$t=[IntPtr]${hwnd}; $fg=[PW]::GetForegroundWindow(); $ft=[PW]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $mt=[PW]::GetCurrentThreadId(); $att=$false; if($ft -ne $mt){[void][PW]::AttachThreadInput($mt,$ft,$true);$att=$true}; if([PW]::IsIconic($t)){[void][PW]::ShowWindow($t,9)}; [void][PW]::SetForegroundWindow($t); if($att){[void][PW]::AttachThreadInput($mt,$ft,$false)}; Start-Sleep -Milliseconds 250;`;
-  return `${focus} [PW]::Paste()`;
+  const focus = `$t=[IntPtr]${hwnd}; if(-not [PW]::IsWindow($t)){ throw 'target window no longer exists' }; $fg=[PW]::GetForegroundWindow(); $ft=[PW]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $mt=[PW]::GetCurrentThreadId(); $att=$false; if($ft -ne $mt){[void][PW]::AttachThreadInput($mt,$ft,$true);$att=$true}; if([PW]::IsIconic($t)){[void][PW]::ShowWindow($t,9)}; [void][PW]::SetForegroundWindow($t); if($att){[void][PW]::AttachThreadInput($mt,$ft,$false)}; Start-Sleep -Milliseconds 250;`;
+  const verify = `if([PW]::GetForegroundWindow().ToInt64() -ne $t.ToInt64()){ throw 'target window did not come to the foreground' };`;
+  return `${focus} ${verify} [PW]::Paste(); Write-Output '${PASTE_OK}'`;
 }
 
 // Fallback: cold-start PowerShell for captureTarget (used when persistent process isn't ready)
 const GET_HWND_ARGS = [
   '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
-  `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;using System.Diagnostics;public class WinCapE{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern int GetClassName(IntPtr h,StringBuilder s,int n);[DllImport("user32.dll")]public static extern int GetWindowThreadProcessId(IntPtr h,out int pid);}'; $h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.Text.StringBuilder(256); [WinCapE]::GetClassName($h,$sb,256)|Out-Null; $wpid=0; [WinCapE]::GetWindowThreadProcessId($h,[ref]$wpid)|Out-Null; $pname=try{[System.Diagnostics.Process]::GetProcessById($wpid).ProcessName}catch{'unknown'}; "$h|$($sb.ToString())|$pname"`,
+  `${WINCAP_TYPEDEF}; ${CAPTURE_CMD}`,
 ];
 
 export class PasteService {
@@ -53,6 +66,10 @@ export class PasteService {
   private commandQueue: Array<{ cmd: string; resolve: (output: string) => void; reject: (err: Error) => void }> = [];
   private currentCommand: { resolve: (output: string) => void; reject: (err: Error) => void } | null = null;
   private outputBuffer = '';
+  // Markers still owed by commands that already timed out. PowerShell runs the pipe
+  // sequentially, so each one arrives before the output of the command queued after it.
+  private staleMarkers = 0;
+  private initTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
   private spawnAttempts = 0;
   private static readonly MAX_SPAWN_ATTEMPTS = 3;
@@ -81,9 +98,11 @@ export class PasteService {
 
     ps.on('exit', (code) => {
       log.info('Persistent PowerShell exited with code:', code);
+      this.clearInitTimer();
       this.psProcess = null;
       this.psReady = false;
       this.outputBuffer = '';
+      this.staleMarkers = 0;
       const exitErr = new Error('PowerShell process exited');
       if (this.currentCommand) {
         this.currentCommand.reject(exitErr);
@@ -114,6 +133,22 @@ export class PasteService {
     this.psProcess = ps;
     this.spawnAttempts++;
     ps.stdin?.write(INIT_SCRIPT + '\n');
+
+    // No ready marker means Add-Type failed (or hung); the cold-start fallbacks take over
+    // while psReady stays false, and killing the process routes through the bounded respawn.
+    this.initTimer = setTimeout(() => {
+      this.initTimer = null;
+      if (this.psReady || this.psProcess !== ps) return;
+      log.warn('Persistent PowerShell did not become ready within %dms — killing it', INIT_TIMEOUT_MS);
+      try { ps.kill(); } catch { /* already dead */ }
+    }, INIT_TIMEOUT_MS);
+  }
+
+  private clearInitTimer(): void {
+    if (this.initTimer) {
+      clearTimeout(this.initTimer);
+      this.initTimer = null;
+    }
   }
 
   private processOutput(): void {
@@ -125,13 +160,22 @@ export class PasteService {
       if (!this.psReady) {
         // First marker = init complete
         this.psReady = true;
-        this.spawnAttempts = 0;
+        this.clearInitTimer();
         log.info('Persistent PowerShell ready (Add-Type compiled)');
         this.drainQueue();
         continue;
       }
 
+      if (this.staleMarkers > 0) {
+        this.staleMarkers--;
+        log.info('Discarding output of a timed-out PowerShell command');
+        continue;
+      }
+
       if (this.currentCommand) {
+        // A completed user command is the signal the process is healthy, not the init marker:
+        // resetting there let a process that dies on every command respawn forever.
+        this.spawnAttempts = 0;
         this.currentCommand.resolve(output);
         this.currentCommand = null;
         this.drainQueue();
@@ -173,6 +217,8 @@ export class PasteService {
         settled = true;
         // Match by resolve reference — execImmediate stores the same function objects
         if (this.currentCommand && this.currentCommand.resolve === wrappedResolve) {
+          // PowerShell is still running this command; its marker must not resolve the next one.
+          this.staleMarkers++;
           this.currentCommand = null;
           this.drainQueue();
         } else {
@@ -255,14 +301,20 @@ export class PasteService {
     const appName = this.targetAppName;
 
     try {
+      let stdout: string;
       if (this.psReady && this.psProcess) {
-        await this.exec(buildPasteCmd(hwnd), 10000);
+        stdout = await this.exec(buildPasteCmd(hwnd), 10000);
       } else {
         const args = [
           '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
-          `Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class PW{[StructLayout(LayoutKind.Sequential)]public struct KI{public ushort vk;public ushort sc;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Sequential)]public struct MI{public int dx;public int dy;public uint md;public uint fl;public uint tm;public IntPtr ex;}[StructLayout(LayoutKind.Explicit)]public struct IU{[FieldOffset(0)]public KI ki;[FieldOffset(0)]public MI mi;}[StructLayout(LayoutKind.Sequential)]public struct IP{public uint tp;public IU u;}[DllImport("user32.dll",SetLastError=true)]public static extern uint SendInput(uint n,IP[] i,int s);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern bool ShowWindow(IntPtr h,int c);[DllImport("user32.dll")]public static extern bool IsIconic(IntPtr h);[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern uint GetWindowThreadProcessId(IntPtr h,IntPtr p);[DllImport("kernel32.dll")]public static extern uint GetCurrentThreadId();[DllImport("user32.dll")]public static extern bool AttachThreadInput(uint a,uint b,bool c);public static void Paste(){int z=Marshal.SizeOf(typeof(IP));IP[] inp=new IP[4];inp[0].tp=1;inp[0].u.ki.vk=0x11;inp[0].u.ki.fl=0;inp[1].tp=1;inp[1].u.ki.vk=0x56;inp[1].u.ki.fl=0;inp[2].tp=1;inp[2].u.ki.vk=0x56;inp[2].u.ki.fl=2;inp[3].tp=1;inp[3].u.ki.vk=0x11;inp[3].u.ki.fl=2;SendInput(4,inp,z);}}'; ${buildPasteCmd(hwnd)}`,
+          `${PW_TYPEDEF}; ${buildPasteCmd(hwnd)}`,
         ];
-        await execFileAsync('powershell', args, { timeout: 10000, windowsHide: true });
+        stdout = (await execFileAsync('powershell', args, { timeout: 10000, windowsHide: true })).stdout;
+      }
+      // A throw inside the paste script surfaces only on stderr (the persistent loop catches
+      // it), so the success token is the one signal that SendInput actually ran.
+      if (!stdout.includes(PASTE_OK)) {
+        throw new Error('Paste target lost focus before the keystrokes were sent');
       }
       log.info('Pasted successfully (app=%s)', appName ?? 'unknown');
     } catch (err) {
@@ -276,6 +328,7 @@ export class PasteService {
 
   destroy(): void {
     this.destroyed = true;
+    this.clearInitTimer();
     if (this.psProcess) {
       try {
         this.psProcess.stdin?.end('exit\n');

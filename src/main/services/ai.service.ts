@@ -10,6 +10,21 @@ const log = logger.scope('AI');
 
 const AI_METHOD_TIMEOUT_MS = 25_000;
 
+// Retry only what a second attempt can fix: network errors (no HTTP status), 429 and 5xx.
+// Our own 25 s abort is not retried — a second 25 s attempt would outlive the 30 s race in
+// ipc-handlers and stream into the void; 4xx answers are deterministic.
+function isRetryable(err: unknown): boolean {
+  if (err instanceof Error && /abort/i.test(err.name)) return false;
+  const status = (err as { status?: number }).status;
+  if (status === undefined) return true;
+  return status === 429 || status >= 500;
+}
+
+// Reasoning models (o-series, GPT-5 family) reject any temperature other than the default.
+function supportsTemperature(model: string): boolean {
+  return !/^(o\d|gpt-5)/.test(model);
+}
+
 const WRAPPING_TAG_RE = /^<(output|input)>\s*([\s\S]*?)\s*<\/\1>$/i;
 
 function unwrapModelOutput(output: string): string {
@@ -17,7 +32,6 @@ function unwrapModelOutput(output: string): string {
   return match ? match[2] : output;
 }
 
-/** Retry on transient network/server errors (5xx, timeout). Auth errors (401/403) are never retried. */
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 1000): Promise<T> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -25,8 +39,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 100
       return await fn();
     } catch (err) {
       lastError = err;
-      const status = (err as { status?: number }).status;
-      if (status === 401 || status === 403) throw err;
+      if (!isRetryable(err)) throw err;
       if (attempt < maxAttempts) {
         log.warn('Retry attempt %d/%d after error:', attempt, maxAttempts, err instanceof Error ? err.message : err);
         await new Promise((r) => setTimeout(r, delayMs));
@@ -104,13 +117,16 @@ export class AIService {
     if (!basePrompt) return rawText;
 
     const vocab = (this.store.get('vocabulary') as VocabularyEntry[]) ?? [];
-    let vocabSection = '';
-    if (vocab.length > 0) {
-      // Replacements were already applied to the input (ipc-handlers.ts); the model only
-      // needs to know these spellings are intentional and must not be "corrected".
-      const lines = vocab.map(entry => `- "${(entry.replacement || entry.input).replace(/\*$/, '')}"`);
-      vocabSection = `\n\nUser vocabulary (intentional spellings already present in the input — keep them exactly as written):\n${lines.join('\n')}`;
-    }
+    // Replacements were already applied to the input (ipc-handlers.ts); the model only
+    // needs to know these spellings are intentional and must not be "corrected". Entries
+    // without a replacement never fire, so their spoken trigger has no place in the prompt.
+    const lines = vocab
+      .map((entry) => (entry.replacement ?? '').replace(/\*$/, '').trim())
+      .filter(Boolean)
+      .map((spelling) => `- "${spelling}"`);
+    const vocabSection = lines.length > 0
+      ? `\n\nUser vocabulary (intentional spellings already present in the input — keep them exactly as written):\n${lines.join('\n')}`
+      : '';
 
     const systemPrompt = `You are a silent text transformation pipeline. You NEVER converse, explain, or respond to the user. You receive raw dictated text inside <input> tags and output ONLY the transformed result — nothing else.
 
@@ -125,18 +141,16 @@ ${basePrompt}${vocabSection}
 
     const wrappedText = `<input>\n${rawText}\n</input>`;
 
-    let output: string;
+    // An empty model answer (refusal, content filter) falls back to the dictated text itself,
+    // never to the <input>-wrapped request.
     switch (provider) {
       case 'openai':
-        output = await this.processOpenAI(wrappedText, systemPrompt);
-        break;
+        return (await this.processOpenAI(wrappedText, systemPrompt)) || rawText;
       case 'anthropic':
-        output = await this.processAnthropic(wrappedText, systemPrompt);
-        break;
+        return (await this.processAnthropic(wrappedText, systemPrompt)) || rawText;
       default:
         return rawText;
     }
-    return output || rawText;
   }
 
   private getOpenAIClient(): OpenAI {
@@ -175,7 +189,7 @@ ${basePrompt}${vocabSection}
             { role: 'system', content: systemPrompt },
             { role: 'user', content: text },
           ],
-          temperature,
+          ...(supportsTemperature(model) && { temperature }),
           stream: true,
         }, { signal: abortController.signal as AbortSignal });
 
@@ -227,7 +241,7 @@ ${basePrompt}${vocabSection}
       const client = this.getOpenAIClient();
       const response = await client.models.list();
 
-      const ALLOWED_PREFIXES = ['gpt-4', 'gpt-3.5', 'o1', 'o3', 'o4'];
+      const ALLOWED_PREFIXES = ['gpt-5', 'gpt-4', 'gpt-3.5', 'o1', 'o3', 'o4'];
       const SKIP_KEYWORDS = ['instruct', 'embed', 'audio', 'realtime', 'tts', 'dall-e', 'whisper', 'babbage', 'davinci'];
 
       return response.data
@@ -247,15 +261,23 @@ ${basePrompt}${vocabSection}
     const metaPrompt = `Generate a short, descriptive name (2-4 words) for the following voice dictation system prompt. The name should capture the prompt's main purpose. Start the name with a single relevant emoji that matches the topic. Output ONLY the emoji followed by the name, nothing else. No quotes, no punctuation. Example: 📧 Email Formatter`;
 
     const wrappedText = `<input>\n${promptContent}\n</input>`;
+    return this.completeOrThrow(provider, wrappedText, metaPrompt);
+  }
 
+  private async completeOrThrow(provider: string, wrappedText: string, metaPrompt: string): Promise<string> {
+    let result: string;
     switch (provider) {
       case 'openai':
-        return this.processOpenAI(wrappedText, metaPrompt);
+        result = await this.processOpenAI(wrappedText, metaPrompt);
+        break;
       case 'anthropic':
-        return this.processAnthropic(wrappedText, metaPrompt);
+        result = await this.processAnthropic(wrappedText, metaPrompt);
+        break;
       default:
         throw new Error(`Unknown provider: ${provider}`);
     }
+    if (!result) throw new Error('The model returned an empty response.');
+    return result;
   }
 
   async enhancePrompt(rawPrompt: string): Promise<string> {
@@ -273,14 +295,6 @@ Requirements for the enhanced prompt:
 - Output ONLY the enhanced prompt text, nothing else`;
 
     const wrappedText = `<input>\n${rawPrompt}\n</input>`;
-
-    switch (provider) {
-      case 'openai':
-        return this.processOpenAI(wrappedText, metaPrompt);
-      case 'anthropic':
-        return this.processAnthropic(wrappedText, metaPrompt);
-      default:
-        throw new Error(`Unknown provider: ${provider}`);
-    }
+    return this.completeOrThrow(provider, wrappedText, metaPrompt);
   }
 }

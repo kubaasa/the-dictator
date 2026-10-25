@@ -22,7 +22,7 @@ interface UseMicrophoneSelectorReturn {
   isOpen: boolean;
   setSelectedDeviceId: (id: string) => void;
   /** Re-enumerates devices and returns the id for getUserMedia; called right before recording. */
-  resolveDeviceId: () => Promise<string | null>;
+  resolveDeviceId: () => Promise<string>;
   toggleDropdown: () => void;
   closeDropdown: () => void;
   refreshDevices: () => Promise<void>;
@@ -61,9 +61,20 @@ export function useMicrophoneSelector(): UseMicrophoneSelectorReturn {
   }, []);
 
   const resolveDeviceId = useCallback(async () => {
+    // A hotkey pressed right after launch can arrive before the settings effect has resolved;
+    // read the saved preference here rather than fall back to Chromium's default mic.
+    let pref = preference;
+    if (pref === null) {
+      const settings = await window.dictator.getSettings();
+      pref = settings.audio?.deviceId || AUTO_MIC_DEVICE_ID;
+      if (mountedRef.current) {
+        setPreference(pref);
+        setPreferenceLabel(settings.audio?.deviceLabel ?? null);
+      }
+    }
     const all = await navigator.mediaDevices.enumerateDevices();
     if (mountedRef.current) setAllDevices(all);
-    return preference === null ? null : resolveActiveMic(preference, all);
+    return resolveActiveMic(pref, all);
   }, [preference]);
 
   useEffect(() => {

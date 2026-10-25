@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow, shell, clipboard, app, screen, net } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import * as Sentry from '@sentry/electron/main';
@@ -61,10 +62,12 @@ function looksLikeCliCommand(replacement: string): boolean {
 //   "a | b | c"   any of the alternatives triggers the replacement
 //   "komit*"      trailing * matches any word ending; when the replacement also ends
 //                 with *, the spoken ending is kept ("komit*" → "commit*": komita → commita)
-//   spaces between words also match hyphens and repeated spaces ("cloud-dsp", "cloud  dsp")
+//   spaces and hyphens between words match each other and repeated spaces
+//   ("cloud dsp" ↔ "cloud-dsp" ↔ "cloud  dsp")
 interface VocabularyPattern {
   entry: VocabularyEntry;
   source: string;
+  inputLength: number;
   keepSuffix: boolean;
 }
 
@@ -84,8 +87,10 @@ function buildVocabularyPatterns(vocabulary: VocabularyEntry[]): VocabularyPatte
       const base = wildcard ? alt.slice(0, -1).trim() : alt;
       if (!base) continue;
 
+      // Split on whitespace or a hyphen joining two word characters, so "cloud-dsp" and
+      // "cloud dsp" build the same pattern; leading/trailing hyphens ("-v") stay literal.
       const escapedWords = base
-        .split(/\s+/)
+        .split(/\s+|(?<=[\p{L}\p{N}])-(?=[\p{L}\p{N}])/u)
         .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
         .join('[\\s-]+');
       // Lookarounds instead of \b: \b ignores non-ASCII letters (Polish) and never
@@ -100,24 +105,28 @@ function buildVocabularyPatterns(vocabulary: VocabularyEntry[]): VocabularyPatte
       patterns.push({
         entry,
         source: `${boundaryStart}${escapedWords}${suffix}${boundaryEnd}${trailing}`,
+        inputLength: base.length,
         keepSuffix: wildcard && replacementKeepsSuffix,
       });
     }
   }
-  // Longest input first, so "cloud dsp" wins over "cloud" regardless of list order.
-  return patterns.sort((a, b) => b.source.length - a.source.length);
+  // Longest spoken input first, so "cloud dsp" wins over "cloud" regardless of list order.
+  // Sorting by the regex source would rank by escaping and CLI/wildcard decorations instead.
+  return patterns.sort((a, b) => b.inputLength - a.inputLength);
 }
 
 // Mirrors Whisper's sentence-initial capital on plain-word replacements ("Komity" → "Commity"),
 // never on identifiers that are deliberately lowercase (n8n, emails, CLI flags).
 function matchCapitalization(matched: string, replacement: string): string {
   if (!/^\p{Lu}/u.test(matched)) return replacement;
-  if (!/^\p{Ll}[\p{L}\s]*$/u.test(replacement)) return replacement;
+  if (!/^\p{Ll}[\p{L}\s-]*$/u.test(replacement)) return replacement;
   return replacement.charAt(0).toUpperCase() + replacement.slice(1);
 }
 
 // Single pass over the text with one combined regex: each position is visited once,
-// so replacements never chain (A→B, B→C). Returns the applied entries for logging.
+// so replacements never chain (A→B, B→C). Idempotent: text that already reads as the
+// replacement is left alone, so "claude → Claude Code" never produces "Claude Code Code",
+// whether Whisper wrote the full name or the AI pass already saw it replaced.
 function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]): string {
   if (!vocabulary || vocabulary.length === 0) return text;
   const patterns = buildVocabularyPatterns(vocabulary);
@@ -132,7 +141,10 @@ function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]
 
   const applied = new Map<string, number>();
   const result = text.replace(combined, (...args: unknown[]) => {
+    // String.replace callback: (match, ...captures, offset, input, groups)
     const groups = args[args.length - 1] as Record<string, string | undefined>;
+    const input = args[args.length - 2] as string;
+    const offset = args[args.length - 3] as number;
     const matched = args[0] as string;
     const index = patterns.findIndex((_, i) => groups[`m${i}`] !== undefined);
     if (index === -1) return matched;
@@ -141,6 +153,13 @@ function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]
     let replacement = entry.replacement as string;
     if (replacement.endsWith('*')) replacement = replacement.slice(0, -1);
     if (keepSuffix) replacement += groups[`s${index}`] ?? '';
+
+    // Only a replacement longer than the match can already be present beyond it ("Claude" inside
+    // "Claude Code"); an equal-length one is a casing fix ("cloud dsp" → "Cloud DSP") and must run.
+    const alreadyReplaced =
+      replacement.length > matched.length &&
+      input.slice(offset, offset + replacement.length).toLowerCase() === replacement.toLowerCase();
+    if (alreadyReplaced) return matched;
 
     const key = `"${entry.input}" → "${entry.replacement}"`;
     applied.set(key, (applied.get(key) ?? 0) + 1);
@@ -219,7 +238,8 @@ export function registerIpcHandlers(
   const recordingsDir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(recordingsDir, { recursive: true });
 
-  let transcriptionInProgress = false;
+  // Transcriptions run one at a time; later buffers wait here instead of being rejected.
+  let transcriptionQueue: Promise<unknown> = Promise.resolve();
 
   // How long the widgets show the paste confirmation before the state returns to idle
   const DONE_STATE_MS = 1500;
@@ -274,7 +294,6 @@ export function registerIpcHandlers(
         savedPrompts: dictation.savedPrompts ?? DEFAULT_SETTINGS.dictation.savedPrompts,
         selectedPromptId: dictation.selectedPromptId ?? DEFAULT_SETTINGS.dictation.selectedPromptId,
         autoPaste: dictation.autoPaste ?? DEFAULT_SETTINGS.dictation.autoPaste,
-        restoreClipboard: dictation.restoreClipboard ?? DEFAULT_SETTINGS.dictation.restoreClipboard,
       };
       store.set('dictation', migrated);
     }
@@ -372,6 +391,43 @@ export function registerIpcHandlers(
     if (settings.general !== undefined) expectObject('general', settings.general);
     if (settings.audio !== undefined) expectObject('audio', settings.audio);
 
+    // Fields below are persisted before they are used, so a bad value would survive into the
+    // next launch (a non-string shortcut makes HotkeyService.start throw inside app 'ready').
+    if (settings.hotkey?.shortcuts !== undefined) {
+      expectObject('hotkey.shortcuts', settings.hotkey.shortcuts);
+      for (const [action, shortcut] of Object.entries(settings.hotkey.shortcuts)) {
+        if (!(action in DEFAULT_SETTINGS.hotkey.shortcuts)) {
+          throw new Error(`Unknown shortcut action: "${action}"`);
+        }
+        if (typeof shortcut !== 'string' || shortcut.length > 100) {
+          throw new Error(`Invalid shortcut for "${action}": expected string`);
+        }
+      }
+    }
+    if (settings.hotkey?.mode !== undefined && settings.hotkey.mode !== 'toggle' && settings.hotkey.mode !== 'push-to-talk') {
+      throw new Error(`Invalid value for "hotkey.mode": "${String(settings.hotkey.mode)}"`);
+    }
+    if (settings.ai?.temperature !== undefined) {
+      const t = settings.ai.temperature;
+      if (typeof t !== 'number' || !Number.isFinite(t) || t < 0 || t > 2) {
+        throw new Error('Invalid value for "ai.temperature": expected number between 0 and 2');
+      }
+    }
+    if (settings.audio?.deviceId !== undefined && typeof settings.audio.deviceId !== 'string') {
+      throw new Error('Invalid value for "audio.deviceId": expected string');
+    }
+    if (settings.audio && 'muteSnapshot' in settings.audio) {
+      throw new Error('"audio.muteSnapshot" is managed by the main process');
+    }
+    if (settings.widget) {
+      for (const axis of ['x', 'y'] as const) {
+        const v = settings.widget[axis];
+        if (v !== undefined && (typeof v !== 'number' || !Number.isFinite(v))) {
+          throw new Error(`Invalid value for "widget.${axis}": expected finite number`);
+        }
+      }
+    }
+
     encryptSettingsKeys(settings);
     for (const [key, value] of Object.entries(settings)) {
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -457,12 +513,21 @@ export function registerIpcHandlers(
     return { ready: true };
   });
 
-  ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, async (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer) => {
-    if (transcriptionInProgress) {
-      event.sender.send(IPC.TRANSCRIPTION_ERROR, 'Transcription already in progress');
+  async function transcribeBuffer(event: IpcMainInvokeEvent, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer): Promise<void> {
+    // Validate before any work: a bad id used to be caught only after the text had already
+    // been pasted, and a non-positive sampleRate turns every duration into Infinity.
+    let entryId: string;
+    try {
+      entryId = sanitizeId(recordingId ?? Date.now().toString());
+      if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+        throw new Error(`Invalid sampleRate: ${String(sampleRate)}`);
+      }
+    } catch (argErr) {
+      broadcastState('error');
+      scheduleIdle(1500);
+      event.sender.send(IPC.TRANSCRIPTION_ERROR, formatApiError(argErr));
       return;
     }
-    transcriptionInProgress = true;
 
     const engine = (store.get('transcription.engine') as string) ?? 'local';
     const language = (store.get('transcription.language') as string) ?? 'auto';
@@ -473,7 +538,6 @@ export function registerIpcHandlers(
     Sentry.setTag('ai.enabled', String(aiEnabled));
     Sentry.setTag('ai.provider', aiEnabled ? aiProvider : 'none');
 
-    try {
     // Silence detection: skip transcription if audio is below speech threshold.
     // Prevents Whisper hallucinations like [muzyka], [music], [cisza] on silence.
     const samples = new Float32Array(audioBuffer);
@@ -609,7 +673,6 @@ export function registerIpcHandlers(
         }
       }
 
-      const entryId = sanitizeId(recordingId ?? Date.now().toString());
       const durationSeconds = samples.length / sampleRate;
       const countWordsInline = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
       const wordCount = countWordsInline(text);
@@ -639,9 +702,14 @@ export function registerIpcHandlers(
       const overlay = getOverlayWindow();
       if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, msg);
     }
-    } finally {
-      transcriptionInProgress = false;
-    }
+  }
+
+  // A recording stopped while the previous one is still transcribing used to be rejected,
+  // which dropped the audio with no history row and no visible error.
+  ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer) => {
+    const run = transcriptionQueue.then(() => transcribeBuffer(event, audioBuffer, sampleRate, recordingId, compressedAudio));
+    transcriptionQueue = run.catch(() => undefined);
+    return run;
   });
 
   ipcMain.handle(IPC.AUDIO_SAVE, async (_event, id: string, audioBuffer: ArrayBuffer) => {
@@ -660,9 +728,12 @@ export function registerIpcHandlers(
     wrapHandler('HISTORY_GET_COUNT', () => ({ count: historyService.getCount() }), { count: 0 }),
   );
 
-  ipcMain.handle(IPC.HISTORY_GET_ALL, (_event, limit?: number, offset?: number) =>
-    wrapHandler('HISTORY_GET_ALL', () => ({ data: historyService.getAll(limit ?? 50, offset ?? 0) }), { data: [] }),
-  );
+  ipcMain.handle(IPC.HISTORY_GET_ALL, (_event, limit?: number, offset?: number) => {
+    // A negative LIMIT means "no limit" to SQLite; non-integers fail at bind time.
+    const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit as number, 1), 1000) : 50;
+    const safeOffset = Number.isInteger(offset) ? Math.max(offset as number, 0) : 0;
+    return wrapHandler('HISTORY_GET_ALL', () => ({ data: historyService.getAll(safeLimit, safeOffset) }), { data: [] });
+  });
 
   ipcMain.handle(IPC.HISTORY_DELETE, (_event, id: string) => {
     if (!id || typeof id !== 'string') {
@@ -771,7 +842,13 @@ export function registerIpcHandlers(
   ipcMain.on(IPC.WIDGET_DRAG_START, (_event, offsetX: number, offsetY: number) => {
     stopDrag(); // clear any previous drag that didn't end cleanly
 
-    dragOffset = { x: offsetX, y: offsetY };
+    // setPosition throws on non-integer arguments, and here it would do so every 16 ms
+    // inside a timer; fractional offsets show up under display scaling.
+    if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
+      log.warn('WIDGET_DRAG_START: ignoring invalid offsets (%s, %s)', offsetX, offsetY);
+      return;
+    }
+    dragOffset = { x: Math.round(offsetX), y: Math.round(offsetY) };
     dragInterval = setInterval(() => {
       const overlay = getOverlayWindow();
       if (!overlay) return;
@@ -809,9 +886,13 @@ export function registerIpcHandlers(
     }
     const allowed = ['console.groq.com', 'groq.com', 'github.com'];
     try {
-      const hostname = new URL(url).hostname;
-      if (allowed.some((d) => hostname === d || hostname.endsWith('.' + d))) {
+      // Host alone is not enough: file://github.com/share/x.exe has an allowed hostname
+      // and would resolve to a UNC path.
+      const { protocol, hostname } = new URL(url);
+      if (protocol === 'https:' && allowed.some((d) => hostname === d || hostname.endsWith('.' + d))) {
         shell.openExternal(url);
+      } else {
+        logger.warn('SHELL_OPEN_EXTERNAL: blocked URL "%s"', url);
       }
     } catch (err) { logger.warn('SHELL_OPEN_EXTERNAL: invalid URL "%s":', url, err); }
   });
