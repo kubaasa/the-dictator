@@ -83,6 +83,12 @@ Made during implementation:
   62 %) on a dark strip, plus three state facts (idle / hover or recording / done). The comparison table,
   hand-drawn SVG thumbnails and the green first-visit banner are gone; the first-visit hint is a neutral
   one-liner with a dismiss button.
+- **Onboarding (O2 "Pełny ekran"):** the wizard fills the window instead of a dimmed dialog: a 260 px
+  rail with the app icon, welcome line, vertical numbered steps (Engine, Setup, Microphone) and the brand;
+  the content on the right with "STEP N OF 3", a title, and Back / Next bottom-right. Engine is two radio
+  cards with one line each, the model table became a radio list, the Groq instructions became one
+  sentence with a link, `ApiKeyInput` shows Verified / invalid itself, the mic test uses white bars. The
+  primary button (Next, Get started) is light with dark text; it is the only such button in the app.
 - **Shared `ui/` components:** `ConfirmDeleteButton` (K1 trash, "Sure?", 3 s revert, sizes md/sm) and
   `SectionHeading` (mono title + optional meta) are used by ApiKeyInput, History, Shortcuts, Vocabulary.
 
@@ -111,15 +117,15 @@ Done:
 - Shortcuts page (`ShortcutsPage.tsx`), Vocabulary page (`VocabularyPage.tsx`), `ui/ConfirmDeleteButton`,
   `ui/SectionHeading`.
 - Widget page (`WidgetPage.tsx`), `MaxiWidget` `preview` prop.
+- Onboarding wizard (`OnboardingWizard.tsx`).
 
 Remaining, in order:
 
-1. `OnboardingWizard`: restyle; drop its own "valid" message now that `ApiKeyInput` shows "Verified".
-2. Small components: `Toast`, `UpToDatePopup` (should become a toast), `ForceUpdateModal`,
+1. Small components: `Toast`, `UpToDatePopup` (should become a toast), `ForceUpdateModal`,
    `CopyButton`, `RecIndicator` / `RecEffects`, `ErrorBoundary` inline styles in `App.tsx`.
-3. `index.css`: old keyframes and helpers with hard-coded colours (`rec-glitch`, `first-run-glow`,
+2. `index.css`: old keyframes and helpers with hard-coded colours (`rec-glitch`, `first-run-glow`,
    `entry-glow`, `temperature-slider`, scrollbars).
-4. Close: `npm run lint`, `npx -y -p typescript@5.9.3 tsc --noEmit`, sweep for loose colours.
+3. Close: `npm run lint`, `npx -y -p typescript@5.9.3 tsc --noEmit`, sweep for loose colours.
 
 Open ideas (not decided):
 
