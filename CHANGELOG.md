@@ -4,6 +4,33 @@ Release notes are kept in plain text so they render correctly in the in-app
 update window (electron-updater shows the GitHub release body verbatim — no
 Markdown or HTML formatting).
 
+## 2.0.0
+
+A new look for the whole app and a more reliable dictation pipeline.
+
+- New: redesigned interface. A calmer dark look with one set of colours,
+  red reserved for recording and errors, and lighter, clearer pages:
+  Processing as three pipeline steps, History as a day-by-day log with the
+  raw Whisper text, Shortcuts, Vocabulary as an editable table, and a
+  Widget page with live previews. The setup guide is now a full-window flow.
+- New: redesigned widgets. The Mini widget collapses to a thin sliver when
+  idle and shows a paste confirmation; the Maxi widget is a capsule with a
+  blinking timer, a wider waveform, the pasted text and the shortcuts.
+- New: vocabulary entries understand "a | b" alternatives and "word*"
+  endings, so replacements survive Polish inflection. The History page
+  shows what Whisper actually heard.
+- New: automatic microphone selection follows your Bluetooth headset.
+- Fixed: pasted text no longer contains <input> or <output> tags, text the
+  AI altered beyond the dictation, or subtitle-credit hallucinations at the
+  end of a recording.
+- Fixed: recordings that ended with empty audio after a Bluetooth mic
+  toggle, recordings clipped at the end, and a recording started during
+  the previous transcription being lost.
+- Fixed: other apps could stay muted after a cancelled recording.
+- Fixed: hotkeys could stay "pressed" after locking or waking Windows.
+- Fixed: Ctrl+V paste is verified against the target window and the
+  clipboard, and failures are reported instead of a false success.
+
 ## 1.3.4
 
 - Fixed: auto-paste stopped working in VS Code and Cursor terminals running
