@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import log from 'electron-log/renderer';
 import { ViewfinderCorners } from './RecEffects';
 import { CopyButton } from './CopyButton';
+import { ConfirmDeleteButton } from './ui/ConfirmDeleteButton';
+import { SectionHeading } from './ui/SectionHeading';
 import type { RecordingEntry } from '../../shared/types';
 
 function formatTime(isoDate: string): string {
@@ -80,8 +82,6 @@ function RawText({ raw, text }: { raw: string; text: string }) {
   );
 }
 
-const CONFIRM_DELETE_MS = 3000;
-
 interface RecordingItemProps {
   entry: RecordingEntry;
   isExpanded: boolean;
@@ -92,28 +92,6 @@ interface RecordingItemProps {
 }
 
 function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isDeleting }: RecordingItemProps) {
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!isExpanded) setConfirmingDelete(false);
-  }, [isExpanded]);
-
-  useEffect(() => () => {
-    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-  }, []);
-
-  const handleDeleteClick = () => {
-    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-    if (!confirmingDelete) {
-      setConfirmingDelete(true);
-      confirmTimerRef.current = setTimeout(() => setConfirmingDelete(false), CONFIRM_DELETE_MS);
-      return;
-    }
-    setConfirmingDelete(false);
-    onDelete(entry.id);
-  };
-
   const hasRaw = !!entry.rawText && entry.rawText !== entry.text;
   const rawWords = entry.rawWordCount || entry.wordCount;
   const wpm = entry.durationSeconds >= 1 ? Math.round(rawWords / (entry.durationSeconds / 60)) : null;
@@ -176,23 +154,13 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
               <span className="ml-auto font-mono text-[11px] text-text-dim">
                 {entry.wordCount} words{wpm !== null && ` · ${wpm} wpm`}
               </span>
-              <button
-                onClick={handleDeleteClick}
+              <ConfirmDeleteButton
+                key={isExpanded ? 'open' : 'closed'}
+                onConfirm={() => onDelete(entry.id)}
+                label="recording"
+                size="sm"
                 disabled={isDeleting}
-                aria-label={confirmingDelete ? 'Confirm delete recording' : 'Delete recording'}
-                title={confirmingDelete ? 'Click again to delete' : 'Delete recording'}
-                className={`flex h-7 shrink-0 items-center justify-center rounded-md border text-xs font-medium transition-colors disabled:cursor-wait disabled:opacity-50 ${
-                  confirmingDelete
-                    ? 'border-text bg-text px-2.5 text-bg'
-                    : 'w-7 border-accent bg-accent hover:border-accent-strong hover:bg-accent-strong'
-                }`}
-              >
-                {confirmingDelete ? 'Sure?' : (
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="#ffffff" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
-                  </svg>
-                )}
-              </button>
+              />
             </div>
           </div>
         </div>
@@ -204,7 +172,6 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
 const LOAD_TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 50;
 
-const SECTION_HEADING = 'font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-text-muted';
 const SECONDARY_BUTTON = 'flex h-8 items-center rounded-md border border-border-strong bg-surface-hover px-4 text-xs font-medium text-text transition-colors hover:border-text-dim disabled:cursor-wait disabled:opacity-50';
 
 export function HistoryPage() {
@@ -394,8 +361,8 @@ export function HistoryPage() {
         </div>
 
         {isLoading ? (
-          <section>
-            <h2 className={`${SECTION_HEADING} mb-2.5`}>Loading</h2>
+          <section className="flex flex-col gap-2.5">
+            <SectionHeading title="Loading" />
             <div className="rounded-xl border border-border bg-surface p-5">
               <div className="relative">
                 <ViewfinderCorners />
@@ -422,10 +389,8 @@ export function HistoryPage() {
             </div>
           </section>
         ) : recordings.length === 0 ? (
-          <section>
-            <h2 className={`${SECTION_HEADING} mb-2.5`}>
-              {loadError ? 'Error' : searchQuery ? 'Search Results' : 'Archive'}
-            </h2>
+          <section className="flex flex-col gap-2.5">
+            <SectionHeading title={loadError ? 'Error' : searchQuery ? 'Search Results' : 'Archive'} />
             <div className="rounded-xl border border-border bg-surface p-5">
               <div className="relative">
                 <ViewfinderCorners />
@@ -466,12 +431,7 @@ export function HistoryPage() {
               const totalSeconds = entries.reduce((sum, entry) => sum + entry.durationSeconds, 0);
               return (
                 <section key={label} className="flex flex-col gap-2.5">
-                  <h2 className="flex items-baseline gap-2.5">
-                    <span className={SECTION_HEADING}>{label}</span>
-                    <span className="font-mono text-[11px] text-text-dim">
-                      {pluralizeRecordings(entries.length)} · {formatDuration(totalSeconds)}
-                    </span>
-                  </h2>
+                  <SectionHeading title={label} meta={`${pluralizeRecordings(entries.length)} · ${formatDuration(totalSeconds)}`} />
                   <div className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border bg-surface">
                     {entries.map((entry) => (
                       <RecordingItem

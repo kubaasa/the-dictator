@@ -73,6 +73,13 @@ Made during implementation:
   line), then one card with only the shortcuts of the active mode plus Show / hide window. Fixed-width
   shortcut field with flat keycaps; listening state has a light border, caret and "Esc cancels"; blur
   cancels listening; reset icon only for a non-default shortcut; errors show inside the field.
+- **Vocabulary (V2 "Tabela"):** one card with "Whisper writes" / "Replace with" columns. Click a cell to
+  edit it in place (Enter or blur saves, Esc reverts, empty or duplicate input reverts with a toast);
+  `|` and `*` are dimmed in values. "+ Add entry" opens an inline row at the bottom (Enter adds and
+  keeps the row open, Esc closes); it is open from the start when the list is empty. Delete is the
+  shared K1 trash on hover. The syntax legend (`a | b`, `word*`, hyphens) replaces the old help text.
+- **Shared `ui/` components:** `ConfirmDeleteButton` (K1 trash, "Sure?", 3 s revert, sizes md/sm) and
+  `SectionHeading` (mono title + optional meta) are used by ApiKeyInput, History, Shortcuts, Vocabulary.
 
 Rules that apply everywhere:
 
@@ -96,21 +103,20 @@ Done:
   prompt-name sanitizing (max 40 chars / 6 words, otherwise "Prompt N").
 - History page (`HistoryPage.tsx`) and `CopyButton` (tokens, `label`, `variant`; also restyles the
   copy button on Home).
-- Shortcuts page (`ShortcutsPage.tsx`).
+- Shortcuts page (`ShortcutsPage.tsx`), Vocabulary page (`VocabularyPage.tsx`), `ui/ConfirmDeleteButton`,
+  `ui/SectionHeading`.
 
 Remaining, in order:
 
-1. `VocabularyPage`: tokens, `ui/` components, Z3 selection. Vocabulary is the third user of the K1
-   trash button and of the mono section heading, time to propose shared components.
-2. `WidgetPage`: comparison table is outdated ("6 (flat)", "✕ icon"); thumbnails should render the
+1. `WidgetPage`: comparison table is outdated ("6 (flat)", "✕ icon"); thumbnails should render the
    real widgets (`VoiceBar` already has `preview`/`forceHover` props; `MaxiWidget` has none); Mini/Maxi
    cards use Z3 selection.
-3. `OnboardingWizard`: restyle; drop its own "valid" message now that `ApiKeyInput` shows "Verified".
-4. Small components: `Toast`, `UpToDatePopup` (should become a toast), `ForceUpdateModal`,
+2. `OnboardingWizard`: restyle; drop its own "valid" message now that `ApiKeyInput` shows "Verified".
+3. Small components: `Toast`, `UpToDatePopup` (should become a toast), `ForceUpdateModal`,
    `CopyButton`, `RecIndicator` / `RecEffects`, `ErrorBoundary` inline styles in `App.tsx`.
-5. `index.css`: old keyframes and helpers with hard-coded colours (`rec-glitch`, `first-run-glow`,
+4. `index.css`: old keyframes and helpers with hard-coded colours (`rec-glitch`, `first-run-glow`,
    `entry-glow`, `temperature-slider`, scrollbars).
-6. Close: `npm run lint`, `npx -y -p typescript@5.9.3 tsc --noEmit`, sweep for loose colours.
+5. Close: `npm run lint`, `npx -y -p typescript@5.9.3 tsc --noEmit`, sweep for loose colours.
 
 Open ideas (not decided):
 

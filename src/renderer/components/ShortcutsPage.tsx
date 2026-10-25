@@ -5,6 +5,7 @@ import { useToast } from './Toast';
 import { Segmented } from './ui/Segmented';
 import { Switch } from './ui/Switch';
 import { FieldRow } from './ui/FieldRow';
+import { SectionHeading } from './ui/SectionHeading';
 
 type ShortcutKey = 'toggleRecording' | 'cancelRecording' | 'pushToTalk' | 'showWindow';
 
@@ -31,8 +32,6 @@ const MODE_OPTIONS: { value: HotkeyMode; label: string }[] = [
   { value: 'toggle', label: 'Toggle' },
   { value: 'push-to-talk', label: 'Push-to-talk' },
 ];
-
-const SECTION_HEADING = 'font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-text-muted';
 
 const MODIFIER_CODES = new Set([
   'ControlLeft', 'ControlRight', 'ShiftLeft', 'ShiftRight',
@@ -332,7 +331,7 @@ export function ShortcutsPage() {
       <div className="flex max-w-[860px] flex-col gap-6">
 
         <section className="flex flex-col gap-2.5">
-          <h2 className={SECTION_HEADING}>Recording</h2>
+          <SectionHeading title="Recording" />
           <div className="flex flex-col gap-3.5 rounded-xl border border-border bg-surface px-[18px] py-4">
             <FieldRow label="Mode">
               <Segmented ariaLabel="Recording mode" value={hotkeyMode} onChange={saveHotkeyMode} options={MODE_OPTIONS} />
@@ -345,7 +344,7 @@ export function ShortcutsPage() {
         </section>
 
         <section className="flex flex-col gap-2.5">
-          <h2 className={SECTION_HEADING}>Shortcuts</h2>
+          <SectionHeading title="Shortcuts" />
           <div className="divide-y divide-border/60 rounded-xl border border-border bg-surface">
             {[...MODE_SHORTCUTS[hotkeyMode], 'showWindow' as const].map(renderShortcutRow)}
           </div>

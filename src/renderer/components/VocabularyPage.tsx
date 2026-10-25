@@ -1,22 +1,58 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import log from 'electron-log/renderer';
 import type { VocabularyEntry } from '../../shared/types';
 import { useToast } from './Toast';
+import { ConfirmDeleteButton } from './ui/ConfirmDeleteButton';
+import { SectionHeading } from './ui/SectionHeading';
+
+type Field = 'input' | 'replacement';
+
+interface CellEdit {
+  id: string;
+  field: Field;
+  value: string;
+}
+
+const GRID = 'grid grid-cols-[minmax(0,1fr)_28px_minmax(0,1.3fr)_44px] items-center';
+const CELL_INPUT = 'h-[30px] w-full rounded-md border border-text bg-surface-hover px-2 text-[13px] text-text placeholder-text-dim outline-none';
+
+function SyntaxText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/([|*])/).map((part, i) =>
+        part === '|' || part === '*' ? <span key={i} className="text-text-dim">{part}</span> : part,
+      )}
+    </>
+  );
+}
+
+function hasDuplicateInput(entries: VocabularyEntry[], input: string, exceptId?: string): boolean {
+  const needle = input.toLowerCase();
+  return entries.some((e) => e.id !== exceptId && e.input.toLowerCase() === needle);
+}
 
 export function VocabularyPage() {
   const [entries, setEntries] = useState<VocabularyEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [edit, setEdit] = useState<CellEdit | null>(null);
+  const [adding, setAdding] = useState(false);
   const [newInput, setNewInput] = useState('');
   const [newReplacement, setNewReplacement] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editInput, setEditInput] = useState('');
-  const [editReplacement, setEditReplacement] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const { addToast } = useToast();
+  const editRef = useRef<CellEdit | null>(null);
+  const newInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
-      setEntries(s.vocabulary ?? []);
-    }).catch((err) => log.error('Failed to load vocabulary:', err));
+      const list = s.vocabulary ?? [];
+      setEntries(list);
+      if (list.length === 0) setAdding(true);
+      setLoaded(true);
+    }).catch((err) => {
+      log.error('Failed to load vocabulary:', err);
+      setLoaded(true);
+    });
     const unsub = window.dictator.onSettingsChange((s) => {
       if (s.vocabulary) setEntries(s.vocabulary);
     });
@@ -38,229 +74,216 @@ export function VocabularyPage() {
     }
   }, []);
 
-  const addEntry = useCallback(async () => {
-    const trimmed = newInput.trim();
-    const trimmedReplacement = newReplacement.trim();
-    if (!trimmed || !trimmedReplacement) {
+  const startEdit = (entry: VocabularyEntry, field: Field) => {
+    const next = { id: entry.id, field, value: field === 'input' ? entry.input : entry.replacement ?? '' };
+    editRef.current = next;
+    setEdit(next);
+  };
+
+  const cancelEdit = () => {
+    editRef.current = null;
+    setEdit(null);
+  };
+
+  const updateEdit = (value: string) => {
+    if (!editRef.current) return;
+    const next = { ...editRef.current, value };
+    editRef.current = next;
+    setEdit(next);
+  };
+
+  const commitEdit = async () => {
+    const current = editRef.current;
+    if (!current) return;
+    cancelEdit();
+
+    const entry = entries.find((e) => e.id === current.id);
+    if (!entry) return;
+    const value = current.value.trim();
+    const previous = current.field === 'input' ? entry.input : entry.replacement ?? '';
+    if (value === previous) return;
+
+    if (!value) {
       addToast('error', 'Both fields are required');
       return;
     }
-    if (entries.some((e) => e.input.toLowerCase() === trimmed.toLowerCase())) {
-      addToast('error', `"${trimmed}" is already in your vocabulary`);
+    if (current.field === 'input' && hasDuplicateInput(entries, value, entry.id)) {
+      addToast('error', `"${value}" is already in your vocabulary`);
       return;
     }
-    const entry: VocabularyEntry = {
-      id: crypto.randomUUID(),
-      input: trimmed,
-      replacement: trimmedReplacement,
-    };
-    const ok = await save([...entries, entry]);
+    await save(entries.map((e) => (e.id === entry.id ? { ...e, [current.field]: value } : e)));
+  };
+
+  const addEntry = async () => {
+    const input = newInput.trim();
+    const replacement = newReplacement.trim();
+    if (!input || !replacement) {
+      addToast('error', 'Both fields are required');
+      return;
+    }
+    if (hasDuplicateInput(entries, input)) {
+      addToast('error', `"${input}" is already in your vocabulary`);
+      return;
+    }
+    const ok = await save([...entries, { id: crypto.randomUUID(), input, replacement }]);
     if (ok) {
       setNewInput('');
       setNewReplacement('');
-    }
-  }, [newInput, newReplacement, entries, save]);
-
-  const deleteEntry = useCallback(async (id: string) => {
-    await save(entries.filter((e) => e.id !== id));
-    if (editingId === id) setEditingId(null);
-  }, [entries, editingId, save]);
-
-  const startEdit = useCallback((entry: VocabularyEntry) => {
-    setEditingId(entry.id);
-    setEditInput(entry.input);
-    setEditReplacement(entry.replacement ?? '');
-  }, []);
-
-  const saveEdit = useCallback(async () => {
-    const trimmed = editInput.trim();
-    const trimmedReplacement = editReplacement.trim();
-    if (!trimmed || !trimmedReplacement) {
-      addToast('error', 'Both fields are required');
-      return;
-    }
-    if (entries.some((e) => e.id !== editingId && e.input.toLowerCase() === trimmed.toLowerCase())) {
-      addToast('error', `"${trimmed}" is already in your vocabulary`);
-      return;
-    }
-    const updated = entries.map((e) =>
-      e.id === editingId
-        ? { ...e, input: trimmed, replacement: trimmedReplacement }
-        : e,
-    );
-    await save(updated);
-    setEditingId(null);
-  }, [editInput, editReplacement, editingId, entries, save]);
-
-  const cancelEdit = useCallback(() => {
-    setEditingId(null);
-  }, []);
-
-  const handleAddKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addEntry();
+      newInputRef.current?.focus();
     }
   };
 
-  const handleEditKeyDown = (e: React.KeyboardEvent) => {
+  const closeAdd = () => {
+    setAdding(false);
+    setNewInput('');
+    setNewReplacement('');
+  };
+
+  const deleteEntry = async (id: string) => {
+    if (editRef.current?.id === id) cancelEdit();
+    await save(entries.filter((e) => e.id !== id));
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      saveEdit();
-    }
-    if (e.key === 'Escape') {
+      commitEdit();
+    } else if (e.key === 'Escape') {
       e.preventDefault();
       cancelEdit();
     }
   };
 
+  const handleAddKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addEntry();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeAdd();
+    }
+  };
+
+  const renderCell = (entry: VocabularyEntry, field: Field) => {
+    if (edit?.id === entry.id && edit.field === field) {
+      return (
+        <input
+          type="text"
+          value={edit.value}
+          onChange={(e) => updateEdit(e.target.value)}
+          onKeyDown={handleEditKeyDown}
+          onBlur={commitEdit}
+          autoFocus
+          maxLength={200}
+          aria-label={field === 'input' ? 'Whisper writes' : 'Replace with'}
+          className={CELL_INPUT}
+        />
+      );
+    }
+
+    const value = field === 'input' ? entry.input : entry.replacement;
+    const empty = value == null ? '(inactive)' : value === '' ? '(removes match)' : null;
+    return (
+      <button
+        type="button"
+        onClick={() => startEdit(entry, field)}
+        disabled={isSaving}
+        title="Click to edit"
+        className={`min-w-0 cursor-text truncate rounded-md px-2 text-left text-[13px] leading-[30px] transition-colors hover:bg-border/60 ${
+          empty ? 'italic text-text-dim' : field === 'input' ? 'text-text' : 'font-medium text-text'
+        }`}
+      >
+        {empty ?? <SyntaxText text={value as string} />}
+      </button>
+    );
+  };
+
+  if (!loaded) return null;
+
   return (
-    <main className="flex-1 overflow-y-auto p-6 space-y-8">
-      <section>
-        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-1">Vocabulary</h2>
-        <p className="text-sm text-neutral-500 mb-4">
-          Replaces phrases in the transcript after Whisper has run. Put in the left field exactly what Whisper
-          writes (see &quot;Whisper raw&quot; in History), and in the right field what you want instead.
-        </p>
-        <div className="text-xs text-neutral-600 mb-6">
-          <span className="block text-neutral-500 font-medium mb-2">Examples:</span>
-          <div className="grid grid-cols-4 gap-x-6 gap-y-1">
-            <span><span className="text-neutral-400">&quot;cloud md&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;CLAUDE.md&quot;</span></span>
-            <span><span className="text-neutral-400">&quot;K8s&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;Kubernetes&quot;</span></span>
-            <span><span className="text-neutral-400">&quot;Next JS&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;Next.js&quot;</span></span>
-            <span><span className="text-neutral-400">&quot;post gres&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;PostgreSQL&quot;</span></span>
-            <span><span className="text-neutral-400">&quot;graph QL&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;GraphQL&quot;</span></span>
-            <span><span className="text-neutral-400">&quot;en 8 en&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;n8n&quot;</span></span>
-            <span><span className="text-neutral-400">&quot;CI CD&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;CI/CD&quot;</span></span>
-            <span><span className="text-neutral-400">&quot;dev ops&quot;</span> <span className="text-neutral-600">&rarr;</span> <span className="text-red-400/70">&quot;DevOps&quot;</span></span>
-          </div>
-        </div>
+    <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
+      <div className="flex max-w-[860px] flex-col gap-2.5">
+        <SectionHeading title="Vocabulary" meta={`${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`} />
 
-        <div className="rounded-lg border border-neutral-800 bg-[#141414] px-5 py-4 mb-6">
-          <span className="block font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-3">Input</span>
-          <div className="flex items-center gap-3">
-            <input
-              type="text"
-              value={newInput}
-              onChange={(e) => setNewInput(e.target.value)}
-              onKeyDown={handleAddKeyDown}
-              maxLength={200}
-              placeholder="New word or sentence"
-              className="flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200 placeholder-neutral-600 outline-none transition-colors focus:border-red-600"
-            />
-            <input
-              type="text"
-              value={newReplacement}
-              onChange={(e) => setNewReplacement(e.target.value)}
-              onKeyDown={handleAddKeyDown}
-              maxLength={200}
-              placeholder="Replace with..."
-              className="flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200 placeholder-neutral-600 outline-none transition-colors focus:border-red-600"
-            />
-            <button
-              onClick={addEntry}
-              disabled={isSaving}
-              className="whitespace-nowrap rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 active:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Add to vocabulary
-            </button>
+        <div className="rounded-xl border border-border bg-surface">
+          <div className={`${GRID} h-9 border-b border-border pl-4 pr-1.5`}>
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">Whisper writes</span>
+            <span />
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">Replace with</span>
+            <span />
           </div>
-        </div>
 
-        {entries.length > 0 && (
-          <div className="space-y-2">
+          <div className="divide-y divide-border/60">
             {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="flex items-center justify-between rounded-lg border border-neutral-800 bg-[#141414] px-5 py-3"
-              >
-                {editingId === entry.id ? (
-                  <div className="flex flex-1 items-center gap-3">
-                    <input
-                      type="text"
-                      value={editInput}
-                      onChange={(e) => setEditInput(e.target.value)}
-                      onKeyDown={handleEditKeyDown}
-                      autoFocus
-                      maxLength={200}
-                      className="flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 outline-none transition-colors focus:border-red-600"
-                    />
-                    <span className="text-neutral-600 text-xs">&rarr;</span>
-                    <input
-                      type="text"
-                      value={editReplacement}
-                      onChange={(e) => setEditReplacement(e.target.value)}
-                      onKeyDown={handleEditKeyDown}
-                      maxLength={200}
-                      placeholder="Replace with..."
-                      className="flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200 placeholder-neutral-600 outline-none transition-colors focus:border-red-600"
-                    />
-                    <button
-                      onClick={saveEdit}
-                      disabled={isSaving}
-                      className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={cancelEdit}
-                      className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-200"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
-                      <span className="truncate font-mono text-neutral-200">{entry.input}</span>
-                      {entry.replacement != null ? (
-                        <>
-                          <span className="flex-shrink-0 text-neutral-600">&rarr;</span>
-                          {entry.replacement ? (
-                            <span className="truncate font-mono text-red-400">{entry.replacement}</span>
-                          ) : (
-                            <span className="truncate font-mono text-neutral-500 italic">(remove)</span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="truncate font-mono text-neutral-600 italic">(no replacement — inactive, click edit)</span>
-                      )}
-                    </div>
-                    <div className="flex flex-shrink-0 items-center gap-2">
-                      <button
-                        onClick={() => startEdit(entry)}
-                        disabled={isSaving}
-                        title="Edit"
-                        className="rounded p-1 text-neutral-600 transition-colors hover:text-neutral-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => deleteEntry(entry.id)}
-                        disabled={isSaving}
-                        title="Delete"
-                        className="rounded p-1 text-neutral-600 transition-colors hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  </>
-                )}
+              <div key={entry.id} className={`group ${GRID} min-h-10 pl-2 pr-1.5 ${edit?.id === entry.id ? 'bg-surface-hover' : 'hover:bg-surface-hover'}`}>
+                {renderCell(entry, 'input')}
+                <span className="text-center text-[13px] text-text-dim" aria-hidden="true">→</span>
+                {renderCell(entry, 'replacement')}
+                <div className="flex justify-end opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <ConfirmDeleteButton onConfirm={() => deleteEntry(entry.id)} label="entry" size="sm" disabled={isSaving} />
+                </div>
               </div>
             ))}
           </div>
-        )}
 
-        {entries.length === 0 && (
-          <p className="text-center text-sm text-neutral-600 py-8">
-            No vocabulary entries yet. Add words above to improve transcription accuracy.
-          </p>
-        )}
-      </section>
+          {adding ? (
+            <div className={`${GRID} h-[42px] border-t border-border bg-surface-hover pl-2 pr-1.5`}>
+              <input
+                ref={newInputRef}
+                type="text"
+                value={newInput}
+                onChange={(e) => setNewInput(e.target.value)}
+                onKeyDown={handleAddKeyDown}
+                autoFocus
+                maxLength={200}
+                placeholder="komit*"
+                aria-label="Whisper writes"
+                className={CELL_INPUT}
+              />
+              <span className="text-center text-[13px] text-text-dim" aria-hidden="true">→</span>
+              <input
+                type="text"
+                value={newReplacement}
+                onChange={(e) => setNewReplacement(e.target.value)}
+                onKeyDown={handleAddKeyDown}
+                maxLength={200}
+                placeholder="commit*"
+                aria-label="Replace with"
+                className={CELL_INPUT}
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={addEntry}
+                  disabled={isSaving}
+                  aria-label="Add entry"
+                  title="Add entry (Enter)"
+                  className="flex h-7 w-7 items-center justify-center rounded-md border border-border-strong bg-surface-hover text-text transition-colors hover:border-text-dim disabled:cursor-wait disabled:opacity-50"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12.5l4.5 4.5L19 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="flex h-[42px] w-full items-center gap-2 border-t border-border px-4 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
+            >
+              <span className="text-base leading-none" aria-hidden="true">+</span>
+              Add entry
+            </button>
+          )}
+
+          <div className="flex flex-wrap gap-x-[18px] gap-y-1.5 border-t border-border px-4 py-3 text-xs text-text-dim">
+            <span className="flex items-center gap-[7px]"><code className="rounded border border-border bg-surface-hover px-1.5 py-px font-mono text-[11px] text-text">a | b</code>any of these</span>
+            <span className="flex items-center gap-[7px]"><code className="rounded border border-border bg-surface-hover px-1.5 py-px font-mono text-[11px] text-text">word*</code>any ending</span>
+            <span>Spaces also match hyphens</span>
+          </div>
+        </div>
+      </div>
     </main>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { ConfirmDeleteButton } from './ui/ConfirmDeleteButton';
 
 function maskKey(key: string): string {
   if (!key) return '';
@@ -31,9 +32,7 @@ export function ApiKeyInput({
   placeholder: customPlaceholder,
 }: ApiKeyInputProps) {
   const [focused, setFocused] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isEmpty = !value;
   const showMasked = !isEmpty && !focused;
@@ -45,10 +44,7 @@ export function ApiKeyInput({
   const label = buttonLabel ?? 'Save';
 
   useEffect(() => {
-    if (!saved) {
-      setFocused(false);
-      setConfirming(false);
-    }
+    if (!saved) setFocused(false);
   }, [saved]);
 
   useEffect(() => {
@@ -56,24 +52,6 @@ export function ApiKeyInput({
       inputRef.current.focus();
     }
   }, [focused]);
-
-  useEffect(() => {
-    return () => {
-      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-    };
-  }, []);
-
-  const handleDeleteClick = () => {
-    if (!onDelete) return;
-    if (!confirming) {
-      setConfirming(true);
-      confirmTimerRef.current = setTimeout(() => setConfirming(false), 3000);
-    } else {
-      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-      setConfirming(false);
-      onDelete();
-    }
-  };
 
   // Every caller saves a key only after it passed validation, so a saved key is a verified key
   if (saved) {
@@ -91,22 +69,7 @@ export function ApiKeyInput({
             </span>
           </div>
         </div>
-        <button
-          onClick={handleDeleteClick}
-          aria-label={confirming ? 'Confirm delete API key' : 'Delete API key'}
-          title={confirming ? 'Click again to delete' : 'Delete API key'}
-          className={`flex h-8 shrink-0 items-center justify-center rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
-            confirming
-              ? 'border-text bg-text px-3 text-bg'
-              : 'w-8 border-accent bg-accent text-text hover:border-accent-strong hover:bg-accent-strong'
-          }`}
-        >
-          {confirming ? 'Sure?' : (
-            <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="#ffffff" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
-            </svg>
-          )}
-        </button>
+        {onDelete && <ConfirmDeleteButton onConfirm={onDelete} label="API key" />}
       </div>
     );
   }
