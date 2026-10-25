@@ -12,10 +12,9 @@ import { VocabularyPage } from './components/VocabularyPage';
 import { WidgetPage } from './components/WidgetPage';
 import { MicrophoneSelector } from './components/MicrophoneSelector';
 import { ScanLines, NoiseOverlay, Vignette, RecIndicator } from './components/RecEffects';
-import { ToastProvider } from './components/Toast';
+import { ToastProvider, useToast } from './components/Toast';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { ForceUpdateModal } from './components/ForceUpdateModal';
-import { UpToDatePopup } from './components/UpToDatePopup';
 import { useRecordingState } from './hooks/useRecordingState';
 import { useModelStatus } from './hooks/useModelStatus';
 import { useMicrophoneSelector } from './hooks/useMicrophoneSelector';
@@ -36,12 +35,12 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: 32, color: '#f87171', fontFamily: 'monospace', background: '#0A0A0A', height: '100vh' }}>
-          <h2 style={{ marginBottom: 12 }}>Something went wrong</h2>
-          <pre style={{ fontSize: 12, color: '#a3a3a3', whiteSpace: 'pre-wrap' }}>{this.state.error.message}</pre>
+        <div className="h-screen bg-bg p-8 font-mono text-accent-strong">
+          <h2 className="mb-3 text-base font-semibold">Something went wrong</h2>
+          <pre className="whitespace-pre-wrap text-xs text-text-muted">{this.state.error.message}</pre>
           <button
             onClick={() => this.setState({ error: null })}
-            style={{ marginTop: 16, padding: '8px 16px', border: '1px solid #525252', borderRadius: 8, color: '#d4d4d4', background: '#1a1a1a', cursor: 'pointer' }}
+            className="mt-4 rounded-lg border border-border-strong bg-surface-hover px-4 py-2 text-xs font-medium text-text transition-colors hover:border-text-dim"
           >
             Try again
           </button>
@@ -50,6 +49,15 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     }
     return this.props.children;
   }
+}
+
+function UpToDateToast({ version, onShown }: { version: string; onShown: () => void }) {
+  const { addToast } = useToast();
+  useEffect(() => {
+    addToast('success', `You're up to date, v${version}`);
+    onShown();
+  }, []);
+  return null;
 }
 
 export function App() {
@@ -154,7 +162,7 @@ function MainApp() {
       </div>
       {showFirstRun && <OnboardingWizard onComplete={(micId) => { if (micId) micSelector.setSelectedDeviceId(micId); setShowFirstRun(false); setActiveView('modes'); modelStatus.recheck(); }} onClose={isFirstRun ? undefined : () => setShowFirstRun(false)} />}
       {updateState && <ForceUpdateModal updateState={updateState} />}
-      {upToDateVersion && <UpToDatePopup version={upToDateVersion} onClose={() => setUpToDateVersion(null)} />}
+      {upToDateVersion && <UpToDateToast version={upToDateVersion} onShown={() => setUpToDateVersion(null)} />}
     </div>
     </ToastProvider>
   );

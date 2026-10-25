@@ -89,6 +89,13 @@ Made during implementation:
   cards with one line each, the model table became a radio list, the Groq instructions became one
   sentence with a link, `ApiKeyInput` shows Verified / invalid itself, the mic test uses white bars. The
   primary button (Next, Get started) is light with dark text; it is the only such button in the app.
+- **Small components:** toasts are one neutral card (surface, border, Inter 13 px) and only the icon
+  carries the type (green check, red alert, dim info); "You're up to date" is a success toast instead of
+  a modal (`UpToDatePopup` removed). `ForceUpdateModal` keeps its blocking modal with tokens, a white
+  progress bar and the light primary button (the second and last one, next to the wizard).
+  `RecIndicator` keeps red for recording via tokens; `ViewfinderCorners` defaults to `border-strong`.
+  The `ErrorBoundary` fallback uses token classes. The scanline, noise and vignette layers stay as they
+  are (black effect layers, not UI colours).
 - **Shared `ui/` components:** `ConfirmDeleteButton` (K1 trash, "Sure?", 3 s revert, sizes md/sm) and
   `SectionHeading` (mono title + optional meta) are used by ApiKeyInput, History, Shortcuts, Vocabulary.
 
@@ -118,14 +125,14 @@ Done:
   `ui/SectionHeading`.
 - Widget page (`WidgetPage.tsx`), `MaxiWidget` `preview` prop.
 - Onboarding wizard (`OnboardingWizard.tsx`).
+- Small components: `Toast`, `ForceUpdateModal`, `RecEffects`, `ErrorBoundary` in `App.tsx`;
+  `UpToDatePopup` replaced by a toast.
 
 Remaining, in order:
 
-1. Small components: `Toast`, `UpToDatePopup` (should become a toast), `ForceUpdateModal`,
-   `CopyButton`, `RecIndicator` / `RecEffects`, `ErrorBoundary` inline styles in `App.tsx`.
-2. `index.css`: old keyframes and helpers with hard-coded colours (`rec-glitch`, `first-run-glow`,
+1. `index.css`: old keyframes and helpers with hard-coded colours (`rec-glitch`, `first-run-glow`,
    `entry-glow`, `temperature-slider`, scrollbars).
-3. Close: `npm run lint`, `npx -y -p typescript@5.9.3 tsc --noEmit`, sweep for loose colours.
+2. Close: `npm run lint`, `npx -y -p typescript@5.9.3 tsc --noEmit`, sweep for loose colours.
 
 Open ideas (not decided):
 
@@ -155,7 +162,7 @@ Open ideas (not decided):
 - Mini had no recording signal, no paste confirmation and a silent error; Maxi used three font
   families and switched from bars to text when processing. Both are fixed.
 - `WidgetPage` thumbnails were hand-drawn SVGs that diverged from the real widgets (fixed: live previews).
-- `UpToDatePopup` is a blocking modal for a 4-second confirmation (still open).
+- `UpToDatePopup` was a blocking modal for a 4-second confirmation (fixed: now a toast).
 
 Keep: RAF-driven bar updates, LERP, sticky exit state, hit-zone hack, drag, enter/exit timings;
 a11y semantics (`aria-current`, `aria-live`, `role=switch/listbox/dialog`, focus trap, focus-visible);
