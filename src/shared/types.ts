@@ -193,7 +193,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 - Only make changes when confident about corrections
 - Don't include placeholders in output
 
-Respond with ONLY the reformatted message wrapped in the required tags.`,
+Respond with ONLY the reformatted message.`,
     savedPrompts: [],
     selectedPromptId: 'default',
     autoPaste: true,

@@ -10,6 +10,13 @@ const log = logger.scope('AI');
 
 const AI_METHOD_TIMEOUT_MS = 25_000;
 
+const WRAPPING_TAG_RE = /^<(output|input)>\s*([\s\S]*?)\s*<\/\1>$/i;
+
+function unwrapModelOutput(output: string): string {
+  const match = output.match(WRAPPING_TAG_RE);
+  return match ? match[2] : output;
+}
+
 /** Retry on transient network/server errors (5xx, timeout). Auth errors (401/403) are never retried. */
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 1000): Promise<T> {
   let lastError: unknown;
@@ -118,14 +125,18 @@ ${basePrompt}${vocabSection}
 
     const wrappedText = `<input>\n${rawText}\n</input>`;
 
+    let output: string;
     switch (provider) {
       case 'openai':
-        return this.processOpenAI(wrappedText, systemPrompt);
+        output = await this.processOpenAI(wrappedText, systemPrompt);
+        break;
       case 'anthropic':
-        return this.processAnthropic(wrappedText, systemPrompt);
+        output = await this.processAnthropic(wrappedText, systemPrompt);
+        break;
       default:
         return rawText;
     }
+    return output || rawText;
   }
 
   private getOpenAIClient(): OpenAI {
@@ -173,7 +184,7 @@ ${basePrompt}${vocabSection}
           const delta = chunk.choices[0]?.delta?.content;
           if (delta) chunks.push(delta);
         }
-        return chunks.join('').trim() || text;
+        return unwrapModelOutput(chunks.join('').trim());
       } finally {
         clearTimeout(timeout);
       }
@@ -204,7 +215,7 @@ ${basePrompt}${vocabSection}
             chunks.push(event.delta.text);
           }
         }
-        return chunks.join('').trim() || text;
+        return unwrapModelOutput(chunks.join('').trim());
       } finally {
         clearTimeout(timeout);
       }

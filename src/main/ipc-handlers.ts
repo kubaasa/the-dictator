@@ -288,6 +288,14 @@ export function registerIpcHandlers(
       store.set('vocabulary', migrated);
     }
 
+    const legacyDefaultPrompt = DEFAULT_SETTINGS.dictation.customPrompt.replace(
+      /Respond with ONLY the reformatted message\.$/,
+      'Respond with ONLY the reformatted message wrapped in the required tags.',
+    );
+    if (store.get('dictation.customPrompt') === legacyDefaultPrompt) {
+      store.set('dictation.customPrompt', DEFAULT_SETTINGS.dictation.customPrompt);
+    }
+
     return decryptSettingsForRenderer(store.store);
   });
 
@@ -571,6 +579,8 @@ export function registerIpcHandlers(
       }
       const appName = pasteService.getAppName() ?? undefined;
 
+      const overlay = getOverlayWindow();
+      if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_RESULT, { text, appName });
       broadcastState('done');
       scheduleIdle(DONE_STATE_MS);
       // words/s of the raw transcript vs audio length: normal dictation lands around 1.6–2.0,
@@ -626,6 +636,8 @@ export function registerIpcHandlers(
       broadcastState('error');
       scheduleIdle(1500);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, msg);
+      const overlay = getOverlayWindow();
+      if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, msg);
     }
     } finally {
       transcriptionInProgress = false;

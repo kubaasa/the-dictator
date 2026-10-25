@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import log from 'electron-log/renderer';
 import { TimecodeDisplay, ViewfinderCorners } from './RecEffects';
 import type { WidgetType } from '../../shared/types';
@@ -101,9 +101,37 @@ const navItems: NavItem[] = [
   },
 ];
 
+const FRAME_TRAVEL_MS = 300;
+const FRAME_TRAVEL_INSET = -5;
+
 export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [activeWidget, setActiveWidget] = useState<WidgetType>('voicebar');
+
+  const itemRefs = useRef<Partial<Record<View, HTMLButtonElement | null>>>({});
+  const lockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const frameShown = useRef(false);
+  const [frame, setFrame] = useState<{ y: number; h: number } | null>(null);
+  const [traveling, setTraveling] = useState(false);
+  const [blinkCount, setBlinkCount] = useState(0);
+  const reducedMotion = useRef(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  useLayoutEffect(() => {
+    const btn = itemRefs.current[activeView];
+    if (!btn) return;
+    if (lockTimer.current) clearTimeout(lockTimer.current);
+    if (frameShown.current && !reducedMotion.current) {
+      setTraveling(true);
+      lockTimer.current = setTimeout(() => {
+        setTraveling(false);
+        setBlinkCount((n) => n + 1);
+      }, FRAME_TRAVEL_MS);
+    }
+    frameShown.current = true;
+    setFrame({ y: btn.offsetTop + 4, h: btn.offsetHeight - 8 });
+  }, [activeView]);
+
+  useEffect(() => () => { if (lockTimer.current) clearTimeout(lockTimer.current); }, []);
 
   useEffect(() => {
     window.dictator.getSettings().then((s) => {
@@ -116,26 +144,22 @@ export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) 
   }, []);
 
   return (
-    <aside role="navigation" aria-label="Main navigation" className={`flex flex-col gap-1 border-r border-border/60 py-3 transition-all duration-300 overflow-hidden ${collapsed ? 'w-14' : 'w-1/5'}`}>
+    <aside role="navigation" aria-label="Main navigation" className={`relative flex flex-col gap-1 border-r border-border/60 py-3 transition-all duration-300 overflow-hidden ${collapsed ? 'w-14' : 'w-1/5'}`}>
       {navItems.map((item) => {
         const isActive = item.id === activeView;
         return (
           <button
             key={item.id}
+            ref={(el) => { itemRefs.current[item.id] = el; }}
             onClick={() => onNavigate(item.id)}
             title={collapsed ? (item.id === 'widget' ? `Widget: ${activeWidget === 'voicebar' ? 'Mini' : 'Maxi'} active` : item.label) : undefined}
             aria-label={item.label}
             aria-current={isActive ? 'page' : undefined}
-            className={`relative flex h-[38px] w-full items-center gap-3 text-[13px] font-medium transition-colors ${
+            className={`relative flex h-[38px] w-full shrink-0 items-center gap-3 text-[13px] font-medium transition-colors duration-200 ${
               collapsed ? 'justify-center' : 'px-4'
             } ${isActive ? 'text-text' : 'text-text-muted hover:bg-surface hover:text-text'}`}
           >
-            {isActive && (
-              <span className={`pointer-events-none absolute inset-y-1 ${collapsed ? 'inset-x-2.5' : 'inset-x-1.5'}`} aria-hidden="true">
-                <ViewfinderCorners color="var(--color-accent)" size={10} />
-              </span>
-            )}
-            <span className={isActive ? 'text-accent-strong' : 'text-text-dim'}>{item.icon}</span>
+            <span className={`transition-colors duration-200 ${isActive ? 'text-accent-strong' : 'text-text-dim'}`}>{item.icon}</span>
             {!collapsed && (
               <span className="flex flex-1 items-center gap-2 whitespace-nowrap">
                 {item.label}
@@ -155,6 +179,35 @@ export function Sidebar({ activeView, onNavigate, onSetupGuide }: SidebarProps) 
           </button>
         );
       })}
+
+      {frame && (
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute top-0 z-10 ${collapsed ? 'inset-x-2.5' : 'inset-x-1.5'}`}
+          style={{
+            height: frame.h,
+            transform: `translateY(${frame.y}px)`,
+            transition: reducedMotion.current ? 'none' : `transform ${FRAME_TRAVEL_MS}ms cubic-bezier(.45,0,.2,1)`,
+          }}
+        >
+          <span
+            className="absolute"
+            style={{
+              top: traveling ? FRAME_TRAVEL_INSET : 0,
+              bottom: traveling ? FRAME_TRAVEL_INSET : 0,
+              left: traveling ? FRAME_TRAVEL_INSET : 0,
+              right: traveling ? FRAME_TRAVEL_INSET : 0,
+              opacity: traveling ? 0.45 : 1,
+              transition: traveling
+                ? 'top 140ms ease-out, bottom 140ms ease-out, left 140ms ease-out, right 140ms ease-out, opacity 140ms ease-out'
+                : 'top 240ms cubic-bezier(.34,1.56,.64,1), bottom 240ms cubic-bezier(.34,1.56,.64,1), left 240ms cubic-bezier(.34,1.56,.64,1), right 240ms cubic-bezier(.34,1.56,.64,1), opacity 160ms ease-out',
+              animation: blinkCount > 0 ? `${blinkCount % 2 ? 'vf-blink-a' : 'vf-blink-b'} 360ms linear 120ms` : undefined,
+            }}
+          >
+            <ViewfinderCorners color="var(--color-accent)" size={10} />
+          </span>
+        </span>
+      )}
 
       <div className="flex-1" />
 

@@ -15,22 +15,28 @@ interface SegmentedProps<T extends string> {
 
 export function Segmented<T extends string>({ options, value, onChange, ariaLabel }: SegmentedProps<T>) {
   const groupRef = useRef<HTMLDivElement>(null);
-  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+  const userTargetRef = useRef<T | null>(null);
+  const [indicator, setIndicator] = useState<{ left: number; width: number; animate: boolean } | null>(null);
   const optionKey = options.map((o) => o.value).join('|');
 
-  // The highlight is one element that slides to the selected segment instead of each
-  // button painting its own background, so a change animates instead of jumping
+  const select = (next: T) => {
+    userTargetRef.current = next;
+    onChange(next);
+  };
+
   useLayoutEffect(() => {
     const group = groupRef.current;
     if (!group) return;
-    const measure = () => {
+    const measure = (animate: boolean) => {
       const el = group.querySelector<HTMLButtonElement>(`button[data-value="${CSS.escape(value)}"]`);
       if (!el) return;
-      const next = { left: el.offsetLeft, width: el.offsetWidth };
-      setIndicator((prev) => (prev && prev.left === next.left && prev.width === next.width ? prev : next));
+      const left = el.offsetLeft;
+      const width = el.offsetWidth;
+      setIndicator((prev) => (prev && prev.left === left && prev.width === width ? prev : { left, width, animate }));
     };
-    measure();
-    const observer = new ResizeObserver(measure);
+    measure(userTargetRef.current === value);
+    userTargetRef.current = null;
+    const observer = new ResizeObserver(() => measure(false));
     observer.observe(group);
     return () => observer.disconnect();
   }, [value, optionKey]);
@@ -44,7 +50,7 @@ export function Segmented<T extends string>({ options, value, onChange, ariaLabe
     if (idx === -1) return;
     const step = e.key === 'ArrowRight' ? 1 : -1;
     const next = enabled[(idx + step + enabled.length) % enabled.length];
-    onChange(next.value);
+    select(next.value);
     const buttons = groupRef.current?.querySelectorAll<HTMLButtonElement>('button[role="radio"]');
     buttons?.forEach((b) => { if (b.dataset.value === next.value) b.focus(); });
   };
@@ -60,7 +66,9 @@ export function Segmented<T extends string>({ options, value, onChange, ariaLabe
       {indicator && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 left-0 rounded-[7px] bg-text transition-[transform,width] duration-200 ease-out"
+          className={`pointer-events-none absolute inset-y-0 left-0 rounded-[7px] bg-text ${
+            indicator.animate ? 'transition-[transform,width] duration-200 ease-out' : ''
+          }`}
           style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }}
         />
       )}
@@ -75,7 +83,7 @@ export function Segmented<T extends string>({ options, value, onChange, ariaLabe
             tabIndex={selected ? 0 : -1}
             disabled={opt.disabled}
             data-value={opt.value}
-            onClick={() => onChange(opt.value)}
+            onClick={() => select(opt.value)}
             className={`relative z-10 px-3 py-1.5 text-xs transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-40 ${
               selected ? 'font-medium text-bg' : 'text-text-muted hover:text-text'
             }`}

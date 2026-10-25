@@ -67,6 +67,7 @@ export function ModesPage(props: ModelStatus) {
   const [groqValidation, setGroqValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
   const [groqValidationError, setGroqValidationError] = useState('');
   const [autoPaste, setAutoPaste] = useState(DEFAULT_SETTINGS.dictation.autoPaste);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const [aiPostProcessing, setAiPostProcessing] = useState(DEFAULT_SETTINGS.dictation.aiPostProcessing);
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_SETTINGS.dictation.customPrompt);
@@ -131,7 +132,11 @@ export function ModesPage(props: ModelStatus) {
         : (s.dictation.savedPrompts ?? []).find(p => p.id === id)?.content ?? DEFAULT_SETTINGS.dictation.customPrompt;
       setLastLoadedPrompt(loaded);
       if (s.ai.provider === 'openai' && s.ai.openaiApiKey) fetchOpenAIModels();
-    }).catch((err) => log.error('Failed to load settings in ModesPage:', err));
+      setSettingsLoaded(true);
+    }).catch((err) => {
+      log.error('Failed to load settings in ModesPage:', err);
+      setSettingsLoaded(true);
+    });
 
     const unsub = window.dictator.onSettingsChange(syncFromSettings);
     return unsub;
@@ -528,6 +533,8 @@ export function ModesPage(props: ModelStatus) {
 
   const currentAiModels = aiProvider === 'openai' ? openaiModels : aiProvider === 'anthropic' ? ANTHROPIC_MODELS : [];
   const currentAiModel = aiProvider === 'openai' ? aiOpenaiModel : aiProvider === 'anthropic' ? aiAnthropicModel : '';
+
+  if (!settingsLoaded) return null;
 
   const selectedWhisper = MODEL_OPTIONS.find((o) => o.value === modelSize);
   const whisperReady = downloadedModels.includes(modelSize);

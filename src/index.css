@@ -51,6 +51,7 @@
   --color-widget-ok: #4ade80;
   --color-widget-error: #f2555a;
   --shadow-widget: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 14px rgb(0 0 0 / 0.28);
+  --animate-widget-rec: widget-rec-blink 1.1s ease-in-out infinite, widget-rec-ring 1.1s ease-out infinite;
 }
 
 html,
@@ -109,6 +110,33 @@ body,
 @keyframes widget-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
+}
+
+@keyframes widget-rec-blink {
+  0%, 50%  { opacity: 1; }
+  62%, 88% { opacity: 0.18; }
+  100%     { opacity: 1; }
+}
+
+@keyframes widget-rec-ring {
+  0%        { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-widget-rec) 55%, transparent); }
+  60%, 100% { box-shadow: 0 0 0 7px transparent; }
+}
+
+@keyframes vf-blink-a {
+  0%   { opacity: 1; }
+  25%  { opacity: 0.2; }
+  50%  { opacity: 1; }
+  70%  { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+
+@keyframes vf-blink-b {
+  0%   { opacity: 1; }
+  25%  { opacity: 0.2; }
+  50%  { opacity: 1; }
+  70%  { opacity: 0.35; }
+  100% { opacity: 1; }
 }
 
 @keyframes widget-enter {

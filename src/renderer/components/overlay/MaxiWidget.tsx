@@ -14,7 +14,7 @@ interface MaxiWidgetProps {
   resultText?: string;
 }
 
-const BAR_COUNT = 24;
+const BAR_COUNT = 50;
 const MIN_BAR_H = 2.5;
 const MAX_BAR_H = 36;
 const DOT_COUNT = 7;
@@ -220,8 +220,6 @@ export function MaxiWidget({
     <ShortcutEntry label="Dismiss" raw={shortcuts.cancelRecording} />
   ) : null;
 
-  const timerClass = visual === 'bars' ? 'text-widget-fg-muted' : 'text-widget-fg-dim';
-
   const capsuleClass = [
     'flex h-16 w-[480px] items-center gap-[18px] rounded-full border bg-widget-surface shadow-widget pl-6 pr-[22px]',
     'transition-[border-color] duration-200',
@@ -254,7 +252,10 @@ export function MaxiWidget({
         >
           {visual === 'bars' && (
             <>
-              <StateLabel label="REC"><span className="h-[9px] w-[9px] shrink-0 rounded-full bg-widget-rec" /></StateLabel>
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="h-[9px] w-[9px] shrink-0 rounded-full bg-widget-rec motion-safe:animate-widget-rec" />
+                <span className="w-10 font-mono text-[13px] text-widget-fg">{formatTimer(elapsedMs)}</span>
+              </div>
               <div className="flex h-9 min-w-0 flex-1 items-center justify-center gap-[3px]">
                 {BAR_PROPS.map((_, i) => (
                   <div
@@ -265,18 +266,20 @@ export function MaxiWidget({
                       height: MAX_BAR_H,
                       transformOrigin: 'center',
                       transform: `scaleY(${REST_SCALE})`,
-                      animation: isInitializing ? `widget-cascade 350ms ease-out ${(i * 0.02).toFixed(2)}s both` : undefined,
+                      animation: isInitializing ? `widget-cascade 350ms ease-out ${(i * 0.01).toFixed(2)}s both` : undefined,
                     }}
                   />
                 ))}
               </div>
-              <span className={`w-[119px] shrink-0 text-right font-mono text-[13px] ${timerClass}`}>{formatTimer(elapsedMs)}</span>
             </>
           )}
 
           {visual === 'processing' && (
             <>
-              <StateLabel label="PROCESSING"><span className="h-[9px] w-[9px] shrink-0 rounded-full bg-widget-fg-dim" /></StateLabel>
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="h-[9px] w-[9px] shrink-0 rounded-full bg-widget-fg-dim" />
+                <span className="w-10 font-mono text-[13px] text-widget-fg-dim">{formatTimer(elapsedMs)}</span>
+              </div>
               <div className="flex min-w-0 flex-1 items-center justify-center gap-2.5">
                 {DOTS.map(i => (
                   <span
@@ -286,21 +289,19 @@ export function MaxiWidget({
                   />
                 ))}
               </div>
-              <span className={`w-[119px] shrink-0 text-right font-mono text-[13px] ${timerClass}`}>{formatTimer(elapsedMs)}</span>
             </>
           )}
 
           {visual === 'done' && (
             <>
-              <StateLabel label="PASTED"><CheckIcon /></StateLabel>
+              <CheckIcon />
               <span className="min-w-0 flex-1 truncate text-[13px] text-widget-fg-muted">{resultText}</span>
-              <span className={`w-10 shrink-0 text-right font-mono text-[13px] ${timerClass}`}>{formatTimer(elapsedMs)}</span>
             </>
           )}
 
           {visual === 'error' && (
             <>
-              <StateLabel label="ERROR"><span className="h-[9px] w-[9px] shrink-0 rounded-full bg-widget-error" /></StateLabel>
+              <span className="h-[9px] w-[9px] shrink-0 rounded-full bg-widget-error" />
               <ErrorText message={errorMessage} />
             </>
           )}
@@ -311,15 +312,6 @@ export function MaxiWidget({
           {shortcutRow}
         </div>
       </div>
-    </div>
-  );
-}
-
-function StateLabel({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex w-[119px] shrink-0 items-center gap-[18px]">
-      {children}
-      <span className="font-mono text-[11px] tracking-[0.08em] text-widget-fg-muted">{label}</span>
     </div>
   );
 }

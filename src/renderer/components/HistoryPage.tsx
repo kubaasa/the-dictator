@@ -22,13 +22,9 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-const MODE_LABELS: Record<string, string> = {
-  voice: 'VOICE',
-  email: 'EMAIL',
-  chat: 'CHAT',
-  note: 'NOTE',
-  custom: 'CUSTOM',
-};
+function pluralizeRecordings(count: number): string {
+  return `${count} recording${count !== 1 ? 's' : ''}`;
+}
 
 function getDateGroupLabel(isoDate: string): string {
   const now = new Date();
@@ -68,6 +64,24 @@ function groupByDate(entries: RecordingEntry[]): { label: string; entries: Recor
   return Array.from(groups.entries()).map(([label, entries]) => ({ label, entries }));
 }
 
+const normalizeWord = (word: string) => word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+
+function RawText({ raw, text }: { raw: string; text: string }) {
+  const finalWords = new Set(text.split(/\s+/).map(normalizeWord));
+  return (
+    <>
+      {raw.split(/(\s+)/).map((token, i) => {
+        const word = normalizeWord(token);
+        return word && !finalWords.has(word)
+          ? <span key={i} className="rounded-[3px] bg-text/[0.07] px-0.5 text-text-dim">{token}</span>
+          : token;
+      })}
+    </>
+  );
+}
+
+const CONFIRM_DELETE_MS = 3000;
+
 interface RecordingItemProps {
   entry: RecordingEntry;
   isExpanded: boolean;
@@ -78,126 +92,109 @@ interface RecordingItemProps {
 }
 
 function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isDeleting }: RecordingItemProps) {
-
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmingDelete(true);
-  };
+  useEffect(() => {
+    if (!isExpanded) setConfirmingDelete(false);
+  }, [isExpanded]);
 
-  const handleDeleteConfirm = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  useEffect(() => () => {
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+  }, []);
+
+  const handleDeleteClick = () => {
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      confirmTimerRef.current = setTimeout(() => setConfirmingDelete(false), CONFIRM_DELETE_MS);
+      return;
+    }
     setConfirmingDelete(false);
     onDelete(entry.id);
   };
 
-  const handleDeleteCancel = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmingDelete(false);
-  };
-
-  const preview = entry.text.length > 80 ? entry.text.slice(0, 80) + '\u2026' : entry.text;
-  const modeBadge = entry.mode ? MODE_LABELS[entry.mode] ?? entry.mode.toUpperCase() : null;
+  const hasRaw = !!entry.rawText && entry.rawText !== entry.text;
+  const rawWords = entry.rawWordCount || entry.wordCount;
+  const wpm = entry.durationSeconds >= 1 ? Math.round(rawWords / (entry.durationSeconds / 60)) : null;
 
   return (
-    <div className="group rounded-xl border border-neutral-800 bg-[#141414] overflow-hidden">
-      <div className="relative">
+    <div className={`relative ${isExpanded ? 'bg-surface-hover' : ''}`}>
+      {isExpanded && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-text" />}
+
+      <div className="group relative">
         <button
           onClick={onToggle}
           aria-expanded={isExpanded}
-          className={`w-full flex items-center gap-3 px-5 py-4 pr-12 text-left transition-colors cursor-pointer ${
-            isExpanded ? 'bg-red-600/5' : 'hover:bg-[#1A1A1A]'
+          className={`flex h-11 w-full items-center gap-3.5 pl-4 pr-12 text-left transition-colors ${
+            isExpanded ? '' : 'group-hover:bg-surface-hover'
           }`}
         >
-          <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isExpanded ? 'bg-red-500' : 'bg-neutral-700'}`} />
-
-          <span className="font-mono text-sm text-neutral-400 shrink-0 w-12">{formatTime(entry.date)}</span>
-          <span className="font-mono text-sm text-neutral-600 shrink-0 w-12">{formatDuration(entry.durationSeconds)}</span>
-          {modeBadge && (
-            <span className="font-mono text-xs font-bold tracking-wider text-neutral-500 border border-neutral-700 rounded-full px-1.5 py-0.5 shrink-0">
-              {modeBadge}
-            </span>
+          <span className="w-10 shrink-0 font-mono text-xs text-text-muted">{formatTime(entry.date)}</span>
+          <span className="min-w-0 flex-1 truncate text-[13px] text-text">{isExpanded ? '' : entry.text}</span>
+          {entry.appName && (
+            <span className="max-w-[130px] shrink-0 truncate text-xs text-text-dim">{entry.appName}</span>
           )}
-          <span className="text-sm text-neutral-300 truncate flex-1">
-            {isExpanded ? '' : preview}
-          </span>
+          <span className="w-9 shrink-0 text-right font-mono text-xs text-text-dim">{formatDuration(entry.durationSeconds)}</span>
         </button>
 
-        <div
-          className={`absolute right-3 top-1/2 -translate-y-1/2 z-10 transition-opacity ${
-            isExpanded ? 'opacity-60 hover:opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
-          }`}
-        >
-          <CopyButton text={entry.text} stopPropagation iconOnly />
-        </div>
+        {!isExpanded && (
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <CopyButton text={entry.text} stopPropagation iconOnly />
+          </div>
+        )}
       </div>
 
       <div
         className="grid transition-[grid-template-rows] duration-200 ease-in-out"
         style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
       >
-        <div className="overflow-hidden">
-        <div className="bg-[#0f0f0f]/60 pb-1">
-          <div className="mx-5 border-t border-neutral-800/30 py-3">
-            <p className="text-sm text-neutral-200 leading-relaxed max-h-48 overflow-y-auto select-text whitespace-pre-wrap">
+        <div className="overflow-hidden" inert={!isExpanded}>
+          <div className="flex flex-col gap-3 pb-3.5 pl-[70px] pr-4">
+            <p className="max-h-48 select-text overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-text">
               {entry.text}
             </p>
-          </div>
 
-          {entry.rawText && entry.rawText !== entry.text && (
-            <div className="mx-5 border-t border-neutral-800/30 py-3">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-600">
+            {hasRaw && (
+              <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
                   Whisper raw
                 </span>
-                <CopyButton text={entry.rawText} iconOnly />
+                <p className="max-h-32 select-text overflow-y-auto whitespace-pre-wrap text-[13px] leading-relaxed text-text-muted">
+                  <RawText raw={entry.rawText ?? ''} text={entry.text} />
+                </p>
               </div>
-              <p className="font-mono text-xs text-neutral-500 leading-relaxed max-h-32 overflow-y-auto select-text whitespace-pre-wrap">
-                {entry.rawText}
-              </p>
-            </div>
-          )}
+            )}
 
-          {deleteError && (
-            <div className="mx-5 px-0 py-1.5 text-sm text-red-400" role="alert">
-              {deleteError}
-            </div>
-          )}
+            {deleteError && (
+              <p className="text-xs text-accent-strong" role="alert">{deleteError}</p>
+            )}
 
-          <div className="flex items-center justify-end gap-2 mx-5 border-t border-neutral-800/30 py-2">
-            {confirmingDelete ? (
-              <div className="flex items-center gap-2 w-full justify-center">
-                <span className="font-mono text-sm text-neutral-400">Delete this recording?</span>
-                <button
-                  onClick={handleDeleteConfirm}
-                  disabled={isDeleting}
-                  className="rounded-lg px-3 py-1.5 font-mono text-sm font-semibold uppercase tracking-wider text-red-400 border border-red-800 hover:bg-red-950/50 transition-colors disabled:opacity-50 disabled:cursor-wait"
-                >
-                  {isDeleting ? 'Deleting...' : 'Confirm'}
-                </button>
-                <button
-                  onClick={handleDeleteCancel}
-                  disabled={isDeleting}
-                  className="rounded-lg px-3 py-1.5 font-mono text-sm font-semibold uppercase tracking-wider text-neutral-400 border border-neutral-700 hover:border-neutral-500 hover:text-neutral-200 transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
+            <div className="flex items-center gap-2 border-t border-border pt-3">
+              <CopyButton text={entry.text} />
+              {hasRaw && <CopyButton text={entry.rawText ?? ''} label="Copy raw" variant="ghost" />}
+              <span className="ml-auto font-mono text-[11px] text-text-dim">
+                {entry.wordCount} words{wpm !== null && ` · ${wpm} wpm`}
+              </span>
               <button
                 onClick={handleDeleteClick}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-mono text-sm font-semibold uppercase tracking-wider text-neutral-500 border border-neutral-800 hover:border-red-800 hover:text-red-400 transition-colors"
+                disabled={isDeleting}
+                aria-label={confirmingDelete ? 'Confirm delete recording' : 'Delete recording'}
+                title={confirmingDelete ? 'Click again to delete' : 'Delete recording'}
+                className={`flex h-7 shrink-0 items-center justify-center rounded-md border text-xs font-medium transition-colors disabled:cursor-wait disabled:opacity-50 ${
+                  confirmingDelete
+                    ? 'border-text bg-text px-2.5 text-bg'
+                    : 'w-7 border-accent bg-accent hover:border-accent-strong hover:bg-accent-strong'
+                }`}
               >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                </svg>
-                Delete
+                {confirmingDelete ? 'Sure?' : (
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="#ffffff" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+                  </svg>
+                )}
               </button>
-            )}
+            </div>
           </div>
-
-        </div>
         </div>
       </div>
     </div>
@@ -206,6 +203,9 @@ function RecordingItem({ entry, isExpanded, onToggle, onDelete, deleteError, isD
 
 const LOAD_TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 50;
+
+const SECTION_HEADING = 'font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-text-muted';
+const SECONDARY_BUTTON = 'flex h-8 items-center rounded-md border border-border-strong bg-surface-hover px-4 text-xs font-medium text-text transition-colors hover:border-text-dim disabled:cursor-wait disabled:opacity-50';
 
 export function HistoryPage() {
   const [recordings, setRecordings] = useState<RecordingEntry[]>([]);
@@ -369,60 +369,48 @@ export function HistoryPage() {
 
   return (
     <main className="flex-1 overflow-y-auto p-6 animate-fade-in">
-      <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-6">
 
-        <section>
-          <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">
-            Footage Archive
-          </h2>
-          <div className="relative">
-            <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-600 pointer-events-none"
-              fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-            </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={handleSearchChange}
-              placeholder="SEARCH FOOTAGE..."
-              aria-label="Search recordings"
-              className="w-full rounded-xl border border-neutral-800 bg-[#141414] pl-9 pr-4 py-3 font-mono text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-red-600/30 transition-colors"
-            />
-          </div>
+        <div className="relative">
+          <svg
+            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-dim"
+            fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder="Search recordings"
+            aria-label="Search recordings"
+            className="h-10 w-full rounded-[10px] border border-border bg-surface pl-10 pr-36 text-[13px] text-text placeholder-text-dim transition-colors focus:border-border-strong focus:outline-none"
+          />
           {!isLoading && (
-            <p className="mt-2 font-mono text-sm text-neutral-600">
-              {displayCount} recording{displayCount !== 1 ? 's' : ''}
-            </p>
+            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 font-mono text-[11px] text-text-dim">
+              {pluralizeRecordings(displayCount)}
+            </span>
           )}
-        </section>
+        </div>
 
         {isLoading ? (
           <section>
-            <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">
-              Loading
-            </h2>
-            <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5">
+            <h2 className={`${SECTION_HEADING} mb-2.5`}>Loading</h2>
+            <div className="rounded-xl border border-border bg-surface p-5">
               <div className="relative">
                 <ViewfinderCorners />
-                <div className="flex flex-col items-center justify-center py-16 gap-3 text-neutral-600">
+                <div className="flex flex-col items-center justify-center gap-3 py-16 text-text-dim">
                   {loadTimedOut ? (
                     <>
-                      <svg className="h-8 w-8 text-red-800" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <svg className="h-8 w-8 text-accent" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                       </svg>
-                      <p className="text-sm text-red-600">Loading is taking too long</p>
-                      <button
-                        onClick={() => loadAll()}
-                        className="rounded-lg border border-neutral-700 px-4 py-1.5 font-mono text-sm font-semibold uppercase tracking-[0.25em] text-neutral-500 hover:text-neutral-300 hover:border-neutral-500 transition-colors"
-                      >
-                        Retry
-                      </button>
+                      <p className="text-sm text-accent-strong">Loading is taking too long</p>
+                      <button onClick={() => loadAll()} className={SECONDARY_BUTTON}>Retry</button>
                     </>
                   ) : (
                     <>
-                      <svg className="h-6 w-6 animate-spin text-neutral-600" fill="none" viewBox="0 0 24 24">
+                      <svg className="h-6 w-6 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z" />
                       </svg>
@@ -435,42 +423,37 @@ export function HistoryPage() {
           </section>
         ) : recordings.length === 0 ? (
           <section>
-            <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">
+            <h2 className={`${SECTION_HEADING} mb-2.5`}>
               {loadError ? 'Error' : searchQuery ? 'Search Results' : 'Archive'}
             </h2>
-            <div className="rounded-xl border border-neutral-800 bg-[#141414] p-5">
+            <div className="rounded-xl border border-border bg-surface p-5">
               <div className="relative">
                 <ViewfinderCorners />
-                <div className="flex flex-col items-center justify-center py-16 gap-3 text-neutral-600">
+                <div className="flex flex-col items-center justify-center gap-3 py-16 text-text-dim">
                   {loadError ? (
                     <>
-                      <svg className="h-8 w-8 text-red-800" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <svg className="h-8 w-8 text-accent" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                       </svg>
-                      <p className="text-sm text-red-600">Failed to load recordings</p>
-                      <p className="text-sm text-neutral-600 max-w-xs text-center">{loadError}</p>
-                      <button
-                        onClick={() => loadAll()}
-                        className="rounded-lg border border-neutral-700 px-4 py-1.5 font-mono text-sm font-semibold uppercase tracking-[0.25em] text-neutral-500 hover:text-neutral-300 hover:border-neutral-500 transition-colors"
-                      >
-                        Retry
-                      </button>
+                      <p className="text-sm text-accent-strong">Failed to load recordings</p>
+                      <p className="max-w-xs text-center text-sm text-text-muted">{loadError}</p>
+                      <button onClick={() => loadAll()} className={SECONDARY_BUTTON}>Retry</button>
                     </>
                   ) : searchQuery ? (
                     <>
-                      <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
                       </svg>
-                      <p className="font-mono text-sm">NO FOOTAGE FOUND</p>
-                      <p className="text-sm text-neutral-600">Try a different search term</p>
+                      <p className="font-mono text-sm text-text-muted">NO FOOTAGE FOUND</p>
+                      <p className="text-sm">Try a different search term</p>
                     </>
                   ) : (
                     <>
-                      <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
                       </svg>
-                      <p className="font-mono text-sm">NO FOOTAGE RECORDED</p>
-                      <p className="text-sm text-neutral-600">Start recording to see history here</p>
+                      <p className="font-mono text-sm text-text-muted">NO FOOTAGE RECORDED</p>
+                      <p className="text-sm">Start recording to see history here</p>
                     </>
                   )}
                 </div>
@@ -479,35 +462,36 @@ export function HistoryPage() {
           </section>
         ) : (
           <>
-            {groups.map(({ label, entries }) => (
-              <section key={label}>
-                <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500 mb-4">
-                  {label}
-                  <span className="ml-2 text-neutral-700">({entries.length})</span>
-                </h2>
-                <div className="flex flex-col gap-3">
-                  {entries.map((entry) => (
-                    <RecordingItem
-                      key={entry.id}
-                      entry={entry}
-                      isExpanded={expandedId === entry.id}
-                      onToggle={() => handleToggle(entry.id)}
-                      onDelete={handleDelete}
-                      deleteError={deleteError?.id === entry.id ? deleteError.msg : null}
-                      isDeleting={deletingId === entry.id}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+            {groups.map(({ label, entries }) => {
+              const totalSeconds = entries.reduce((sum, entry) => sum + entry.durationSeconds, 0);
+              return (
+                <section key={label} className="flex flex-col gap-2.5">
+                  <h2 className="flex items-baseline gap-2.5">
+                    <span className={SECTION_HEADING}>{label}</span>
+                    <span className="font-mono text-[11px] text-text-dim">
+                      {pluralizeRecordings(entries.length)} · {formatDuration(totalSeconds)}
+                    </span>
+                  </h2>
+                  <div className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border bg-surface">
+                    {entries.map((entry) => (
+                      <RecordingItem
+                        key={entry.id}
+                        entry={entry}
+                        isExpanded={expandedId === entry.id}
+                        onToggle={() => handleToggle(entry.id)}
+                        onDelete={handleDelete}
+                        deleteError={deleteError?.id === entry.id ? deleteError.msg : null}
+                        isDeleting={deletingId === entry.id}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
             {hasMore && !searchQuery && (
-              <div className="flex justify-center pb-4">
-                <button
-                  onClick={loadMore}
-                  disabled={isLoadingMore}
-                  className="rounded-lg border border-neutral-700 px-6 py-2 font-mono text-sm font-semibold uppercase tracking-[0.25em] text-neutral-500 hover:text-neutral-300 hover:border-neutral-500 transition-colors disabled:opacity-50 disabled:cursor-wait cursor-pointer"
-                >
-                  {isLoadingMore ? 'Loading...' : 'Load More'}
+              <div className="flex justify-center pb-2">
+                <button onClick={loadMore} disabled={isLoadingMore} className={SECONDARY_BUTTON}>
+                  {isLoadingMore ? 'Loading...' : 'Load more'}
                 </button>
               </div>
             )}

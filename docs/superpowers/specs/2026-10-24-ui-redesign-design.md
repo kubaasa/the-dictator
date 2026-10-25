@@ -49,8 +49,10 @@ Made during implementation:
 - **Widgets (direction "Kapsuła", inspired by Wispr Flow):** Mini and Maxi are two sizes of one dark
   capsule. Mini idle collapses to a 64×8 sliver; hover shows mic icon + shortcut; recording shows
   9 bars (no dot, no timer); processing shows pulsing dots; done shows "Pasted" with a green border;
-  error shows "Error" with a red border. Maxi: 480×64 capsule + shortcut pill below; left a dot +
-  mono label (REC / PROCESSING / PASTED / ERROR), middle 24 bars or dots or pasted text, right a timer.
+  error shows "Error" with a red border. Maxi: 480×64 capsule + shortcut pill below, no state labels
+  and no right-hand block (variant M3 "Licznik"). Recording: a blinking red dot with a pulse ring and
+  the timer on the left, 50 bars filling the rest. Processing: grey dot + frozen dim timer, pulsing
+  dots. Done: green check + pasted text. Error: red dot + error text.
   The done state lasts 1.5 s (`DONE_STATE_MS` in `src/main/ipc-handlers.ts`).
 - **HomePage:** layout unchanged; camera effects kept; record button 96 px with a 64 px red dot.
 - **Sidebar (S1):** active page framed by red viewfinder corners, duotone inline icons, labels in Inter.
@@ -62,6 +64,11 @@ Made during implementation:
   `Segmented`, `Switch`, `StepCard`, `FieldRow`.
 - **API keys (K1):** a saved key shows "✓ Verified" inside the masked field; an invalid key gets a red
   field border and the error text below. Delete is a red square trash button with a two-step confirm.
+- **History (H1 "Dziennik"):** search field with the recording count inside; one card per day with
+  count and total duration in the heading; one-line rows (time, text, target app, duration, copy on
+  hover). An expanded row gets a light left bar; the full text sits below the row so it stays
+  selectable, then "Whisper raw" with changed words highlighted, Copy / Copy raw, words and wpm, and
+  the K1 trash button. Legacy mode badges are gone.
 
 Rules that apply everywhere:
 
@@ -83,10 +90,13 @@ Done:
 - Window tokens, `Sidebar`, `HomePage`, `MicrophoneSelector`, app header in `App.tsx`.
 - Processing page (`ModesPage.tsx`) with the `ui/` components, `ApiKeyInput`, auto-paste switch,
   prompt-name sanitizing (max 40 chars / 6 words, otherwise "Prompt N").
+- History page (`HistoryPage.tsx`) and `CopyButton` (tokens, `label`, `variant`; also restyles the
+  copy button on Home).
 
 Remaining, in order:
 
-1. `HistoryPage`, `ShortcutsPage`, `VocabularyPage`: tokens, `ui/` components, Z3 selection.
+1. `ShortcutsPage`, `VocabularyPage`: tokens, `ui/` components, Z3 selection. Vocabulary is the third
+   user of the K1 trash button, time to propose a shared component.
 2. `WidgetPage`: comparison table is outdated ("6 (flat)", "✕ icon"); thumbnails should render the
    real widgets (`VoiceBar` already has `preview`/`forceHover` props; `MaxiWidget` has none); Mini/Maxi
    cards use Z3 selection.
