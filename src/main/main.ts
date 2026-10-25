@@ -13,7 +13,7 @@ import { TranscriptionService } from './services/transcription.service';
 import { HistoryService } from './services/history.service';
 import { UpdateService } from './services/update.service';
 import { migrateApiKeys, decryptSettingsForRenderer } from './services/secure-storage';
-import { registerIpcHandlers, getOverlaySize, clampToVisibleArea } from './ipc-handlers';
+import { registerIpcHandlers, getOverlaySize, activeOverlaySize, clampToVisibleArea, placeOverlay } from './ipc-handlers';
 import { getAssetPath } from './paths';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
@@ -319,10 +319,10 @@ function createOverlayWindow(): BrowserWindow {
   const savedY = store.get('widget.y') as number | undefined;
   if (savedX !== undefined && savedY !== undefined) {
     const clamped = clampToVisibleArea(savedX, savedY, initW, initH);
-    win.setPosition(clamped.x, clamped.y);
+    placeOverlay(win, store, clamped.x, clamped.y);
   } else {
     const { width: screenW } = screen.getPrimaryDisplay().workAreaSize;
-    win.setPosition(screenW - initW - 20, 20);
+    placeOverlay(win, store, screenW - initW - 20, 20);
   }
 
   win.on('moved', () => {
@@ -375,11 +375,12 @@ function ensureOverlayVisible(reason: string): void {
       overlayWindow.isVisible(), overlayWindow.isMinimized(), b.x, b.y, b.width, b.height);
   }
 
-  const { x, y, width, height } = overlayWindow.getBounds();
+  const { x, y } = overlayWindow.getBounds();
+  const [width, height] = activeOverlaySize(store);
   const clamped = clampToVisibleArea(x, y, width, height);
   if (clamped.x !== x || clamped.y !== y) {
     log.info('overlay: position reclamped (%d,%d) -> (%d,%d) [%s]', x, y, clamped.x, clamped.y, reason);
-    overlayWindow.setPosition(clamped.x, clamped.y);
+    placeOverlay(overlayWindow, store, clamped.x, clamped.y);
     store.set('widget.x', clamped.x);
     store.set('widget.y', clamped.y);
   }
@@ -756,19 +757,20 @@ app.on('ready', () => {
   // On display-metrics-changed / display-added: clamp to nearest visible area (same display, just resized).
   const reclampOverlay = (center: boolean) => {
     if (!overlayWindow || overlayWindow.isDestroyed()) return;
-    const { x, y, width, height } = overlayWindow.getBounds();
+    const { x, y } = overlayWindow.getBounds();
+    const [width, height] = activeOverlaySize(store);
 
     if (center) {
       const primary = screen.getPrimaryDisplay().workArea;
       const cx = Math.round(primary.x + (primary.width - width) / 2);
       const cy = Math.round(primary.y + (primary.height - height) / 2);
-      overlayWindow.setPosition(cx, cy);
+      placeOverlay(overlayWindow, store, cx, cy);
       store.set('widget.x', cx);
       store.set('widget.y', cy);
     } else {
       const clamped = clampToVisibleArea(x, y, width, height);
       if (clamped.x !== x || clamped.y !== y) {
-        overlayWindow.setPosition(clamped.x, clamped.y);
+        placeOverlay(overlayWindow, store, clamped.x, clamped.y);
         store.set('widget.x', clamped.x);
         store.set('widget.y', clamped.y);
       }

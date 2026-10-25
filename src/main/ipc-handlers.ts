@@ -85,6 +85,15 @@ export function getOverlaySize(widget: WidgetType): [number, number] {
   return [210, 62];
 }
 
+export function activeOverlaySize(store: Store<AppSettings>): [number, number] {
+  return getOverlaySize((store.get('widget') ?? DEFAULT_SETTINGS.widget).activeWidget);
+}
+
+export function placeOverlay(win: BrowserWindow, store: Store<AppSettings>, x: number, y: number): void {
+  const [width, height] = activeOverlaySize(store);
+  win.setBounds({ x, y, width, height });
+}
+
 export function clampToVisibleArea(x: number, y: number, w: number, h: number): { x: number; y: number } {
   const display = screen.getDisplayNearestPoint({ x, y });
   const { x: wx, y: wy, width: ww, height: wh } = display.workArea;
@@ -781,6 +790,7 @@ export function registerIpcHandlers(
 
   let dragInterval: ReturnType<typeof setInterval> | null = null;
   let dragOffset = { x: 0, y: 0 };
+  let dragPos: { x: number; y: number } | null = null;
   let cancelGlobalMouseUp: (() => void) | null = null;
 
   function stopDrag() {
@@ -788,18 +798,20 @@ export function registerIpcHandlers(
     if (cancelGlobalMouseUp) { cancelGlobalMouseUp(); cancelGlobalMouseUp = null; }
     const overlay = getOverlayWindow();
     if (overlay) {
-      const { x, y, width, height } = overlay.getBounds();
+      const { x, y } = dragPos ?? overlay.getBounds();
+      const [width, height] = activeOverlaySize(store);
       const clamped = clampToVisibleArea(x, y, width, height);
-      overlay.setPosition(clamped.x, clamped.y);
+      placeOverlay(overlay, store, clamped.x, clamped.y);
       store.set('widget.x', clamped.x);
       store.set('widget.y', clamped.y);
     }
+    dragPos = null;
   }
 
   ipcMain.on(IPC.WIDGET_DRAG_START, (_event, offsetX: number, offsetY: number) => {
     stopDrag(); // clear any previous drag that didn't end cleanly
 
-    // setPosition throws on non-integer arguments, and here it would do so every 16 ms
+    // setBounds throws on non-integer arguments, and here it would do so every 16 ms
     // inside a timer; fractional offsets show up under display scaling.
     if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
       log.warn('WIDGET_DRAG_START: ignoring invalid offsets (%s, %s)', offsetX, offsetY);
@@ -810,7 +822,8 @@ export function registerIpcHandlers(
       const overlay = getOverlayWindow();
       if (!overlay) return;
       const cursor = screen.getCursorScreenPoint();
-      overlay.setPosition(cursor.x - dragOffset.x, cursor.y - dragOffset.y);
+      dragPos = { x: cursor.x - dragOffset.x, y: cursor.y - dragOffset.y };
+      placeOverlay(overlay, store, dragPos.x, dragPos.y);
     }, 16);
 
     // Fallback: if mouseup fires outside the overlay window (renderer never sees it),
