@@ -5,11 +5,34 @@ export interface SpeechMetrics {
   peak: number;
 }
 
+export interface TranscriptSegment {
+  start: number;
+  end: number;
+  avg_logprob: number;
+}
+
 export const SPEECH_FRAME_RMS = 0.02;
 export const MIN_SPEECH_SECONDS = 0.1;
 export const CREDITS_MAX_SPEECH_SECONDS = 1.0;
+export const LOW_CONFIDENCE_LOGPROB = -0.7;
 
 const FRAME_SECONDS = 0.05;
+
+export function meanSegmentLogprob(segments: TranscriptSegment[] | undefined): number | null {
+  if (!segments || segments.length === 0) return null;
+  let weighted = 0;
+  let total = 0;
+  for (const s of segments) {
+    const span = Math.max(s.end - s.start, 0.01);
+    weighted += s.avg_logprob * span;
+    total += span;
+  }
+  return weighted / total;
+}
+
+export function isLowConfidence(avgLogprob: number | null): avgLogprob is number {
+  return avgLogprob !== null && avgLogprob < LOW_CONFIDENCE_LOGPROB;
+}
 
 export function measureSpeech(samples: Float32Array, sampleRate: number): SpeechMetrics {
   const frame = Math.max(1, Math.round(sampleRate * FRAME_SECONDS));
@@ -47,6 +70,7 @@ const CREDIT_PHRASES = [
   'www\\.[\\w.-]+(?:\\s+www\\.[\\w.-]+)*',
   'thanks? (?:you )?for watching',
   'subtitles by the amara\\.org community',
+  '[\\p{L}\\s,-]{0,40}\\d{1,2}\\.\\d{2}\\.(?:19|20)\\d{2}\\s*r?',
 ];
 
 const CREDITS_ONLY_RE = new RegExp(`^\\s*(?:${CREDIT_PHRASES.join('|')})[.!…]?\\s*$`, 'iu');

@@ -16,7 +16,7 @@ import { HistoryService } from './services/history.service';
 import { UpdateService } from './services/update.service';
 import { encryptSettingsKeys, decryptSettingsForRenderer, getApiKey } from './services/secure-storage';
 import {
-  measureSpeech, isNoiseTag, isCreditsOnly, stripTrailingCredits,
+  measureSpeech, isNoiseTag, isCreditsOnly, isLowConfidence, stripTrailingCredits,
   MIN_SPEECH_SECONDS, CREDITS_MAX_SPEECH_SECONDS,
 } from './services/transcript-filter';
 import { applyVocabularyReplacements, selectTriggeredEntries } from './services/vocabulary';
@@ -511,7 +511,7 @@ export function registerIpcHandlers(
       );
 
       let timeoutId: ReturnType<typeof setTimeout>;
-      const rawText = await Promise.race([
+      const { text: rawText, avgLogprob } = await Promise.race([
         transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate, compressedAudio).then((result) => {
           clearTimeout(timeoutId);
           return result;
@@ -520,6 +520,20 @@ export function registerIpcHandlers(
           timeoutId = setTimeout(() => reject(new Error(`Transcription timed out after ${Math.round(adaptiveTimeout / 1000)}s`)), adaptiveTimeout);
         }),
       ]);
+
+      if (rawText && isLowConfidence(avgLogprob)) {
+        log.warn(
+          'Low-confidence transcript rejected (id=%s avgLogprob=%s speech=%ss): "%s"',
+          entryId, avgLogprob.toFixed(3), metrics.speechSeconds.toFixed(2), rawText,
+        );
+        const unclearMsg = `Speech was too unclear to transcribe reliably. Rejected: "${rawText}"`;
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(IPC.NOTIFICATION_ERROR, unclearMsg);
+        }
+        notifyOverlayError(unclearMsg);
+        setTranscriptionState('error', 2500);
+        return;
+      }
 
       const creditsLike = !!rawText && isCreditsOnly(rawText);
       if (creditsLike && metrics.speechSeconds >= CREDITS_MAX_SPEECH_SECONDS) {
@@ -587,9 +601,9 @@ export function registerIpcHandlers(
       // a value well below ~1.3 on a long recording means Whisper dropped part of the speech.
       const rawWords = rawText.trim().split(/\s+/).filter(Boolean).length;
       log.info(
-        'Transcription done. id=%s autoPaste=%s, chars=%d, audio=%ss, speech=%ss, rawWords=%d, wps=%s',
+        'Transcription done. id=%s autoPaste=%s, chars=%d, audio=%ss, speech=%ss, rawWords=%d, wps=%s, avgLogprob=%s',
         entryId, autoPaste, text.length, audioDurationSec.toFixed(1), metrics.speechSeconds.toFixed(1),
-        rawWords, (rawWords / audioDurationSec).toFixed(2),
+        rawWords, (rawWords / audioDurationSec).toFixed(2), avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3),
       );
 
       const clipboardOk = await writeClipboardVerified(text);

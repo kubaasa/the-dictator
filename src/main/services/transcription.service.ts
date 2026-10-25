@@ -6,9 +6,15 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { getApiKey } from './secure-storage';
 import { mapValidationError } from './api-errors';
+import { meanSegmentLogprob } from './transcript-filter';
 import logger from './logger';
 
 const log = logger.scope('Transcription');
+
+export interface TranscriptionResult {
+  text: string;
+  avgLogprob: number | null;
+}
 
 // Lazy-loaded @huggingface/transformers — the library eagerly loads onnxruntime-node
 // native bindings at import time, which crashes on systems without DirectML support
@@ -279,7 +285,7 @@ export class TranscriptionService {
     return MODELS_CACHE_DIR;
   }
 
-  async transcribeFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number, compressedAudio?: ArrayBuffer): Promise<string> {
+  async transcribeFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number, compressedAudio?: ArrayBuffer): Promise<TranscriptionResult> {
     const engine = (this.store.get('transcription.engine') as string) ?? 'local';
 
     // Cloud path: prefer pre-compressed WebM/Opus from MediaRecorder (~8x smaller upload).
@@ -321,7 +327,7 @@ export class TranscriptionService {
   // sentences — deterministically on 6/6 affected files, and even on a 9 s recording.
   // Without a prompt all of them transcribed in full. Vocabulary is still applied after
   // transcription via applyVocabularyReplacements (ipc-handlers.ts).
-  private async transcribeGroqFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
+  private async transcribeGroqFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<TranscriptionResult> {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
@@ -333,14 +339,15 @@ export class TranscriptionService {
       const response = await client.audio.transcriptions.create({
         model: 'whisper-large-v3',
         file,
+        response_format: 'verbose_json',
         ...(language !== 'auto' && { language }),
       });
 
-      return response.text.trim();
+      return { text: response.text.trim(), avgLogprob: meanSegmentLogprob(response.segments) };
     });
   }
 
-  private async transcribeGroqFromCompressed(compressedAudio: ArrayBuffer): Promise<string> {
+  private async transcribeGroqFromCompressed(compressedAudio: ArrayBuffer): Promise<TranscriptionResult> {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
@@ -351,14 +358,15 @@ export class TranscriptionService {
       const response = await client.audio.transcriptions.create({
         model: 'whisper-large-v3',
         file,
+        response_format: 'verbose_json',
         ...(language !== 'auto' && { language }),
       });
 
-      return response.text.trim();
+      return { text: response.text.trim(), avgLogprob: meanSegmentLogprob(response.segments) };
     });
   }
 
-  private async transcribeLocalFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<string> {
+  private async transcribeLocalFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<TranscriptionResult> {
     const { modelId } = this.resolveModelId();
     const language = (this.store.get('transcription.language') as string) ?? 'auto';
 
@@ -407,7 +415,7 @@ export class TranscriptionService {
       this.loadFromCache(modelId).catch((e) => log.warn('Background model reload failed:', e));
     }
 
-    return text;
+    return { text, avgLogprob: null };
   }
 
   private async loadFromCache(overrideModelId?: string): Promise<void> {
