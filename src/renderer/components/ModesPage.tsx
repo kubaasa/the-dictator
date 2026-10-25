@@ -186,15 +186,6 @@ export function ModesPage(props: ModelStatus) {
     try {
       const current = await window.dictator.getSettings();
       const patch: Partial<AppSettings['transcription']> = { engine: newEngine };
-      if (newEngine === 'local') {
-        patch.preferredCloudLanguage = current.transcription.language;
-        patch.language = 'en';
-      } else {
-        patch.language = current.transcription.preferredCloudLanguage || current.transcription.language;
-      }
-      if (patch.language && patch.language !== current.transcription.language) {
-        setLanguage(patch.language);
-      }
       await window.dictator.setSettings({
         transcription: { ...current.transcription, ...patch },
       });
@@ -630,7 +621,7 @@ export function ModesPage(props: ModelStatus) {
               ariaLabel="Language"
               value={language}
               onChange={handleLanguageChange}
-              options={LANGUAGE_OPTIONS.filter((opt) => engine !== 'local' || opt.value === 'en')}
+              options={LANGUAGE_OPTIONS}
             />
           </FieldRow>
         </StepCard>

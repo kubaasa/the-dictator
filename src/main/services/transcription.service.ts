@@ -35,7 +35,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 100
     } catch (err) {
       lastError = err;
       const status = (err as { status?: number }).status;
-      if (status === 401 || status === 403) throw err;
+      if (typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429) throw err;
       if (attempt < maxAttempts) {
         log.warn('Retry attempt %d/%d after error:', attempt, maxAttempts, err instanceof Error ? err.message : err);
         await new Promise((r) => setTimeout(r, delayMs));
@@ -295,9 +295,9 @@ export class TranscriptionService {
     // Both are near-zero-cost (single pass over Float32) but improve accuracy and reduce
     // wasted inference time on leading/trailing silence.
     const raw = ipcBufferToFloat32(audioBuffer);
-    const trimmed = trimSilence(raw, sampleRate);
-    const normalized = normalizeAudio(trimmed);
-    const preprocessed = Buffer.from(normalized.buffer, normalized.byteOffset, normalized.byteLength);
+    const normalized = normalizeAudio(raw);
+    const trimmed = trimSilence(normalized, sampleRate);
+    const preprocessed = Buffer.from(trimmed.buffer, trimmed.byteOffset, trimmed.byteLength);
 
     return engine === 'cloud'
       ? this.transcribeGroqFromBuffer(preprocessed, sampleRate)
@@ -308,7 +308,7 @@ export class TranscriptionService {
     const apiKey = getApiKey(this.store, 'transcription.groqApiKey');
     if (!apiKey) throw new Error('Groq API key is not set. Go to Modes and enter your key.');
     if (!this.groqClient || this.groqClientKey !== apiKey) {
-      this.groqClient = new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' });
+      this.groqClient = new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1', maxRetries: 0, timeout: 60_000 });
       this.groqClientKey = apiKey;
     }
     return this.groqClient;
@@ -370,7 +370,8 @@ export class TranscriptionService {
     const audio = sampleRate === 16000 ? float32 : resampleFloat32(float32, sampleRate, 16000);
 
     const durationSeconds = float32.length / sampleRate;
-    const options: Record<string, unknown> = { task: 'transcribe' };
+    const englishOnly = modelId.endsWith('.en');
+    const options: Record<string, unknown> = englishOnly ? {} : { task: 'transcribe' };
 
     // Long-form pipeline (chunk_length_s + stride_length_s) is needed only for audio > 30s.
     // For short recordings it causes hallucinations: the long-form pipeline conditions on
@@ -379,16 +380,17 @@ export class TranscriptionService {
     if (durationSeconds > 30) {
       options.chunk_length_s = 30;
       options.stride_length_s = 5;
+      options.return_timestamps = true;
     }
 
     // No initial_prompt here either — same hallucination mechanism as in the Groq path above.
-    if (language !== 'auto') options.language = language;
+    if (!englishOnly && language !== 'auto') options.language = language;
 
     // Cap output tokens based on audio duration to prevent hallucination loops.
-    // Normal speech: ~2-4 tokens/s, 8 tokens/s is a safe margin.
+    // Polish BPE runs at ~3 tokens per word, fast speech ~10 tokens/s; 14 tokens/s is a safe margin.
     // Normal transcriptions hit EOS well before this limit (zero impact).
     // Hallucinations: cut from up to 448 tokens down to a reasonable cap (saves 1-5s).
-    options.max_new_tokens = Math.min(4096, Math.max(50, Math.ceil(durationSeconds * 8)));
+    options.max_new_tokens = Math.min(448, Math.max(64, Math.ceil(durationSeconds * 14)));
 
     const result = await this.pipe(audio, options);
     const text = ((result as { text: string }).text ?? '').trim();

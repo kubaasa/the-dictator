@@ -1,35 +1,34 @@
-import OpenAI from 'openai';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI, { APIConnectionError as OpenAIConnectionError, APIUserAbortError as OpenAIUserAbortError } from 'openai';
+import Anthropic, { APIConnectionError as AnthropicConnectionError, APIUserAbortError as AnthropicUserAbortError } from '@anthropic-ai/sdk';
 import Store from 'electron-store';
 import type { AppSettings, VocabularyEntry } from '../../shared/types';
 import { getApiKey } from './secure-storage';
 import { mapValidationError } from './api-errors';
+import { validateModelOutput } from './ai-output';
 import logger from './logger';
 
 const log = logger.scope('AI');
 
 const AI_METHOD_TIMEOUT_MS = 25_000;
 
+interface ModelAnswer {
+  text: string;
+  stop: string | null;
+}
+
 // Retry only what a second attempt can fix: network errors (no HTTP status), 429 and 5xx.
 // Our own 25 s abort is not retried — a second 25 s attempt would outlive the 30 s race in
 // ipc-handlers and stream into the void; 4xx answers are deterministic.
 function isRetryable(err: unknown): boolean {
-  if (err instanceof Error && /abort/i.test(err.name)) return false;
+  if (err instanceof OpenAIUserAbortError || err instanceof AnthropicUserAbortError) return false;
+  if (err instanceof OpenAIConnectionError || err instanceof AnthropicConnectionError) return true;
   const status = (err as { status?: number }).status;
-  if (status === undefined) return true;
-  return status === 429 || status >= 500;
+  return status === 429 || (typeof status === 'number' && status >= 500);
 }
 
 // Reasoning models (o-series, GPT-5 family) reject any temperature other than the default.
 function supportsTemperature(model: string): boolean {
   return !/^(o\d|gpt-5)/.test(model);
-}
-
-const WRAPPING_TAG_RE = /^<(output|input)>\s*([\s\S]*?)\s*<\/\1>$/i;
-
-function unwrapModelOutput(output: string): string {
-  const match = output.match(WRAPPING_TAG_RE);
-  return match ? match[2] : output;
 }
 
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 1000): Promise<T> {
@@ -96,7 +95,7 @@ export class AIService {
         case 'anthropic': {
           const client = this.getAnthropicClient();
           await client.messages.countTokens({
-            model: (this.store.get('ai.anthropicModel') as string) ?? 'claude-haiku-4-5-20251001',
+            model: this.getModel('anthropic'),
             messages: [{ role: 'user', content: 'warmup' }],
           });
           break;
@@ -105,6 +104,13 @@ export class AIService {
     } catch {
       // Non-critical — the real request will establish the connection
     }
+  }
+
+  getPromptLabel(): string {
+    const selected = (this.store.get('dictation.selectedPromptId') as string | undefined) ?? 'default';
+    if (selected === 'default') return 'default';
+    const saved = (this.store.get('dictation.savedPrompts') as AppSettings['dictation']['savedPrompts'] | undefined) ?? [];
+    return saved.find((p) => p.id === selected)?.name ?? selected;
   }
 
   async process(rawText: string): Promise<string> {
@@ -125,7 +131,7 @@ export class AIService {
       .filter(Boolean)
       .map((spelling) => `- "${spelling}"`);
     const vocabSection = lines.length > 0
-      ? `\n\nUser vocabulary (intentional spellings already present in the input — keep them exactly as written):\n${lines.join('\n')}`
+      ? `\n\nUser vocabulary (these spellings are already correct where they appear — keep them exactly as written, never insert them elsewhere, never change other words to match them):\n${lines.join('\n')}`
       : '';
 
     const systemPrompt = `You are a silent text transformation pipeline. You NEVER converse, explain, or respond to the user. You receive raw dictated text inside <input> tags and output ONLY the transformed result — nothing else.
@@ -140,17 +146,44 @@ ${basePrompt}${vocabSection}
 - If the processing rules do not require any changes, return the input text unchanged`;
 
     const wrappedText = `<input>\n${rawText}\n</input>`;
+    const promptLabel = this.getPromptLabel();
+    const strict = promptLabel === 'default';
+    const model = this.getModel(provider);
+    const started = Date.now();
 
-    // An empty model answer (refusal, content filter) falls back to the dictated text itself,
-    // never to the <input>-wrapped request.
+    let answer: ModelAnswer;
     switch (provider) {
       case 'openai':
-        return (await this.processOpenAI(wrappedText, systemPrompt)) || rawText;
+        answer = await this.processOpenAI(wrappedText, systemPrompt);
+        break;
       case 'anthropic':
-        return (await this.processAnthropic(wrappedText, systemPrompt)) || rawText;
+        answer = await this.processAnthropic(wrappedText, systemPrompt);
+        break;
       default:
         return rawText;
     }
+
+    const verdict = validateModelOutput(answer.text, rawText, strict);
+    if (verdict.text === null) {
+      log.warn(
+        'AI output rejected (%s) — using dictated text. prompt=%s provider=%s model=%s in=%d out=%d',
+        verdict.reason, promptLabel, provider, model, rawText.length, answer.text.length,
+      );
+      return rawText;
+    }
+    log.info(
+      'AI: prompt=%s provider=%s model=%s in=%d out=%d ms=%d stop=%s',
+      promptLabel, provider, model, rawText.length, verdict.text.length, Date.now() - started, answer.stop ?? 'n/a',
+    );
+
+    // An empty model answer (refusal, content filter) falls back to the dictated text itself,
+    // never to the <input>-wrapped request.
+    return verdict.text || rawText;
+  }
+
+  private getModel(provider: string): string {
+    if (provider === 'anthropic') return (this.store.get('ai.anthropicModel') as string) ?? 'claude-haiku-4-5-20251001';
+    return (this.store.get('ai.openaiModel') as string) ?? 'gpt-4.1-nano';
   }
 
   private getOpenAIClient(): OpenAI {
@@ -173,12 +206,12 @@ ${basePrompt}${vocabSection}
     return this.anthropicClient;
   }
 
-  private async processOpenAI(text: string, systemPrompt: string): Promise<string> {
-    return withRetry(async () => {
-      const client = this.getOpenAIClient();
-      const model = (this.store.get('ai.openaiModel') as string) ?? 'gpt-4.1-nano';
-      const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
+  private async processOpenAI(text: string, systemPrompt: string): Promise<ModelAnswer> {
+    const client = this.getOpenAIClient();
+    const model = this.getModel('openai');
+    const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
 
+    return withRetry(async () => {
       const abortController = new AbortController();
       const timeout = setTimeout(() => abortController.abort(), AI_METHOD_TIMEOUT_MS);
 
@@ -194,23 +227,28 @@ ${basePrompt}${vocabSection}
         }, { signal: abortController.signal as AbortSignal });
 
         const chunks: string[] = [];
+        let stop: string | null = null;
         for await (const chunk of stream) {
-          const delta = chunk.choices[0]?.delta?.content;
+          const choice = chunk.choices[0];
+          const delta = choice?.delta?.content;
           if (delta) chunks.push(delta);
+          if (choice?.finish_reason) stop = choice.finish_reason;
         }
-        return unwrapModelOutput(chunks.join('').trim());
+        if (abortController.signal.aborted) throw new Error('AI request timed out');
+        if (stop === 'length') throw new Error('AI output was cut off by the token limit');
+        return { text: chunks.join('').trim(), stop };
       } finally {
         clearTimeout(timeout);
       }
     });
   }
 
-  private async processAnthropic(text: string, systemPrompt: string): Promise<string> {
-    return withRetry(async () => {
-      const client = this.getAnthropicClient();
-      const model = (this.store.get('ai.anthropicModel') as string) ?? 'claude-haiku-4-5-20251001';
-      const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
+  private async processAnthropic(text: string, systemPrompt: string): Promise<ModelAnswer> {
+    const client = this.getAnthropicClient();
+    const model = this.getModel('anthropic');
+    const temperature = (this.store.get('ai.temperature') as number) ?? 0.3;
 
+    return withRetry(async () => {
       const abortController = new AbortController();
       const timeout = setTimeout(() => abortController.abort(), AI_METHOD_TIMEOUT_MS);
 
@@ -224,12 +262,17 @@ ${basePrompt}${vocabSection}
         }, { signal: abortController.signal as AbortSignal });
 
         const chunks: string[] = [];
+        let stop: string | null = null;
         for await (const event of stream) {
           if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
             chunks.push(event.delta.text);
+          } else if (event.type === 'message_delta' && event.delta.stop_reason) {
+            stop = event.delta.stop_reason;
           }
         }
-        return unwrapModelOutput(chunks.join('').trim());
+        if (abortController.signal.aborted) throw new Error('AI request timed out');
+        if (stop === 'max_tokens') throw new Error('AI output was cut off by the token limit');
+        return { text: chunks.join('').trim(), stop };
       } finally {
         clearTimeout(timeout);
       }
@@ -268,10 +311,10 @@ ${basePrompt}${vocabSection}
     let result: string;
     switch (provider) {
       case 'openai':
-        result = await this.processOpenAI(wrappedText, metaPrompt);
+        result = (await this.processOpenAI(wrappedText, metaPrompt)).text;
         break;
       case 'anthropic':
-        result = await this.processAnthropic(wrappedText, metaPrompt);
+        result = (await this.processAnthropic(wrappedText, metaPrompt)).text;
         break;
       default:
         throw new Error(`Unknown provider: ${provider}`);

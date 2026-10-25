@@ -15,8 +15,13 @@ import { HotkeyService } from './services/hotkey.service';
 import { HistoryService } from './services/history.service';
 import { UpdateService } from './services/update.service';
 import { encryptSettingsKeys, decryptSettingsForRenderer, getApiKey } from './services/secure-storage';
+import {
+  measureSpeech, isNoiseTag, isCreditsOnly, stripTrailingCredits,
+  MIN_SPEECH_SECONDS, CREDITS_MAX_SPEECH_SECONDS,
+} from './services/transcript-filter';
+import { applyVocabularyReplacements, selectTriggeredEntries } from './services/vocabulary';
 import Store from 'electron-store';
-import { DEFAULT_SETTINGS } from '../shared/types';
+import { DEFAULT_SETTINGS, LEGACY_PROMPT_TAIL, PROMPT_PLAIN_TEXT_TAIL } from '../shared/types';
 
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 function sanitizeId(id: string): string {
@@ -45,132 +50,34 @@ function formatApiError(err: unknown): string {
   return String(err);
 }
 
-// CLI commands / paths shouldn't carry sentence punctuation that Whisper adds
-// from intonation (e.g. "claude --dangerously-skip-permissions." breaks the command).
-function looksLikeCliCommand(replacement: string): boolean {
-  return (
-    replacement.includes('--') ||
-    replacement.includes(' -') ||
-    replacement.includes('/') ||
-    replacement.includes('\\') ||
-    replacement.startsWith('$') ||
-    replacement.startsWith('>')
-  );
+const CLIPBOARD_WRITE_ATTEMPTS = 3;
+const CLIPBOARD_RETRY_DELAY_MS = 30;
+
+function normalizeNewlines(text: string): string {
+  return text.replace(/\r\n/g, '\n');
 }
 
-// Vocabulary input mini-syntax (documented on the Vocabulary page):
-//   "a | b | c"   any of the alternatives triggers the replacement
-//   "komit*"      trailing * matches any word ending; when the replacement also ends
-//                 with *, the spoken ending is kept ("komit*" → "commit*": komita → commita)
-//   spaces and hyphens between words match each other and repeated spaces
-//   ("cloud dsp" ↔ "cloud-dsp" ↔ "cloud  dsp")
-interface VocabularyPattern {
-  entry: VocabularyEntry;
-  source: string;
-  inputLength: number;
-  keepSuffix: boolean;
-}
-
-const VOCAB_WORD_CHAR = '[\\p{L}\\p{N}_]';
-
-function buildVocabularyPatterns(vocabulary: VocabularyEntry[]): VocabularyPattern[] {
-  const patterns: VocabularyPattern[] = [];
-  for (const entry of vocabulary) {
-    if (entry.replacement == null) continue;
-    const cli = looksLikeCliCommand(entry.replacement);
-    const replacementKeepsSuffix = entry.replacement.endsWith('*');
-
-    for (const rawAlt of entry.input.split('|')) {
-      const alt = rawAlt.trim();
-      if (!alt) continue;
-      const wildcard = alt.endsWith('*');
-      const base = wildcard ? alt.slice(0, -1).trim() : alt;
-      if (!base) continue;
-
-      // Split on whitespace or a hyphen joining two word characters, so "cloud-dsp" and
-      // "cloud dsp" build the same pattern; leading/trailing hyphens ("-v") stay literal.
-      const escapedWords = base
-        .split(/\s+|(?<=[\p{L}\p{N}])-(?=[\p{L}\p{N}])/u)
-        .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-        .join('[\\s-]+');
-      // Lookarounds instead of \b: \b ignores non-ASCII letters (Polish) and never
-      // matches next to inputs that start/end with symbols ("c++", "@claude").
-      const boundaryStart = `(?<!${VOCAB_WORD_CHAR})`;
-      const boundaryEnd = `(?!${VOCAB_WORD_CHAR})`;
-      const suffix = wildcard ? '(\\p{L}*)' : '';
-      // CLI commands shouldn't carry the sentence-final period Whisper adds from intonation,
-      // but punctuation inside a sentence ("cloud dsp, a potem…") must survive.
-      const trailing = cli ? '(?:[.!?](?=\\s*$))?' : '';
-
-      patterns.push({
-        entry,
-        source: `${boundaryStart}${escapedWords}${suffix}${boundaryEnd}${trailing}`,
-        inputLength: base.length,
-        keepSuffix: wildcard && replacementKeepsSuffix,
-      });
-    }
+async function writeClipboardVerified(text: string): Promise<boolean> {
+  for (let attempt = 1; attempt <= CLIPBOARD_WRITE_ATTEMPTS; attempt++) {
+    clipboard.writeText(text);
+    if (normalizeNewlines(clipboard.readText()) === normalizeNewlines(text)) return true;
+    log.warn('Clipboard read-back mismatch (attempt %d/%d)', attempt, CLIPBOARD_WRITE_ATTEMPTS);
+    await new Promise((resolve) => setTimeout(resolve, CLIPBOARD_RETRY_DELAY_MS));
   }
-  // Longest spoken input first, so "cloud dsp" wins over "cloud" regardless of list order.
-  // Sorting by the regex source would rank by escaping and CLI/wildcard decorations instead.
-  return patterns.sort((a, b) => b.inputLength - a.inputLength);
+  return false;
 }
 
-// Mirrors Whisper's sentence-initial capital on plain-word replacements ("Komity" → "Commity"),
-// never on identifiers that are deliberately lowercase (n8n, emails, CLI flags).
-function matchCapitalization(matched: string, replacement: string): string {
-  if (!/^\p{Lu}/u.test(matched)) return replacement;
-  if (!/^\p{Ll}[\p{L}\s-]*$/u.test(replacement)) return replacement;
-  return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+function replaceLegacyPromptTail(prompt: unknown): string | null {
+  if (typeof prompt !== 'string' || !prompt.trimEnd().endsWith(LEGACY_PROMPT_TAIL)) return null;
+  return prompt.replace(LEGACY_PROMPT_TAIL, PROMPT_PLAIN_TEXT_TAIL);
 }
 
-// Single pass over the text with one combined regex: each position is visited once,
-// so replacements never chain (A→B, B→C). Idempotent: text that already reads as the
-// replacement is left alone, so "claude → Claude Code" never produces "Claude Code Code",
-// whether Whisper wrote the full name or the AI pass already saw it replaced.
-function applyVocabularyReplacements(text: string, vocabulary: VocabularyEntry[]): string {
-  if (!vocabulary || vocabulary.length === 0) return text;
-  const patterns = buildVocabularyPatterns(vocabulary);
-  if (patterns.length === 0) return text;
-
-  // Each alternative gets its own named group (m<i>) and, for wildcards, a suffix group (s<i>)
-  // — the only way to learn which alternative fired inside a combined alternation.
-  const source = patterns
-    .map((p, i) => `(?<m${i}>${p.source.replace('(\\p{L}*)', `(?<s${i}>\\p{L}*)`)})`)
-    .join('|');
-  const combined = new RegExp(source, 'giu');
-
-  const applied = new Map<string, number>();
-  const result = text.replace(combined, (...args: unknown[]) => {
-    // String.replace callback: (match, ...captures, offset, input, groups)
-    const groups = args[args.length - 1] as Record<string, string | undefined>;
-    const input = args[args.length - 2] as string;
-    const offset = args[args.length - 3] as number;
-    const matched = args[0] as string;
-    const index = patterns.findIndex((_, i) => groups[`m${i}`] !== undefined);
-    if (index === -1) return matched;
-
-    const { entry, keepSuffix } = patterns[index];
-    let replacement = entry.replacement as string;
-    if (replacement.endsWith('*')) replacement = replacement.slice(0, -1);
-    if (keepSuffix) replacement += groups[`s${index}`] ?? '';
-
-    // Only a replacement longer than the match can already be present beyond it ("Claude" inside
-    // "Claude Code"); an equal-length one is a casing fix ("cloud dsp" → "Cloud DSP") and must run.
-    const alreadyReplaced =
-      replacement.length > matched.length &&
-      input.slice(offset, offset + replacement.length).toLowerCase() === replacement.toLowerCase();
-    if (alreadyReplaced) return matched;
-
-    const key = `"${entry.input}" → "${entry.replacement}"`;
-    applied.set(key, (applied.get(key) ?? 0) + 1);
-    return matchCapitalization(matched, replacement);
-  });
-
-  if (applied.size > 0) {
-    const summary = [...applied.entries()].map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(', ');
-    log.info('Vocabulary: %d replacement(s) applied: %s', [...applied.values()].reduce((a, b) => a + b, 0), summary);
+function runVocabulary(text: string, vocabulary: VocabularyEntry[], pass: number): string {
+  const result = applyVocabularyReplacements(text, vocabulary);
+  if (result.applied > 0) {
+    log.info('Vocabulary pass %d: %d replacement(s) applied: %s', pass, result.applied, result.summary);
   }
-  return result;
+  return result.text;
 }
 
 export function getOverlaySize(widget: WidgetType): [number, number] {
@@ -263,6 +170,26 @@ export function registerIpcHandlers(
     }, delay);
   }
 
+  const micLive = (): boolean => {
+    const state = getCurrentState();
+    return state === 'initializing' || state === 'recording';
+  };
+
+  function setTranscriptionState(state: RecordingState, idleAfterMs?: number): void {
+    if (micLive()) {
+      log.info('state %s skipped — a newer recording is live', state);
+      return;
+    }
+    broadcastState(state);
+    if (idleAfterMs !== undefined) scheduleIdle(idleAfterMs);
+  }
+
+  function notifyOverlayError(message: string): void {
+    if (micLive()) return;
+    const overlay = getOverlayWindow();
+    if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, message);
+  }
+
   ipcMain.handle(IPC.SETTINGS_GET, () => {
     const hotkey = store.get('hotkey') as Record<string, unknown>;
     if (hotkey && !hotkey.shortcuts && typeof hotkey.shortcut === 'string') {
@@ -298,6 +225,22 @@ export function registerIpcHandlers(
       store.set('dictation', migrated);
     }
 
+    const dictationNow = store.get('dictation') as Record<string, unknown> | undefined;
+    if (dictationNow) {
+      const migratedPrompt = replaceLegacyPromptTail(dictationNow.customPrompt);
+      if (migratedPrompt !== null) store.set('dictation.customPrompt', migratedPrompt);
+      if (Array.isArray(dictationNow.savedPrompts)) {
+        let changed = false;
+        const migratedPrompts = dictationNow.savedPrompts.map((prompt: unknown) => {
+          const content = replaceLegacyPromptTail((prompt as { content?: unknown } | null)?.content);
+          if (content === null) return prompt;
+          changed = true;
+          return { ...(prompt as object), content };
+        });
+        if (changed) store.set('dictation.savedPrompts', migratedPrompts);
+      }
+    }
+
     const vocab = store.get('vocabulary') as unknown[];
     if (Array.isArray(vocab) && vocab.length > 0 && typeof vocab[0] === 'string') {
       const migrated = (vocab as string[]).map((word, i) => ({
@@ -305,14 +248,6 @@ export function registerIpcHandlers(
         input: word,
       }));
       store.set('vocabulary', migrated);
-    }
-
-    const legacyDefaultPrompt = DEFAULT_SETTINGS.dictation.customPrompt.replace(
-      /Respond with ONLY the reformatted message\.$/,
-      'Respond with ONLY the reformatted message wrapped in the required tags.',
-    );
-    if (store.get('dictation.customPrompt') === legacyDefaultPrompt) {
-      store.set('dictation.customPrompt', DEFAULT_SETTINGS.dictation.customPrompt);
     }
 
     return decryptSettingsForRenderer(store.store);
@@ -523,8 +458,7 @@ export function registerIpcHandlers(
         throw new Error(`Invalid sampleRate: ${String(sampleRate)}`);
       }
     } catch (argErr) {
-      broadcastState('error');
-      scheduleIdle(1500);
+      setTranscriptionState('error', 1500);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, formatApiError(argErr));
       return;
     }
@@ -547,27 +481,26 @@ export function registerIpcHandlers(
       for (const win of BrowserWindow.getAllWindows()) {
         win.webContents.send(IPC.NOTIFICATION_ERROR, emptyMsg);
       }
-      broadcastState('error');
-      const overlay = getOverlayWindow();
-      if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, emptyMsg);
-      scheduleIdle(2500);
+      notifyOverlayError(emptyMsg);
+      setTranscriptionState('error', 2500);
       return;
     }
-    const rms = Math.sqrt(samples.reduce((sum, s) => sum + s * s, 0) / samples.length);
-    if (rms < 0.003) {
-      log.info('Audio below speech threshold (RMS=%.4f) — skipping transcription', rms);
-      const quietMsg = 'Audio too quiet, nothing to transcribe. Check your microphone.';
+    const metrics = measureSpeech(samples, sampleRate);
+    if (metrics.speechSeconds < MIN_SPEECH_SECONDS) {
+      log.info(
+        'Audio below speech threshold (id=%s rms=%s peak=%s speech=%ss of %ss) — skipping transcription',
+        entryId, metrics.rms.toFixed(4), metrics.peak.toFixed(3), metrics.speechSeconds.toFixed(2), metrics.durationSeconds.toFixed(1),
+      );
+      const quietMsg = 'Audio too quiet — nothing to transcribe. Check your microphone.';
       for (const win of BrowserWindow.getAllWindows()) {
         win.webContents.send(IPC.NOTIFICATION_ERROR, quietMsg);
       }
-      broadcastState('error');
-      const overlay = getOverlayWindow();
-      if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, quietMsg);
-      scheduleIdle(2500);
+      notifyOverlayError(quietMsg);
+      setTranscriptionState('error', 2500);
       return;
     }
 
-    broadcastState('transcribing');
+    setTranscriptionState('transcribing');
     aiService.warmup().catch((err) => { log.warn('AI warmup failed:', err); });
     try {
       // Adaptive timeout: max(30s, audioDuration * 3), capped at 120s
@@ -588,29 +521,33 @@ export function registerIpcHandlers(
         }),
       ]);
 
-      // Safety net: filter known Whisper hallucinations that appear on near-silence audio.
-      // Single-word tags and the subtitle-credit phrases Whisper emits on noise-only recordings
-      // (seen as the entire transcript in history, e.g. "Wszelkie prawa zastrzeżone.").
-      const HALLUCINATION_RE = /^\s*[[(]?(muzyka|music|cisza|silence|szum|noise|applause|oklaski|śmiech|laughter)[\])]?\s*$/i;
-      const CREDITS_RE = /^\s*(wsz(elkie|ystkie) prawa zastrzeżone|napisy stworzone przez społeczność amara\.org|dzięku(ję|jemy) za (oglądanie|uwagę)|zdjęcia i montaż|thanks? (you )?for watching|subtitles by the amara\.org community)[.!]?\s*$/i;
-      if (!rawText || HALLUCINATION_RE.test(rawText) || CREDITS_RE.test(rawText)) {
-        log.info('Whisper returned empty or hallucinated text: "%s" — skipping', rawText ?? '');
-        const noSpeechMsg = 'No speech detected. The recording contained only silence or background noise.';
+      const creditsLike = !!rawText && isCreditsOnly(rawText);
+      if (creditsLike && metrics.speechSeconds >= CREDITS_MAX_SPEECH_SECONDS) {
+        log.info('Credits-like transcript kept (id=%s speech=%ss): "%s"', entryId, metrics.speechSeconds.toFixed(2), rawText);
+      }
+      if (!rawText || isNoiseTag(rawText) || (creditsLike && metrics.speechSeconds < CREDITS_MAX_SPEECH_SECONDS)) {
+        log.info(
+          'Whisper returned empty or hallucinated text: "%s" (id=%s speech=%ss) — skipping',
+          rawText ?? '', entryId, metrics.speechSeconds.toFixed(2),
+        );
+        const noSpeechMsg = 'No speech detected — recording contained only silence or background noise.';
         for (const win of BrowserWindow.getAllWindows()) {
           win.webContents.send(IPC.NOTIFICATION_ERROR, noSpeechMsg);
         }
-        broadcastState('error');
-        const overlay = getOverlayWindow();
-        if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, noSpeechMsg);
-        scheduleIdle(2500);
+        notifyOverlayError(noSpeechMsg);
+        setTranscriptionState('error', 2500);
         return;
       }
 
-      broadcastState('processing');
+      setTranscriptionState('processing');
+      const { text: speechText, stripped } = stripTrailingCredits(rawText);
+      if (stripped) {
+        log.warn('Dropped trailing credits hallucination (id=%s): "%s"', entryId, stripped);
+      }
       // Vocabulary runs before AI so the model sees the intended spellings instead of
       // "correcting" the trigger phrase; a second pass only if the model rewrote the text.
       const vocabEntries = (store.get('vocabulary') as VocabularyEntry[]) ?? [];
-      const vocabText = applyVocabularyReplacements(rawText, vocabEntries);
+      const vocabText = runVocabulary(speechText, vocabEntries, 1);
       let text: string;
       try {
         let aiTimeoutId: ReturnType<typeof setTimeout>;
@@ -632,7 +569,7 @@ export function registerIpcHandlers(
         }
       }
       if (text !== vocabText) {
-        text = applyVocabularyReplacements(text, vocabEntries);
+        text = runVocabulary(text, selectTriggeredEntries(speechText, vocabEntries), 2);
       }
 
       // Capture the focused window FIRST — before any Electron UI operations
@@ -645,19 +582,24 @@ export function registerIpcHandlers(
 
       const overlay = getOverlayWindow();
       if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_RESULT, { text, appName });
-      broadcastState('done');
-      scheduleIdle(DONE_STATE_MS);
+      setTranscriptionState('done', DONE_STATE_MS);
       // words/s of the raw transcript vs audio length: normal dictation lands around 1.6–2.0,
       // a value well below ~1.3 on a long recording means Whisper dropped part of the speech.
       const rawWords = rawText.trim().split(/\s+/).filter(Boolean).length;
       log.info(
-        'Transcription done. autoPaste=%s, chars=%d, audio=%ss, rawWords=%d, wps=%s',
-        autoPaste, text.length, audioDurationSec.toFixed(1), rawWords, (rawWords / audioDurationSec).toFixed(2),
+        'Transcription done. id=%s autoPaste=%s, chars=%d, audio=%ss, speech=%ss, rawWords=%d, wps=%s',
+        entryId, autoPaste, text.length, audioDurationSec.toFixed(1), metrics.speechSeconds.toFixed(1),
+        rawWords, (rawWords / audioDurationSec).toFixed(2),
       );
 
-      clipboard.writeText(text);
+      const clipboardOk = await writeClipboardVerified(text);
 
-      if (autoPaste && pasteService.hasTarget()) {
+      if (!clipboardOk) {
+        log.warn('Clipboard write not confirmed after %d attempts — skipping auto-paste', CLIPBOARD_WRITE_ATTEMPTS);
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send(IPC.NOTIFICATION_ERROR, 'Could not place the text in the clipboard — copy it from History.');
+        }
+      } else if (autoPaste && pasteService.hasTarget()) {
         try {
           await pasteService.simulatePaste();
         } catch (pasteErr) {
@@ -677,6 +619,7 @@ export function registerIpcHandlers(
       const countWordsInline = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
       const wordCount = countWordsInline(text);
       const rawWordCount = countWordsInline(rawText);
+      const promptLabel = aiService.getPromptLabel();
       const entry: RecordingEntry = {
         id: entryId,
         date: new Date().toISOString(),
@@ -686,6 +629,7 @@ export function registerIpcHandlers(
         rawWordCount,
         durationSeconds,
         appName,
+        mode: aiEnabled && promptLabel !== 'default' ? promptLabel : undefined,
       };
       try {
         historyService.add(entry);
@@ -696,8 +640,7 @@ export function registerIpcHandlers(
       event.sender.send(IPC.TRANSCRIPTION_RESULT, { id: entryId, text, appName, durationSeconds });
     } catch (err) {
       const msg = formatApiError(err);
-      broadcastState('error');
-      scheduleIdle(1500);
+      setTranscriptionState('error', 1500);
       event.sender.send(IPC.TRANSCRIPTION_ERROR, msg);
       const overlay = getOverlayWindow();
       if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, msg);

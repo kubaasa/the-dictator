@@ -125,6 +125,9 @@ export interface AppSettings {
   };
 }
 
+export const LEGACY_PROMPT_TAIL = 'Respond with ONLY the reformatted message wrapped in the required tags.';
+export const PROMPT_PLAIN_TEXT_TAIL = 'Respond with ONLY the reformatted message, as plain text without any tags.';
+
 export const DEFAULT_SETTINGS: AppSettings = {
   transcription: {
     engine: 'cloud',
@@ -193,7 +196,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 - Only make changes when confident about corrections
 - Don't include placeholders in output
 
-Respond with ONLY the reformatted message.`,
+${PROMPT_PLAIN_TEXT_TAIL}`,
     savedPrompts: [],
     selectedPromptId: 'default',
     autoPaste: true,
