@@ -4,6 +4,16 @@ Release notes are kept in plain text so they render correctly in the in-app
 update window (electron-updater shows the GitHub release body verbatim — no
 Markdown or HTML formatting).
 
+## 2.0.1
+
+- Fixed: the widget jumped up or to the side when you dropped it after
+  dragging on displays with scaling above 100% (for example 125% or 150%
+  on laptops). The widget window also no longer grows a little with every
+  move, which made the clickable area drift away from the visible widget.
+- Fixed: garbled Groq transcriptions of distorted audio, such as a date and
+  a place name that were never said, are rejected with a notification
+  instead of being pasted.
+
 ## 2.0.0
 
 A new look for the whole app and a more reliable dictation pipeline.

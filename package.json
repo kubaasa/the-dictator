@@ -1,7 +1,7 @@
 {
   "name": "the-dictator",
   "productName": "The Dictator",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Voice dictation app with AI-powered transcription for Windows",
   "main": "dist/main/main.js",
   "private": true,
