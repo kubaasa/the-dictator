@@ -142,6 +142,10 @@ app.on('second-instance', () => {
   }
 });
 
+const RENDERER_RELAUNCH_FLAG = '--renderer-relaunch';
+const POST_INSTALL_FLAG = '--post-install';
+const MAIN_RENDERER_LOAD_TIMEOUT_MS = 30_000;
+
 let isQuitting = false;
 let isPostInstallLaunch = false;
 let mainWindow: BrowserWindow | null = null;
@@ -253,6 +257,33 @@ function createMainWindow(): BrowserWindow {
   }
 
   win.webContents.setBackgroundThrottling(false);
+
+  const loadStartedAt = Date.now();
+  let mainFrameFailed = false;
+  const loadWatchdog = app.isPackaged ? setTimeout(() => {
+    if (isQuitting || win.isDestroyed()) return;
+    if (process.argv.includes(RENDERER_RELAUNCH_FLAG)) {
+      log.error('main renderer still not loaded %d s after relaunch — giving up', MAIN_RENDERER_LOAD_TIMEOUT_MS / 1000);
+      return;
+    }
+    log.error('main renderer did not load within %d s — relaunching the app', MAIN_RENDERER_LOAD_TIMEOUT_MS / 1000);
+    const args = process.argv.slice(1).filter((arg) => arg !== POST_INSTALL_FLAG);
+    args.push(RENDERER_RELAUNCH_FLAG);
+    if (isPostInstallLaunch) args.push(POST_INSTALL_FLAG);
+    app.relaunch({ args });
+    app.quit();
+  }, MAIN_RENDERER_LOAD_TIMEOUT_MS) : null;
+
+  win.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
+    if (!isMainFrame) return;
+    mainFrameFailed = true;
+    log.error('main renderer failed to load: %s (%d) %s', description, code, url);
+  });
+  win.webContents.once('did-finish-load', () => {
+    if (mainFrameFailed) return;
+    if (loadWatchdog) clearTimeout(loadWatchdog);
+    log.info('main renderer loaded in %d ms', Date.now() - loadStartedAt);
+  });
 
   // Covers reloads and crash-recovery reloads — the hotkey listener is gone until
   // the renderer signals RENDERER_READY again.
@@ -640,6 +671,10 @@ app.on('ready', () => {
   } catch (err) {
     log.warn('Failed to check/remove install marker:', err);
   }
+  if (process.argv.includes(POST_INSTALL_FLAG)) {
+    isPostInstallLaunch = true;
+    log.info('Post-install relaunch — will show main window');
+  }
 
   mainWindow = createMainWindow();
   overlayWindow = createOverlayWindow();
@@ -716,7 +751,7 @@ app.on('ready', () => {
 
   updateService.onStatusChange((state) => {
     trayManager.setUpdateState(state);
-    if (mainWindow && !mainWindow.isVisible()) {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       // Force-show the window so the ForceUpdateModal is visible
       if (state.status === 'downloaded') {
         mainWindow.show();
