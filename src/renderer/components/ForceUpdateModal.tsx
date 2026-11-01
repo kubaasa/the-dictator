@@ -5,6 +5,15 @@ interface ForceUpdateModalProps {
   updateState: UpdateState;
 }
 
+const NOTE_LABEL_RE = /^(New|Fixed|Changed|Improved|Removed)\s*:\s*/i;
+
+function splitReleaseNotes(notes: string): string[] {
+  return notes
+    .split('\n')
+    .map((line) => line.replace(/^[-*•]\s+/, '').trim())
+    .filter(Boolean);
+}
+
 export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
   const [installing, setInstalling] = useState(false);
 
@@ -69,9 +78,21 @@ export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
             <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
               What&apos;s new
             </p>
-            <p className="max-h-48 overflow-y-auto whitespace-pre-line text-[13px] leading-relaxed text-text">
-              {updateState.releaseNotes}
-            </p>
+            <ul className="max-h-48 space-y-2 overflow-y-auto pr-1">
+              {splitReleaseNotes(updateState.releaseNotes).map((line, i) => {
+                const match = line.match(NOTE_LABEL_RE);
+                const text = match ? line.slice(match[0].length) : line;
+                return (
+                  <li key={i} className="flex gap-3 text-[13px] leading-relaxed text-text">
+                    <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-text-muted" />
+                    <span>
+                      {match && <span className="font-medium text-text-muted">{match[1]}: </span>}
+                      {text}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
 

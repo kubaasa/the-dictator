@@ -7,6 +7,28 @@ const log = logger.scope('Update');
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
+const HTML_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+export function releaseNotesToText(html: string): string {
+  const isHtml = /<(ul|ol|li|p|br|div|h[1-6])[\s>/]/i.test(html);
+  const text = (isHtml ? html.replace(/\s*\n\s*/g, ' ') : html)
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(li|p|h[1-6]|div|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, body: string) => {
+      if (body[0] === '#') {
+        const code = body[1].toLowerCase() === 'x' ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+        return Number.isFinite(code) && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
+      }
+      return HTML_ENTITIES[body.toLowerCase()] ?? entity;
+    });
+  return text
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
 export class UpdateService {
   private state: UpdateState;
   private checkTimer: ReturnType<typeof setInterval> | null = null;
@@ -83,7 +105,7 @@ export class UpdateService {
         ...this.state,
         status: 'downloading',
         latestVersion: info.version,
-        releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+        releaseNotes: typeof info.releaseNotes === 'string' ? releaseNotesToText(info.releaseNotes) : undefined,
         progress: 0,
         error: undefined,
         manual: this.manualCheck,
@@ -107,7 +129,7 @@ export class UpdateService {
         ...this.state,
         status: 'downloaded',
         latestVersion: info.version,
-        releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+        releaseNotes: typeof info.releaseNotes === 'string' ? releaseNotesToText(info.releaseNotes) : undefined,
         progress: 100,
       };
       this.notify();

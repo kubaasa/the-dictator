@@ -141,7 +141,7 @@ Work happens on `develop`; `main` is fast-forwarded from `develop` on release. T
 3. Commit: `release: vX.Y.Z - <short summary>`
 4. Fast-forward `main` to `develop` and push both
 5. `npm run publish` (electron-builder creates the GitHub release; needs `GH_TOKEN`)
-6. Set release notes as plain text or simple Markdown (`gh release edit vX.Y.Z --notes "..."`). electron-updater shows the release body verbatim in the update window, so any HTML tags leak into the UI.
+6. Set release notes as plain text or simple Markdown (`gh release edit vX.Y.Z --notes "..."`), one bullet per line. electron-updater reads the notes from GitHub's Atom feed, where the body is already rendered to HTML; `UpdateService.releaseNotesToText` strips that HTML to plain lines, so the update window shows one list item per bullet and nothing else (no headings, links or nested lists).
 
 ## Conventions
 
