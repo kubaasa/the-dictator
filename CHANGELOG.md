@@ -4,6 +4,18 @@ Release notes are kept in plain text so they render correctly in the in-app
 update window (electron-updater shows the GitHub release body verbatim — no
 Markdown or HTML formatting).
 
+## 2.0.2
+
+- Fixed: a Bluetooth headset microphone that delivered only silence after
+  the recording started (the widget showed no signal even though you were
+  speaking) is now reopened automatically within a few seconds, up to two
+  times, without interrupting the recording. Previously you had to cancel
+  with Escape and start again.
+- Fixed: the first launch right after installing an update could stay a
+  blank window. The app now restarts itself once when that happens.
+- Fixed: the update window showed raw HTML tags in the release notes. Notes
+  are now shown as a plain list.
+
 ## 2.0.1
 
 - Fixed: the widget jumped up or to the side when you dropped it after
