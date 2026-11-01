@@ -136,6 +136,28 @@ function describeCtx(ctx: AudioContext | null): string {
 const WHISPER_SAMPLE_RATE = 16000;
 const STOP_TAIL_MS = 300;
 const PCM_COVERAGE_FLOOR = 0.8;
+const SPEECH_ONSET_LEVEL = 0.02 / 0.15;
+const SPEECH_ONSET_TIMEOUT_MS = 2500;
+const MAX_MIC_REACQUIRES = 2;
+
+function micConstraints(deviceId: string | null, callMode: boolean | undefined): MediaStreamConstraints {
+  return {
+    audio: {
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+      channelCount: 1,
+      echoCancellation: !!callMode,
+      noiseSuppression: !!callMode,
+      autoGainControl: !!callMode,
+    },
+  };
+}
+
+function watchTrack(track: MediaStreamTrack | undefined): void {
+  if (!track) return;
+  track.addEventListener('mute', () => recLog.warn('mic track muted:', describeTrack(track)));
+  track.addEventListener('unmute', () => recLog.info('mic track unmuted:', describeTrack(track)));
+  track.addEventListener('ended', () => recLog.warn('mic track ended:', describeTrack(track)));
+}
 
 // The MediaRecorder capture runs on the mic track directly, independent of the AudioContext
 // that feeds the worklet, so it survives a stalled context. Decoding it through an offline
@@ -204,12 +226,116 @@ export function useAudioRecorder(
 
   const levelCountRef = useRef(0);
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speechSeenRef = useRef(false);
+  const speechWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reacquireCountRef = useRef(0);
+  const reacquiredAtRef = useRef(0);
+
+  function clearSpeechWatchdog() {
+    if (speechWatchdogRef.current) {
+      clearTimeout(speechWatchdogRef.current);
+      speechWatchdogRef.current = null;
+    }
+  }
 
   function clearWatchdog() {
+    clearSpeechWatchdog();
     if (watchdogRef.current) {
       clearTimeout(watchdogRef.current);
       watchdogRef.current = null;
     }
+  }
+
+  function startMediaRecorder(stream: MediaStream) {
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm')
+      ? 'audio/webm'
+      : '';
+    if (!mimeType) {
+      log.warn('No WebM mimeType supported by MediaRecorder — compressed audio unavailable, API uploads will use WAV fallback');
+      return;
+    }
+    mediaChunksRef.current = [];
+    const mr = new MediaRecorder(stream, { mimeType });
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) mediaChunksRef.current.push(e.data);
+    };
+    mr.start();
+    mediaRecorderRef.current = mr;
+  }
+
+  function armSpeechWatchdog(thisSession: number, deviceId: string | null, startTime: number) {
+    clearSpeechWatchdog();
+    speechWatchdogRef.current = setTimeout(() => {
+      speechWatchdogRef.current = null;
+      if (sessionIdRef.current !== thisSession || !isRecordingRef.current || speechSeenRef.current) return;
+      if (reacquireCountRef.current >= MAX_MIC_REACQUIRES) {
+        recLog.warn(`still no speech ${Date.now() - startTime} ms after start and ${MAX_MIC_REACQUIRES} mic reacquires, giving up`);
+        return;
+      }
+      void reacquireMicStream(thisSession, deviceId, startTime);
+    }, SPEECH_ONSET_TIMEOUT_MS);
+  }
+
+  async function reacquireMicStream(thisSession: number, deviceId: string | null, startTime: number) {
+    const ctx = audioContextRef.current;
+    const worklet = workletNodeRef.current;
+    const oldStream = mediaStreamRef.current;
+    if (!ctx || !worklet || !oldStream) return;
+    const attempt = ++reacquireCountRef.current;
+    recLog.warn(`no speech ${Date.now() - startTime} ms after start, reacquiring mic (attempt ${attempt}/${MAX_MIC_REACQUIRES})`,
+      describeTrack(oldStream.getAudioTracks()[0]));
+
+    const idleSource = ctx.createConstantSource();
+    idleSource.offset.value = 0;
+    idleSource.connect(worklet);
+    idleSource.start();
+    const dropIdleSource = () => {
+      try { idleSource.stop(); } catch { /* ignore */ }
+      idleSource.disconnect();
+    };
+
+    sourceRef.current?.disconnect();
+    sourceRef.current = null;
+    const oldRecorder = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    if (oldRecorder) {
+      oldRecorder.ondataavailable = null;
+      if (oldRecorder.state !== 'inactive') {
+        try { oldRecorder.stop(); } catch { /* ignore */ }
+      }
+    }
+    mediaChunksRef.current = [];
+    oldStream.getTracks().forEach((t) => t.stop());
+    mediaStreamRef.current = null;
+
+    const reacquireStartedAt = Date.now();
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(micConstraints(deviceId, callMode));
+    } catch (err) {
+      dropIdleSource();
+      log.warn('mic reacquire failed:', err);
+      return;
+    }
+    if (sessionIdRef.current !== thisSession || !isRecordingRef.current) {
+      stream.getTracks().forEach((t) => t.stop());
+      dropIdleSource();
+      return;
+    }
+
+    mediaStreamRef.current = stream;
+    const track = stream.getAudioTracks()[0];
+    watchTrack(track);
+    const source = ctx.createMediaStreamSource(stream);
+    source.connect(worklet);
+    sourceRef.current = source;
+    dropIdleSource();
+    startMediaRecorder(stream);
+    reacquiredAtRef.current = Date.now();
+    recLog.info(`mic reacquired in ${Date.now() - reacquireStartedAt} ms (attempt ${attempt})`, describeTrack(track));
+    armSpeechWatchdog(thisSession, deviceId, startTime);
   }
 
   // Race condition guards for push-to-talk — sessionIdRef is a monotonic counter.
@@ -480,33 +606,13 @@ export function useAudioRecorder(
 
       const micTrack = stream.getAudioTracks()[0];
       recLog.info('mic stream acquired:', describeTrack(micTrack));
-      if (micTrack) {
-        micTrack.addEventListener('mute', () => recLog.warn('mic track muted:', describeTrack(micTrack)));
-        micTrack.addEventListener('unmute', () => recLog.info('mic track unmuted:', describeTrack(micTrack)));
-        micTrack.addEventListener('ended', () => recLog.warn('mic track ended:', describeTrack(micTrack)));
-      }
+      watchTrack(micTrack);
 
       recordingIdRef.current = Date.now().toString();
       pendingAudioRef.current = null;
       pendingResultIdRef.current = null;
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : '';
-      if (!mimeType) {
-        log.warn('No WebM mimeType supported by MediaRecorder — compressed audio unavailable, API uploads will use WAV fallback');
-      }
-      if (mimeType) {
-        mediaChunksRef.current = [];
-        const mr = new MediaRecorder(stream, { mimeType });
-        mr.ondataavailable = (e) => {
-          if (e.data.size > 0) mediaChunksRef.current.push(e.data);
-        };
-        mr.start();
-        mediaRecorderRef.current = mr;
-      }
+      startMediaRecorder(stream);
 
       isRecordingRef.current = true;
       const startTime = Date.now();
@@ -556,6 +662,14 @@ export function useAudioRecorder(
           chunksRef.current.push(e.data.samples);
         } else if (e.data.type === 'level') {
           levelCountRef.current++;
+          if (!speechSeenRef.current && e.data.level >= SPEECH_ONSET_LEVEL) {
+            speechSeenRef.current = true;
+            clearSpeechWatchdog();
+            if (reacquireCountRef.current > 0) {
+              recLog.info(`speech onset ${Date.now() - startTime} ms after start,`
+                + ` ${Date.now() - reacquiredAtRef.current} ms after mic reacquire #${reacquireCountRef.current}`);
+            }
+          }
           window.dictator.sendVoiceActivity(e.data.level, e.data.bands ? Array.from(e.data.bands) : undefined);
         } else if (e.data.type === 'no-input') {
           log.warn('AudioWorklet: no audio input detected — mic may have been taken by another app');
@@ -577,6 +691,8 @@ export function useAudioRecorder(
       silentGain.connect(audioContext.destination);
 
       levelCountRef.current = 0;
+      speechSeenRef.current = false;
+      reacquireCountRef.current = 0;
       const wiredCtx = audioContext;
       const wiredTime = wiredCtx.currentTime;
       recLog.info('pipeline wired:', describeCtx(wiredCtx));
@@ -593,6 +709,7 @@ export function useAudioRecorder(
             describeCtx(wiredCtx), describeTrack(mediaStreamRef.current?.getAudioTracks()[0]));
         }
       }, PIPELINE_WATCHDOG_MS);
+      armSpeechWatchdog(thisSession, deviceId, startTime);
 
       isSettingUpRef.current = false;
 
