@@ -16,8 +16,8 @@ import { HistoryService } from './services/history.service';
 import { UpdateService } from './services/update.service';
 import { encryptSettingsKeys, decryptSettingsForRenderer, getApiKey } from './services/secure-storage';
 import {
-  measureSpeech, isNoiseTag, isCreditsOnly, isLowConfidence, stripTrailingCredits,
-  MIN_SPEECH_SECONDS, CREDITS_MAX_SPEECH_SECONDS,
+  measureSpeech, isNoiseTag, isCreditsOnly, isLowConfidence, isShortLowConfidence, stripTrailingCredits,
+  MIN_SPEECH_SECONDS, CREDITS_MAX_SPEECH_SECONDS, type NoSpeechStats,
 } from './services/transcript-filter';
 import { applyVocabularyReplacements, selectTriggeredEntries } from './services/vocabulary';
 import Store from 'electron-store';
@@ -70,6 +70,10 @@ async function writeClipboardVerified(text: string): Promise<boolean> {
 function replaceLegacyPromptTail(prompt: unknown): string | null {
   if (typeof prompt !== 'string' || !prompt.trimEnd().endsWith(LEGACY_PROMPT_TAIL)) return null;
   return prompt.replace(LEGACY_PROMPT_TAIL, PROMPT_PLAIN_TEXT_TAIL);
+}
+
+function formatNoSpeech(stats: NoSpeechStats | null): string {
+  return stats ? `${stats.max.toFixed(2)}/${stats.mean.toFixed(2)}` : 'n/a';
 }
 
 function runVocabulary(text: string, vocabulary: VocabularyEntry[], pass: number): string {
@@ -520,7 +524,7 @@ export function registerIpcHandlers(
       );
 
       let timeoutId: ReturnType<typeof setTimeout>;
-      const { text: rawText, avgLogprob } = await Promise.race([
+      const { text: rawText, avgLogprob, noSpeech } = await Promise.race([
         transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate, compressedAudio).then((result) => {
           clearTimeout(timeoutId);
           return result;
@@ -530,10 +534,18 @@ export function registerIpcHandlers(
         }),
       ]);
 
-      if (rawText && isLowConfidence(avgLogprob)) {
+      const lowConfidenceReason = !rawText
+        ? null
+        : isLowConfidence(avgLogprob)
+          ? 'Low-confidence'
+          : isShortLowConfidence(rawText, metrics, avgLogprob)
+            ? 'Short low-confidence'
+            : null;
+      if (rawText && lowConfidenceReason) {
         log.warn(
-          'Low-confidence transcript rejected (id=%s avgLogprob=%s speech=%ss): "%s"',
-          entryId, avgLogprob.toFixed(3), metrics.speechSeconds.toFixed(2), rawText,
+          '%s transcript rejected (id=%s avgLogprob=%s speech=%ss longestRun=%ss noSpeech=%s): "%s"',
+          lowConfidenceReason, entryId, avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3),
+          metrics.speechSeconds.toFixed(2), metrics.longestSpeechRunSeconds.toFixed(2), formatNoSpeech(noSpeech), rawText,
         );
         const unclearMsg = `Speech was too unclear to transcribe reliably. Rejected: "${rawText}"`;
         for (const win of BrowserWindow.getAllWindows()) {
@@ -550,10 +562,12 @@ export function registerIpcHandlers(
       }
       if (!rawText || isNoiseTag(rawText) || (creditsLike && metrics.speechSeconds < CREDITS_MAX_SPEECH_SECONDS)) {
         log.info(
-          'Whisper returned empty or hallucinated text: "%s" (id=%s speech=%ss) — skipping',
-          rawText ?? '', entryId, metrics.speechSeconds.toFixed(2),
+          'Whisper returned empty or hallucinated text: "%s" (id=%s speech=%ss longestRun=%ss noSpeech=%s) — skipping',
+          rawText ?? '', entryId, metrics.speechSeconds.toFixed(2), metrics.longestSpeechRunSeconds.toFixed(2), formatNoSpeech(noSpeech),
         );
-        const noSpeechMsg = 'No speech detected — recording contained only silence or background noise.';
+        const noSpeechMsg = creditsLike
+          ? `No speech detected — rejected hallucinated text: "${rawText}"`
+          : 'No speech detected — recording contained only silence or background noise.';
         for (const win of BrowserWindow.getAllWindows()) {
           win.webContents.send(IPC.NOTIFICATION_ERROR, noSpeechMsg);
         }
@@ -610,9 +624,9 @@ export function registerIpcHandlers(
       // a value well below ~1.3 on a long recording means Whisper dropped part of the speech.
       const rawWords = rawText.trim().split(/\s+/).filter(Boolean).length;
       log.info(
-        'Transcription done. id=%s autoPaste=%s, chars=%d, audio=%ss, speech=%ss, rawWords=%d, wps=%s, avgLogprob=%s',
-        entryId, autoPaste, text.length, audioDurationSec.toFixed(1), metrics.speechSeconds.toFixed(1),
-        rawWords, (rawWords / audioDurationSec).toFixed(2), avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3),
+        'Transcription done. id=%s autoPaste=%s, chars=%d, audio=%ss, speech=%ss, longestRun=%ss, rawWords=%d, wps=%s, avgLogprob=%s, noSpeech=%s',
+        entryId, autoPaste, text.length, audioDurationSec.toFixed(1), metrics.speechSeconds.toFixed(1), metrics.longestSpeechRunSeconds.toFixed(2),
+        rawWords, (rawWords / audioDurationSec).toFixed(2), avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3), formatNoSpeech(noSpeech),
       );
 
       const clipboardOk = await writeClipboardVerified(text);

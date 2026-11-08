@@ -1,6 +1,7 @@
 export interface SpeechMetrics {
   durationSeconds: number;
   speechSeconds: number;
+  longestSpeechRunSeconds: number;
   rms: number;
   peak: number;
 }
@@ -9,14 +10,32 @@ export interface TranscriptSegment {
   start: number;
   end: number;
   avg_logprob: number;
+  no_speech_prob?: number;
+}
+
+export interface NoSpeechStats {
+  max: number;
+  mean: number;
 }
 
 export const SPEECH_FRAME_RMS = 0.02;
 export const MIN_SPEECH_SECONDS = 0.1;
 export const CREDITS_MAX_SPEECH_SECONDS = 1.0;
 export const LOW_CONFIDENCE_LOGPROB = -0.7;
+export const SHORT_TRANSCRIPT_MAX_WORDS = 3;
+export const SHORT_TRANSCRIPT_MIN_SPEECH_RUN_SECONDS = 0.5;
+export const SHORT_TRANSCRIPT_LOGPROB = -0.6;
 
 const FRAME_SECONDS = 0.05;
+
+export function noSpeechStats(segments: TranscriptSegment[] | undefined): NoSpeechStats | null {
+  const probs = (segments ?? []).map((s) => s.no_speech_prob).filter((p): p is number => typeof p === 'number');
+  if (probs.length === 0) return null;
+  return {
+    max: Math.max(...probs),
+    mean: probs.reduce((a, b) => a + b, 0) / probs.length,
+  };
+}
 
 export function meanSegmentLogprob(segments: TranscriptSegment[] | undefined): number | null {
   if (!segments || segments.length === 0) return null;
@@ -34,11 +53,19 @@ export function isLowConfidence(avgLogprob: number | null): avgLogprob is number
   return avgLogprob !== null && avgLogprob < LOW_CONFIDENCE_LOGPROB;
 }
 
+export function isShortLowConfidence(text: string, metrics: SpeechMetrics, avgLogprob: number | null): boolean {
+  if (avgLogprob === null || avgLogprob >= SHORT_TRANSCRIPT_LOGPROB) return false;
+  if (metrics.longestSpeechRunSeconds >= SHORT_TRANSCRIPT_MIN_SPEECH_RUN_SECONDS) return false;
+  return text.trim().split(/\s+/).filter(Boolean).length <= SHORT_TRANSCRIPT_MAX_WORDS;
+}
+
 export function measureSpeech(samples: Float32Array, sampleRate: number): SpeechMetrics {
   const frame = Math.max(1, Math.round(sampleRate * FRAME_SECONDS));
   let sumSquares = 0;
   let peak = 0;
   let speechFrames = 0;
+  let run = 0;
+  let longestRun = 0;
   for (let start = 0; start < samples.length; start += frame) {
     const end = Math.min(start + frame, samples.length);
     let frameSum = 0;
@@ -49,11 +76,18 @@ export function measureSpeech(samples: Float32Array, sampleRate: number): Speech
       if (abs > peak) peak = abs;
     }
     sumSquares += frameSum;
-    if (end - start === frame && Math.sqrt(frameSum / frame) > SPEECH_FRAME_RMS) speechFrames++;
+    if (end - start === frame && Math.sqrt(frameSum / frame) > SPEECH_FRAME_RMS) {
+      speechFrames++;
+      run++;
+      if (run > longestRun) longestRun = run;
+    } else {
+      run = 0;
+    }
   }
   return {
     durationSeconds: samples.length / sampleRate,
     speechSeconds: speechFrames * FRAME_SECONDS,
+    longestSpeechRunSeconds: longestRun * FRAME_SECONDS,
     rms: samples.length > 0 ? Math.sqrt(sumSquares / samples.length) : 0,
     peak,
   };
@@ -61,7 +95,22 @@ export function measureSpeech(samples: Float32Array, sampleRate: number): Speech
 
 const NOISE_TAG_RE = /^\s*[[(]?(muzyka|music|cisza|silence|szum|noise|applause|oklaski|śmiech|laughter)[\])]?\s*$/iu;
 
+const GREETING_HEADS = [
+  'dzień dobry',
+  'dobry wieczór',
+  'do widzenia',
+  'do zobaczenia',
+  'miłego dnia',
+  'z poważaniem',
+  'pozdrawiam serdecznie',
+];
+
+const GREETING_TAILS = [...GREETING_HEADS, 'witam', 'witajcie', 'cześć', 'dziękuję', 'dzięki', 'pozdrawiam'];
+
+const GREETINGS_ONLY = `(?:${GREETING_HEADS.join('|')})(?:[,.!…]?\\s+(?:${GREETING_TAILS.join('|')}))*`;
+
 const CREDIT_PHRASES = [
+  GREETINGS_ONLY,
   'wsz(?:elkie|ystkie) prawa zastrzeżone',
   'napisy stworzone przez społeczność amara\\.org',
   'dzięku(?:ję|jemy) za (?:oglądanie|uwagę)',

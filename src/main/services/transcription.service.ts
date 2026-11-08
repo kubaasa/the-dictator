@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { getApiKey } from './secure-storage';
 import { mapValidationError } from './api-errors';
-import { meanSegmentLogprob } from './transcript-filter';
+import { meanSegmentLogprob, noSpeechStats, type NoSpeechStats } from './transcript-filter';
 import logger from './logger';
 
 const log = logger.scope('Transcription');
@@ -14,6 +14,7 @@ const log = logger.scope('Transcription');
 export interface TranscriptionResult {
   text: string;
   avgLogprob: number | null;
+  noSpeech: NoSpeechStats | null;
 }
 
 // Lazy-loaded @huggingface/transformers — the library eagerly loads onnxruntime-node
@@ -343,7 +344,7 @@ export class TranscriptionService {
         ...(language !== 'auto' && { language }),
       });
 
-      return { text: response.text.trim(), avgLogprob: meanSegmentLogprob(response.segments) };
+      return { text: response.text.trim(), avgLogprob: meanSegmentLogprob(response.segments), noSpeech: noSpeechStats(response.segments) };
     });
   }
 
@@ -362,7 +363,7 @@ export class TranscriptionService {
         ...(language !== 'auto' && { language }),
       });
 
-      return { text: response.text.trim(), avgLogprob: meanSegmentLogprob(response.segments) };
+      return { text: response.text.trim(), avgLogprob: meanSegmentLogprob(response.segments), noSpeech: noSpeechStats(response.segments) };
     });
   }
 
@@ -415,7 +416,7 @@ export class TranscriptionService {
       this.loadFromCache(modelId).catch((e) => log.warn('Background model reload failed:', e));
     }
 
-    return { text, avgLogprob: null };
+    return { text, avgLogprob: null, noSpeech: null };
   }
 
   private async loadFromCache(overrideModelId?: string): Promise<void> {
