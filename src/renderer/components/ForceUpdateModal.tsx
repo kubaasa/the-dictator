@@ -6,12 +6,22 @@ interface ForceUpdateModalProps {
 }
 
 const NOTE_LABEL_RE = /^(New|Fixed|Changed|Improved|Removed)\s*:\s*/i;
+const PROGRESS_SEGMENTS = 24;
 
-function splitReleaseNotes(notes: string): string[] {
+interface ReleaseNote {
+  label: string | null;
+  text: string;
+}
+
+function parseReleaseNotes(notes: string): ReleaseNote[] {
   return notes
     .split('\n')
     .map((line) => line.replace(/^[-*•]\s+/, '').trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(NOTE_LABEL_RE);
+      return match ? { label: match[1], text: line.slice(match[0].length) } : { label: null, text: line };
+    });
 }
 
 export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
@@ -25,86 +35,82 @@ export function ForceUpdateModal({ updateState }: ForceUpdateModalProps) {
   const version = updateState.latestVersion ?? 'new';
   const isDownloading = updateState.status === 'downloading';
   const percent = Math.max(0, Math.min(100, Math.round(updateState.progress ?? 0)));
+  const filledSegments = isDownloading ? Math.round((percent / 100) * PROGRESS_SEGMENTS) : 0;
+  const notes = updateState.releaseNotes ? parseReleaseNotes(updateState.releaseNotes) : [];
+
+  const statusLabel = installing
+    ? 'restarting'
+    : isDownloading
+      ? `downloading ${percent}%`
+      : notes.length > 0
+        ? `${notes.length} ${notes.length === 1 ? 'change' : 'changes'}`
+        : 'ready';
 
   const buttonLabel = installing
-    ? 'Restarting...'
+    ? '[ restarting ]'
     : isDownloading
-      ? 'Preparing...'
-      : 'Install & Restart';
+      ? '[ preparing ]'
+      : '[ install and restart ]';
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg/90">
-      <div className="flex w-full max-w-md flex-col items-center gap-6 rounded-2xl border border-border bg-surface p-10 text-center shadow-widget">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-hover">
-          <svg className="h-7 w-7 text-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2v10" />
-            <path d="m4.93 10.93 1.41 1.41" />
-            <path d="M2 18h2" />
-            <path d="M20 18h2" />
-            <path d="m19.07 10.93-1.41 1.41" />
-            <path d="M22 22H2" />
-            <path d="m16 6-4 4-4-4" />
-            <path d="M16 18a4 4 0 0 0-8 0" />
-          </svg>
+      <div className="relative flex w-full max-w-md flex-col gap-6 overflow-hidden rounded-xl border border-border bg-surface px-8 pb-8 pt-7 shadow-widget">
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-accent/35" />
+
+        <div className="flex items-center justify-between font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
+          <span className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent-strong" />
+            Update
+          </span>
+          <span>{statusLabel}</span>
         </div>
 
-        {/* Title */}
-        <div>
-          <h2 className="text-xl font-semibold text-text">
-            {isDownloading ? 'Downloading Update' : 'Update Required'}
-          </h2>
-          <p className="mt-1 text-sm text-text-muted">
-            {isDownloading
-              ? `Version ${version}, ${percent}%`
-              : `Version ${version} is ready to install`}
-          </p>
+        <div className="flex items-baseline gap-3">
+          <span className="font-mono text-[32px] font-bold leading-none text-text">{version}</span>
+          <span className="font-mono text-xs font-medium text-text-dim">from {updateState.currentVersion}</span>
         </div>
 
-        {/* Progress bar (during download) */}
-        {isDownloading && (
-          <div className="w-full">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
-              <div
-                className="h-full rounded-full bg-text transition-[width] duration-300 ease-out"
-                style={{ width: `${percent}%` }}
-              />
-            </div>
-          </div>
-        )}
+        <div
+          className="grid h-1.5 grid-cols-24 gap-[3px]"
+          role="progressbar"
+          aria-label="Download progress"
+          aria-valuenow={isDownloading ? percent : undefined}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          {Array.from({ length: PROGRESS_SEGMENTS }, (_, i) => (
+            <span
+              key={i}
+              className={`rounded-[1px] transition-colors duration-300 ${i < filledSegments ? 'bg-text' : 'bg-border'}`}
+            />
+          ))}
+        </div>
 
-        {/* Release notes */}
-        {updateState.releaseNotes && (
-          <div className="w-full rounded-[10px] border border-border bg-surface-sunken p-4 text-left">
-            <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
-              What&apos;s new
-            </p>
-            <ul className="max-h-48 space-y-2 overflow-y-auto pr-1">
-              {splitReleaseNotes(updateState.releaseNotes).map((line, i) => {
-                const match = line.match(NOTE_LABEL_RE);
-                const text = match ? line.slice(match[0].length) : line;
-                return (
-                  <li key={i} className="flex gap-3 text-[13px] leading-relaxed text-text">
-                    <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-text-muted" />
-                    <span>
-                      {match && <span className="font-medium text-text-muted">{match[1]}: </span>}
-                      {text}
+        {notes.length > 0 && (
+          <ol className="max-h-[300px] overflow-y-auto border-t border-border">
+            {notes.map((note, i) => (
+              <li key={i} className="grid grid-cols-[28px_84px_minmax(0,1fr)] items-start gap-3 border-b border-border py-3">
+                <span className="font-mono text-[11px] font-medium leading-5 text-text-dim">{String(i + 1).padStart(2, '0')}</span>
+                <span className="flex h-5 items-center justify-center">
+                  {note.label && (
+                    <span className="flex h-5 w-full items-center justify-center rounded border border-border-strong font-mono text-[9px] font-semibold uppercase tracking-[0.15em] text-text-muted">
+                      {note.label}
                     </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+                  )}
+                </span>
+                <span className="text-[13px] leading-5 text-text">{note.text}</span>
+              </li>
+            ))}
+          </ol>
         )}
 
-        {/* Install button */}
         <button
           onClick={handleInstall}
           disabled={installing || isDownloading}
-          className="flex h-10 w-full items-center justify-center rounded-lg border border-text bg-text px-6 text-[13px] font-semibold text-bg transition-colors hover:border-text-muted hover:bg-text-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-text disabled:hover:bg-text"
+          className="flex h-10 w-full items-center justify-center rounded-lg border border-text bg-text px-6 font-mono text-xs font-semibold uppercase tracking-[0.15em] text-bg transition-colors hover:border-text-muted hover:bg-text-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-text disabled:hover:bg-text"
         >
           {buttonLabel}
         </button>
-
       </div>
     </div>
   );
