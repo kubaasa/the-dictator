@@ -79,6 +79,10 @@ const MODEL_MAP: Record<string, string> = {
   'distil-large-v3': 'distil-whisper/distil-large-v3',
 };
 
+function modelIdFor(size: string): string {
+  return Object.prototype.hasOwnProperty.call(MODEL_MAP, size) ? MODEL_MAP[size] : MODEL_MAP.base;
+}
+
 // Large models (medium+) have fp32 encoders >2GB split into .onnx + .onnx_data files
 // which fail to load. fp16 quantization keeps them in a single file with negligible accuracy loss.
 const NEEDS_QUANTIZATION = new Set(['medium', 'large', 'large-v3', 'large-v3-turbo']);
@@ -146,11 +150,11 @@ export class TranscriptionService {
 
   private getModelId(): string {
     const modelSize = (this.store.get('transcription.localModelSize') as string) ?? 'base';
-    return MODEL_MAP[modelSize] ?? MODEL_MAP['base'];
+    return modelIdFor(modelSize);
   }
 
   isModelDownloaded(modelSize?: string): boolean {
-    const modelId = modelSize ? (MODEL_MAP[modelSize] ?? MODEL_MAP['base']) : this.getModelId();
+    const modelId = modelSize ? modelIdFor(modelSize) : this.getModelId();
     const onnxDir = path.join(this.getModelsCacheDir(), modelId, 'onnx');
     try {
       return fs.readdirSync(onnxDir).some((f) => f.endsWith('.onnx'));

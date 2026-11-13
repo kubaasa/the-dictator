@@ -65,6 +65,8 @@ The app runs in **three isolated Electron contexts** — each has different capa
 ### IPC — single source of truth
 - All IPC channel names are defined **only** in `src/shared/constants.ts` (the `IPC` object).
 - Never hardcode channel strings inline — always import from constants.
+- Register handlers through `guardedIpc` (`src/main/ipc-guard.ts`), not `ipcMain`: it accepts a message only from the main window, and from the overlay only for the channels in `OVERLAY_CHANNELS`. A new channel the overlay needs must be added there; a rejection is logged once per channel.
+- Validate type and size of everything a handler receives (`expectString`, `types.isArrayBuffer`, size constants at the top of `ipc-handlers.ts`). Unknown fields inside a settings section are dropped, not rejected, because old configs still carry legacy fields that the renderer echoes back.
 - `src/shared/types.ts` and `src/shared/constants.ts` are imported by both main and renderer.
 
 ### Overlay window
@@ -161,6 +163,7 @@ Work happens on `develop`; `main` is fast-forwarded from `develop` on release. T
 
 - `require()` anything in renderer — it's sandboxed, no Node.js access
 - Define IPC channel names as raw strings anywhere except `src/shared/constants.ts`
+- Register IPC handlers with `ipcMain` directly: use `guardedIpc`
 - Bundle native modules — they must always be in `vite.main.config.ts` externals
 - Send API key material to the renderer, or accept it through `SETTINGS_SET`
 - Log dictated text directly: wrap it in `dictatedText()`

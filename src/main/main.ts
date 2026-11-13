@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, powerMonitor, protocol, screen, session, systemPreferences, type WebContents } from 'electron';
+import { app, BrowserWindow, powerMonitor, protocol, screen, session, systemPreferences, type WebContents } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -14,6 +14,7 @@ import { HistoryService } from './services/history.service';
 import { UpdateService } from './services/update.service';
 import { migrateApiKeys } from './services/secure-storage';
 import { registerIpcHandlers, broadcastSettings, getOverlaySize, activeOverlaySize, clampToVisibleArea, placeOverlay } from './ipc-handlers';
+import { guardedIpc, setIpcWindows } from './ipc-guard';
 import { getAssetPath } from './paths';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
@@ -152,6 +153,7 @@ let isQuitting = false;
 let isPostInstallLaunch = false;
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
+setIpcWindows(() => mainWindow, () => overlayWindow);
 let currentState: RecordingState = 'idle';
 let overlayHideTimeout: ReturnType<typeof setTimeout> | null = null;
 let historyService: HistoryService | null = null;
@@ -350,8 +352,8 @@ function createOverlayWindow(): BrowserWindow {
   // always clamped to a visible display (handles disconnected monitors)
   const savedX = store.get('widget.x') as number | undefined;
   const savedY = store.get('widget.y') as number | undefined;
-  if (savedX !== undefined && savedY !== undefined) {
-    const clamped = clampToVisibleArea(savedX, savedY, initW, initH);
+  if (typeof savedX === 'number' && typeof savedY === 'number' && Number.isFinite(savedX) && Number.isFinite(savedY)) {
+    const clamped = clampToVisibleArea(Math.round(savedX), Math.round(savedY), initW, initH);
     placeOverlay(win, store, clamped.x, clamped.y);
   } else {
     const { width: screenW } = screen.getPrimaryDisplay().workAreaSize;
@@ -499,8 +501,7 @@ function broadcastState(state: RecordingState): void {
 }
 
 function setupRecordingIpc(): void {
-  ipcMain.on(IPC.RENDERER_READY, (event) => {
-    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+  guardedIpc.on(IPC.RENDERER_READY, () => {
     mainRendererReady = true;
     if (pendingHotkeyToggleAt === null) return;
     const age = Date.now() - pendingHotkeyToggleAt;
@@ -514,7 +515,7 @@ function setupRecordingIpc(): void {
     }
   });
 
-  ipcMain.on(IPC.RECORDING_INIT, () => {
+  guardedIpc.on(IPC.RECORDING_INIT, () => {
     if (currentState === 'initializing' || currentState === 'recording') return;
     // Sync HotkeyService for non-hotkey sources (overlay button, main window button)
     // so keyboard shortcuts can correctly stop the recording
@@ -522,11 +523,11 @@ function setupRecordingIpc(): void {
     broadcastState('initializing');
   });
 
-  ipcMain.on(IPC.RECORDING_START, () => {
+  guardedIpc.on(IPC.RECORDING_START, () => {
     broadcastState('recording');
   });
 
-  ipcMain.on(IPC.RECORDING_STOP, (_event, goIdle = true) => {
+  guardedIpc.on(IPC.RECORDING_STOP, (_event, goIdle = true) => {
     if (goIdle) {
       broadcastState('idle');
     } else {
@@ -537,7 +538,7 @@ function setupRecordingIpc(): void {
     hotkeyService.notifyRecordingStopped();
   });
 
-  ipcMain.on(IPC.RECORDING_MIC_ERROR, (_event, errorMessage: string) => {
+  guardedIpc.on(IPC.RECORDING_MIC_ERROR, (_event, errorMessage: string) => {
     broadcastState('error');
     hotkeyService.notifyRecordingStopped();
     if (overlayWindow && !overlayWindow.isDestroyed()) {
@@ -548,34 +549,34 @@ function setupRecordingIpc(): void {
     }, 2500);
   });
 
-  ipcMain.on(IPC.VOICE_ACTIVITY, (_, level: number, bands?: number[]) => {
+  guardedIpc.on(IPC.VOICE_ACTIVITY, (_, level: number, bands?: number[]) => {
     overlayWindow?.webContents.send(IPC.VOICE_ACTIVITY, level, bands);
   });
 
-  ipcMain.handle(IPC.RECORDING_STATE_CHANGED, () => {
+  guardedIpc.handle(IPC.RECORDING_STATE_CHANGED, () => {
     return currentState;
   });
 
-  ipcMain.on(IPC.OVERLAY_TOGGLE, () => {
+  guardedIpc.on(IPC.OVERLAY_TOGGLE, () => {
     sendToggleToRenderer();
   });
 
-  ipcMain.on(IPC.OVERLAY_CANCEL, () => {
+  guardedIpc.on(IPC.OVERLAY_CANCEL, () => {
     sendCancelToRenderer();
   });
 }
 
 function setupMicPermissionIpc(): void {
-  ipcMain.handle(IPC.MIC_CHECK_SYSTEM_PERMISSION, () => {
+  guardedIpc.handle(IPC.MIC_CHECK_SYSTEM_PERMISSION, () => {
     return systemPreferences.getMediaAccessStatus('microphone');
   });
 }
 
 function setupWindowControlIpc(): void {
-  ipcMain.on(IPC.WINDOW_MINIMIZE, () => mainWindow?.minimize());
-  ipcMain.on(IPC.WINDOW_CLOSE, () => mainWindow?.hide());
-  ipcMain.on(IPC.APP_QUIT, () => app.quit());
-  ipcMain.on(IPC.APP_SHOW_SETTINGS, () => {
+  guardedIpc.on(IPC.WINDOW_MINIMIZE, () => mainWindow?.minimize());
+  guardedIpc.on(IPC.WINDOW_CLOSE, () => mainWindow?.hide());
+  guardedIpc.on(IPC.APP_QUIT, () => app.quit());
+  guardedIpc.on(IPC.APP_SHOW_SETTINGS, () => {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();

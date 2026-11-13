@@ -1,9 +1,11 @@
-import { ipcMain, BrowserWindow, shell, clipboard, app, screen, net } from 'electron';
+import { BrowserWindow, shell, clipboard, app, screen, net } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import { types } from 'node:util';
 import * as Sentry from '@sentry/electron/main';
 import logger, { dictatedText, setDiagnosticLogging } from './services/logger';
+import { guardedIpc } from './ipc-guard';
 import { IPC, TRANSCRIPTION_ENGINES, AI_PROVIDERS, API_KEY_PROVIDERS, WIDGET_TYPES, OVERLAY_POSITIONS, HOTKEY_MODES } from '../shared/constants';
 
 const log = logger.scope('IPC');
@@ -125,6 +127,33 @@ function validateApiKey(provider: ApiKeyProvider, apiKey: string): Promise<{ val
   return AIService.validateAnthropicKey(apiKey);
 }
 
+const MIN_SAMPLE_RATE = 8_000;
+const MAX_SAMPLE_RATE = 192_000;
+const MAX_RECORDING_SECONDS = 60 * 60;
+const MAX_COMPRESSED_AUDIO_BYTES = 100 * 1024 * 1024;
+const MAX_MIGRATED_ENTRIES = 10_000;
+const MAX_ENTRY_TEXT_LENGTH = 100_000;
+const MAX_PROMPT_LENGTH = 4000;
+const MAX_ID_LENGTH = 200;
+
+const OPTIONAL_SETTINGS_FIELDS: Record<string, readonly string[]> = {
+  audio: ['deviceLabel', 'muteSnapshot'],
+  widget: ['x', 'y'],
+};
+
+function stripUnknownFields(settings: SettingsPatch): void {
+  for (const [section, value] of Object.entries(settings)) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) continue;
+    const known = new Set([
+      ...Object.keys(DEFAULT_SETTINGS[section as keyof AppSettings]),
+      ...(OPTIONAL_SETTINGS_FIELDS[section] ?? []),
+    ]);
+    for (const field of Object.keys(value)) {
+      if (!known.has(field)) delete (value as Record<string, unknown>)[field];
+    }
+  }
+}
+
 const TRANSCRIPTION_TIMEOUT_MIN_MS = 30_000;
 const TRANSCRIPTION_TIMEOUT_MAX_MS = 120_000;
 const AI_TIMEOUT_MS = 30_000;
@@ -238,7 +267,7 @@ export function registerIpcHandlers(
     if (overlay) overlay.webContents.send(IPC.TRANSCRIPTION_ERROR, message);
   }
 
-  ipcMain.handle(IPC.SETTINGS_GET, () => {
+  guardedIpc.handle(IPC.SETTINGS_GET, () => {
     const hotkey = store.get('hotkey') as Record<string, unknown>;
     if (hotkey && !hotkey.shortcuts && typeof hotkey.shortcut === 'string') {
       const migrated = {
@@ -301,7 +330,7 @@ export function registerIpcHandlers(
     return toRendererSettings(store.store);
   });
 
-  ipcMain.handle(IPC.SETTINGS_SET, (_event, settings: SettingsPatch) => {
+  guardedIpc.handle(IPC.SETTINGS_SET, (_event, settings: SettingsPatch) => {
     const ALLOWED_KEYS = new Set<string>([
       'transcription', 'ai', 'hotkey', 'dictation', 'audio', 'vocabulary', 'widget', 'general',
     ]);
@@ -311,6 +340,7 @@ export function registerIpcHandlers(
         throw new Error(`Unknown settings key: "${key}"`);
       }
     }
+    stripUnknownFields(settings);
 
     if (settings.transcription !== undefined) expectObject('transcription', settings.transcription);
     if (settings.ai !== undefined) expectObject('ai', settings.ai);
@@ -330,6 +360,9 @@ export function registerIpcHandlers(
         }
         if (!prompt.name.trim()) {
           throw new Error('Invalid saved prompt: "name" cannot be empty');
+        }
+        if (prompt.id.length > MAX_ID_LENGTH || prompt.name.length > MAX_ID_LENGTH) {
+          throw new Error(`Invalid saved prompt: "id" and "name" must be at most ${MAX_ID_LENGTH} characters`);
         }
         if (prompt.content.length > 4000) {
           throw new Error('Invalid saved prompt: "content" exceeds 4000 characters');
@@ -353,8 +386,8 @@ export function registerIpcHandlers(
         if (typeof entry !== 'object' || entry === null || typeof entry.input !== 'string') {
           throw new Error('Invalid vocabulary entry: each must have "input" string');
         }
-        if (typeof entry.id !== 'string') {
-          throw new Error('Invalid vocabulary entry: "id" must be a string');
+        if (typeof entry.id !== 'string' || entry.id.length > MAX_ID_LENGTH) {
+          throw new Error(`Invalid vocabulary entry: "id" must be a string of at most ${MAX_ID_LENGTH} characters`);
         }
         if (!entry.input.trim()) {
           throw new Error('Invalid vocabulary entry: "input" cannot be empty');
@@ -420,18 +453,18 @@ export function registerIpcHandlers(
         throw new Error('Invalid value for "ai.temperature": expected number between 0 and 2');
       }
     }
-    if (settings.audio?.deviceId !== undefined && typeof settings.audio.deviceId !== 'string') {
-      throw new Error('Invalid value for "audio.deviceId": expected string');
-    }
+    if (settings.audio?.deviceId !== undefined) expectString('audio.deviceId', settings.audio.deviceId, 500);
     if (settings.audio && 'muteSnapshot' in settings.audio) {
       throw new Error('"audio.muteSnapshot" is managed by the main process');
     }
     if (settings.widget) {
       for (const axis of ['x', 'y'] as const) {
         const v = settings.widget[axis];
-        if (v !== undefined && (typeof v !== 'number' || !Number.isFinite(v))) {
+        if (v === undefined) continue;
+        if (typeof v !== 'number' || !Number.isFinite(v)) {
           throw new Error(`Invalid value for "widget.${axis}": expected finite number`);
         }
+        settings.widget[axis] = Math.round(v);
       }
     }
 
@@ -488,7 +521,7 @@ export function registerIpcHandlers(
     return rendererSettings;
   });
 
-  ipcMain.handle(IPC.TRANSCRIPTION_CHECK_READY, () => {
+  guardedIpc.handle(IPC.TRANSCRIPTION_CHECK_READY, () => {
     const engine = (store.get('transcription.engine') as string) ?? 'local';
     let readyError: string | undefined;
     let errorType: 'missing-api-key' | 'model-not-downloaded' | 'no-internet' | undefined;
@@ -527,8 +560,17 @@ export function registerIpcHandlers(
     let entryId: string;
     try {
       entryId = sanitizeId(recordingId ?? Date.now().toString());
-      if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+      if (!Number.isFinite(sampleRate) || sampleRate < MIN_SAMPLE_RATE || sampleRate > MAX_SAMPLE_RATE) {
         throw new Error(`Invalid sampleRate: ${String(sampleRate)}`);
+      }
+      if (!types.isArrayBuffer(audioBuffer) || audioBuffer.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
+        throw new Error('Invalid audio buffer');
+      }
+      if (audioBuffer.byteLength / Float32Array.BYTES_PER_ELEMENT / sampleRate > MAX_RECORDING_SECONDS) {
+        throw new Error('Recording is longer than 60 minutes and cannot be transcribed.');
+      }
+      if (compressedAudio != null && (!types.isArrayBuffer(compressedAudio) || compressedAudio.byteLength > MAX_COMPRESSED_AUDIO_BYTES)) {
+        throw new Error('Invalid compressed audio');
       }
     } catch (argErr) {
       setTranscriptionState('error', 1500);
@@ -765,43 +807,46 @@ export function registerIpcHandlers(
 
   // A recording stopped while the previous one is still transcribing used to be rejected,
   // which dropped the audio with no history row and no visible error.
-  ipcMain.handle(IPC.TRANSCRIPTION_START_BUFFER, (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer) => {
+  guardedIpc.handle(IPC.TRANSCRIPTION_START_BUFFER, (event, audioBuffer: ArrayBuffer, sampleRate: number, recordingId?: string, compressedAudio?: ArrayBuffer) => {
     const run = transcriptionQueue.then(() => transcribeBuffer(event, audioBuffer, sampleRate, recordingId, compressedAudio));
     transcriptionQueue = run.catch(() => undefined);
     return run;
   });
 
-  ipcMain.handle(IPC.AUDIO_SAVE, async (_event, id: string, audioBuffer: ArrayBuffer) => {
+  guardedIpc.handle(IPC.AUDIO_SAVE, async (_event, id: string, audioBuffer: ArrayBuffer) => {
     const safeId = sanitizeId(id);
+    if (!types.isArrayBuffer(audioBuffer) || audioBuffer.byteLength > MAX_COMPRESSED_AUDIO_BYTES) {
+      throw new Error('Invalid audio buffer');
+    }
     const filePath = path.join(recordingsDir, `${safeId}.webm`);
     await fs.promises.writeFile(filePath, Buffer.from(audioBuffer));
     historyService.updateAudioPath(safeId, filePath);
     return filePath;
   });
 
-  ipcMain.handle(IPC.HISTORY_GET_STATS, () =>
+  guardedIpc.handle(IPC.HISTORY_GET_STATS, () =>
     wrapHandler('HISTORY_GET_STATS', () => ({ data: historyService.getStats() }), { data: null }),
   );
 
-  ipcMain.handle(IPC.HISTORY_GET_COUNT, () =>
+  guardedIpc.handle(IPC.HISTORY_GET_COUNT, () =>
     wrapHandler('HISTORY_GET_COUNT', () => ({ count: historyService.getCount() }), { count: 0 }),
   );
 
-  ipcMain.handle(IPC.HISTORY_GET_ALL, (_event, limit?: number, offset?: number) => {
+  guardedIpc.handle(IPC.HISTORY_GET_ALL, (_event, limit?: number, offset?: number) => {
     // A negative LIMIT means "no limit" to SQLite; non-integers fail at bind time.
     const safeLimit = Number.isInteger(limit) ? Math.min(Math.max(limit as number, 1), 1000) : 50;
     const safeOffset = Number.isInteger(offset) ? Math.max(offset as number, 0) : 0;
     return wrapHandler('HISTORY_GET_ALL', () => ({ data: historyService.getAll(safeLimit, safeOffset) }), { data: [] });
   });
 
-  ipcMain.handle(IPC.HISTORY_DELETE, (_event, id: string) => {
+  guardedIpc.handle(IPC.HISTORY_DELETE, (_event, id: string) => {
     if (!id || typeof id !== 'string') {
       return { success: false, error: 'Invalid recording ID' };
     }
     return wrapHandler('HISTORY_DELETE', () => historyService.delete(id));
   });
 
-  ipcMain.handle(IPC.HISTORY_SEARCH, (_event, query: string) =>
+  guardedIpc.handle(IPC.HISTORY_SEARCH, (_event, query: string) =>
     wrapHandler(
       'HISTORY_SEARCH',
       () => ({ data: typeof query === 'string' ? historyService.search(query) : historyService.getAll() }),
@@ -809,13 +854,13 @@ export function registerIpcHandlers(
     ),
   );
 
-  ipcMain.handle(IPC.HISTORY_CLEAR_ALL, () =>
+  guardedIpc.handle(IPC.HISTORY_CLEAR_ALL, () =>
     wrapHandler('HISTORY_CLEAR_ALL', () => historyService.clearAll()),
   );
 
-  ipcMain.handle(IPC.HISTORY_MIGRATE, (_event, entries: unknown) => {
-    if (!Array.isArray(entries)) {
-      return { success: false, error: 'Expected an array of entries' };
+  guardedIpc.handle(IPC.HISTORY_MIGRATE, (_event, entries: unknown) => {
+    if (!Array.isArray(entries) || entries.length > MAX_MIGRATED_ENTRIES) {
+      return { success: false, error: `Expected an array of at most ${MAX_MIGRATED_ENTRIES} entries` };
     }
     return wrapHandler('HISTORY_MIGRATE', () => {
       let added = 0;
@@ -825,6 +870,9 @@ export function registerIpcHandlers(
           const e = entry as Record<string, unknown>;
           if (typeof e.id !== 'string' || typeof e.date !== 'string' || typeof e.text !== 'string') {
             throw new Error('entry must have string "id", "date" and "text"');
+          }
+          if (e.id.length > MAX_ID_LENGTH || e.text.length > MAX_ENTRY_TEXT_LENGTH) {
+            throw new Error('entry "id" or "text" is too long');
           }
           const wordCount = typeof e.wordCount === 'number' ? e.wordCount : countWords(e.text);
           const migrated: RecordingEntry = {
@@ -850,31 +898,37 @@ export function registerIpcHandlers(
     });
   });
 
-  ipcMain.handle(IPC.AI_GET_OPENAI_MODELS, () =>
+  guardedIpc.handle(IPC.AI_GET_OPENAI_MODELS, () =>
     wrapHandler('AI_GET_OPENAI_MODELS', async () => ({ models: await aiService.getOpenAIModels() }), { models: [] }),
   );
 
-  ipcMain.handle(IPC.AI_ENHANCE_PROMPT, (_event, rawPrompt: string) =>
-    wrapHandler('AI_ENHANCE_PROMPT', async () => ({ result: await aiService.enhancePrompt(rawPrompt) })),
+  guardedIpc.handle(IPC.AI_ENHANCE_PROMPT, (_event, rawPrompt: string) =>
+    wrapHandler('AI_ENHANCE_PROMPT', async () => {
+      expectString('prompt', rawPrompt, MAX_PROMPT_LENGTH);
+      return { result: await aiService.enhancePrompt(rawPrompt) };
+    }),
   );
 
-  ipcMain.handle(IPC.AI_GENERATE_PROMPT_NAME, (_event, promptContent: string) =>
-    wrapHandler('AI_GENERATE_PROMPT_NAME', async () => ({ name: await aiService.generatePromptName(promptContent) })),
+  guardedIpc.handle(IPC.AI_GENERATE_PROMPT_NAME, (_event, promptContent: string) =>
+    wrapHandler('AI_GENERATE_PROMPT_NAME', async () => {
+      expectString('prompt', promptContent, MAX_PROMPT_LENGTH);
+      return { name: await aiService.generatePromptName(promptContent) };
+    }),
   );
 
-  ipcMain.on(IPC.APP_OPEN_MODELS_FOLDER, () => {
+  guardedIpc.on(IPC.APP_OPEN_MODELS_FOLDER, () => {
     shell.openPath(transcriptionService.getModelsCacheDir());
   });
 
-  ipcMain.handle(IPC.MODEL_STATUS, () => {
+  guardedIpc.handle(IPC.MODEL_STATUS, () => {
     return { downloaded: transcriptionService.isModelDownloaded() };
   });
 
-  ipcMain.handle(IPC.MODEL_ALL_DOWNLOADED, () => {
+  guardedIpc.handle(IPC.MODEL_ALL_DOWNLOADED, () => {
     return transcriptionService.getDownloadedModels();
   });
 
-  ipcMain.handle(IPC.MODEL_DOWNLOAD, async (event) => {
+  guardedIpc.handle(IPC.MODEL_DOWNLOAD, async (event) => {
     try {
       await transcriptionService.downloadModel((pct) => {
         event.sender.send(IPC.MODEL_DOWNLOAD_PROGRESS, pct);
@@ -889,7 +943,7 @@ export function registerIpcHandlers(
     }
   });
 
-  ipcMain.on(IPC.MODEL_DOWNLOAD_CANCEL, () => {
+  guardedIpc.on(IPC.MODEL_DOWNLOAD_CANCEL, () => {
     transcriptionService.cancelDownload();
   });
 
@@ -913,7 +967,7 @@ export function registerIpcHandlers(
     dragPos = null;
   }
 
-  ipcMain.on(IPC.WIDGET_DRAG_START, (_event, offsetX: number, offsetY: number) => {
+  guardedIpc.on(IPC.WIDGET_DRAG_START, (_event, offsetX: number, offsetY: number) => {
     stopDrag(); // clear any previous drag that didn't end cleanly
 
     // setBounds throws on non-integer arguments, and here it would do so every 16 ms
@@ -936,13 +990,13 @@ export function registerIpcHandlers(
     cancelGlobalMouseUp = hotkeyService.onGlobalMouseUp(stopDrag);
   });
 
-  ipcMain.on(IPC.WIDGET_DRAG_END, stopDrag);
+  guardedIpc.on(IPC.WIDGET_DRAG_END, stopDrag);
 
-  ipcMain.handle(IPC.UPDATE_CHECK, () => updateService.checkForUpdates(true));
-  ipcMain.handle(IPC.UPDATE_GET_INFO, () => updateService.getUpdateInfo());
-  ipcMain.handle(IPC.UPDATE_INSTALL, () => updateService.quitAndInstall());
+  guardedIpc.handle(IPC.UPDATE_CHECK, () => updateService.checkForUpdates(true));
+  guardedIpc.handle(IPC.UPDATE_GET_INFO, () => updateService.getUpdateInfo());
+  guardedIpc.handle(IPC.UPDATE_INSTALL, () => updateService.quitAndInstall());
 
-  ipcMain.handle(IPC.API_KEY_SAVE, async (_event, provider: ApiKeyProvider, apiKey: string) => {
+  guardedIpc.handle(IPC.API_KEY_SAVE, async (_event, provider: ApiKeyProvider, apiKey: string) => {
     expectOneOf('provider', provider, API_KEY_PROVIDERS);
     if (typeof apiKey !== 'string' || !apiKey.trim() || apiKey.length > 500) {
       return { valid: false, error: 'No API key provided' };
@@ -956,13 +1010,13 @@ export function registerIpcHandlers(
     return result;
   });
 
-  ipcMain.handle(IPC.API_KEY_DELETE, (_event, provider: ApiKeyProvider) => {
+  guardedIpc.handle(IPC.API_KEY_DELETE, (_event, provider: ApiKeyProvider) => {
     expectOneOf('provider', provider, API_KEY_PROVIDERS);
     deleteApiKey(store, provider);
     broadcastSettings(store);
   });
 
-  ipcMain.on(IPC.SHELL_OPEN_EXTERNAL, (_event, url: string) => {
+  guardedIpc.on(IPC.SHELL_OPEN_EXTERNAL, (_event, url: string) => {
     if (typeof url === 'string' && url.startsWith('ms-settings:')) {
       shell.openExternal(url);
       return;
