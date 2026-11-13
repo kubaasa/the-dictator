@@ -22,6 +22,7 @@ const EXCLUDED_SHELL_CLASSES = new Set([
 
 const MARKER = '__DICTATOR_DONE__';
 const PASTE_OK = '__DICTATOR_PASTED__';
+const PASTE_REFOCUSED = '__DICTATOR_REFOCUSED__';
 const INIT_TIMEOUT_MS = 10000;
 
 // Win32 interop shared by the persistent process and the cold-start fallbacks, so a change
@@ -49,14 +50,15 @@ const CAPTURE_CMD = `$h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.
 // the keystrokes; a closed or un-focusable target throws instead of pasting somewhere else.
 const FOCUS_POLL_INTERVAL_MS = 10;
 const FOCUS_POLL_ATTEMPTS = 25;
+const FOCUS_SETTLE_MS = 100;
 
 function buildPasteCmd(hwnd: string): string {
   if (!/^\d+$/.test(hwnd)) {
     throw new Error(`Invalid hwnd: expected digits only, got "${hwnd}"`);
   }
-  const focus = `$t=[IntPtr]${hwnd}; if(-not [PW]::IsWindow($t)){ throw 'target window no longer exists' }; if([PW]::GetForegroundWindow().ToInt64() -ne $t.ToInt64()){ $fg=[PW]::GetForegroundWindow(); $ft=[PW]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $mt=[PW]::GetCurrentThreadId(); $att=$false; if($ft -ne $mt){[void][PW]::AttachThreadInput($mt,$ft,$true);$att=$true}; if([PW]::IsIconic($t)){[void][PW]::ShowWindow($t,9)}; [void][PW]::SetForegroundWindow($t); if($att){[void][PW]::AttachThreadInput($mt,$ft,$false)}; $i=0; while($i -lt ${FOCUS_POLL_ATTEMPTS} -and [PW]::GetForegroundWindow().ToInt64() -ne $t.ToInt64()){ Start-Sleep -Milliseconds ${FOCUS_POLL_INTERVAL_MS}; $i++ } };`;
+  const focus = `$t=[IntPtr]${hwnd}; $rf=$false; if(-not [PW]::IsWindow($t)){ throw 'target window no longer exists' }; if([PW]::GetForegroundWindow().ToInt64() -ne $t.ToInt64()){ $rf=$true; $fg=[PW]::GetForegroundWindow(); $ft=[PW]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $mt=[PW]::GetCurrentThreadId(); $att=$false; if($ft -ne $mt){[void][PW]::AttachThreadInput($mt,$ft,$true);$att=$true}; if([PW]::IsIconic($t)){[void][PW]::ShowWindow($t,9)}; [void][PW]::SetForegroundWindow($t); if($att){[void][PW]::AttachThreadInput($mt,$ft,$false)}; $i=0; while($i -lt ${FOCUS_POLL_ATTEMPTS} -and [PW]::GetForegroundWindow().ToInt64() -ne $t.ToInt64()){ Start-Sleep -Milliseconds ${FOCUS_POLL_INTERVAL_MS}; $i++ }; Start-Sleep -Milliseconds ${FOCUS_SETTLE_MS} };`;
   const verify = `if([PW]::GetForegroundWindow().ToInt64() -ne $t.ToInt64()){ throw 'target window did not come to the foreground' };`;
-  return `${focus} ${verify} [PW]::Paste(); Write-Output '${PASTE_OK}'`;
+  return `${focus} ${verify} [PW]::Paste(); if($rf){ Write-Output '${PASTE_REFOCUSED}' }; Write-Output '${PASTE_OK}'`;
 }
 
 // Fallback: cold-start PowerShell for captureTarget (used when persistent process isn't ready)
@@ -335,7 +337,7 @@ export class PasteService {
       if (!stdout.includes(PASTE_OK)) {
         throw new Error('Paste target lost focus before the keystrokes were sent');
       }
-      log.info('Pasted successfully (app=%s)', appName ?? 'unknown');
+      log.info('Pasted successfully (app=%s, refocused=%s)', appName ?? 'unknown', stdout.includes(PASTE_REFOCUSED));
     } catch (err) {
       log.warn('simulatePaste failed:', err instanceof Error ? err.message : err);
       throw err;

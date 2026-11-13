@@ -99,6 +99,7 @@ Adding new functionality to main process:
 - Before history, overlay and clipboard, the final text passes `stripUnsafeChars` (`src/main/services/paste-text.ts`): control characters other than tab and line breaks, and bidi overrides, are removed (an ESC sequence can end a terminal's bracketed paste). For classic console windows (conhost, PuTTY, mintty, ConEmu) the clipboard copy also gets line breaks collapsed to spaces, because each pasted line would run as a command; Windows Terminal and VS Code terminals keep line breaks.
 - Electron's `clipboard` module is async since v44: `writeText` / `readText` return Promises and must be awaited (`writeClipboardVerified` in `ipc-handlers.ts`).
 - Paste = write text to clipboard + send Ctrl+V. Always Ctrl+V, no per-app shortcuts: Shift+Insert broke VS Code / Cursor terminals that enable the kitty keyboard protocol (v1.3.4). The previous clipboard content is not restored.
+- `simulatePaste()` brings the target to the foreground only when it lost focus after `captureTarget()`. That branch waits `FOCUS_SETTLE_MS` before the keystrokes, because apps restore keyboard focus a moment after the window is activated, and the log line then reads `refocused=true`. When the target is still in the foreground, Ctrl+V is sent with no delay.
 
 ### Audio mute helper
 - `src/main/services/audio-mute.service.ts` spawns `audio-mute-helper.exe` and talks to it via JSON lines over stdin/stdout. If the helper doesn't report `ready` within 5 s, the feature disables itself.
