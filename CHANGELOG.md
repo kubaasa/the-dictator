@@ -4,6 +4,38 @@ Release notes are kept in plain text so they render correctly in the in-app
 update window (electron-updater shows the GitHub release body verbatim — no
 Markdown or HTML formatting).
 
+## 3.0.0
+
+A hardened and lighter build on a newer engine.
+
+- New: the app runs on Electron 45 (up from 40), with the security fixes
+  of the newer Chromium.
+- New: the installer is about half the size, 178 MB instead of 360 MB.
+- New: a redesigned update window that lists the changes as numbered
+  points.
+- Security: API keys stay inside the app's background process. The
+  settings window only knows whether a key is set and how it starts.
+- Security: the app's windows can use only the microphone and the
+  clipboard, cannot open other pages, and take commands only from the app
+  itself.
+- Security: pasted text is cleaned of invisible control characters. In
+  classic console windows (cmd, PowerShell console, PuTTY, Git Bash) line
+  breaks are pasted as spaces, so a dictation cannot run as several
+  commands.
+- Privacy: dictated text is no longer written to the log file.
+- Fixed: "Dziękuję." added at the end of recordings longer than 30 seconds
+  that ended with a pause.
+- Fixed: a greeting such as "Dzień dobry." pasted when nothing was said.
+- Fixed: short commands such as "commit" were sometimes rejected as
+  unclear.
+- Fixed: pasting is faster. The fixed quarter-second wait before Ctrl+V is
+  gone.
+- Fixed: an update no longer turns auto-start back on after you switched
+  it off.
+- Fixed: Call Mode switched during a recording was not saved.
+- Fixed: a long AI reply with many line breaks could freeze the app for
+  several seconds.
+
 ## 2.0.2
 
 - Fixed: a Bluetooth headset microphone that delivered only silence after
