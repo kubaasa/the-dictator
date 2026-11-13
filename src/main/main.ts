@@ -623,20 +623,6 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 app.on('ready', () => {
-  // CSP headers — only in production (strict CSP breaks Vite dev server HMR)
-  if (app.isPackaged) {
-    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': [
-            "default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self'; media-src 'self' recording:; img-src 'self' data:",
-          ],
-        },
-      });
-    });
-  }
-
   session.defaultSession.setPermissionCheckHandler((contents, permission, requestingOrigin, details) =>
     decidePermission(contents, requestingOrigin, permission, details.mediaType === 'video'));
   session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {

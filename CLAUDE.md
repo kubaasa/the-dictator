@@ -59,6 +59,7 @@ The app runs in **three isolated Electron contexts** — each has different capa
 - All communication with main process goes through `window.dictator.*` (exposed via `contextBridge` in preload).
 - `window.dictator` API is typed in `src/renderer/global.d.ts`.
 - Session permissions are an allowlist in `src/main/main.ts` (`ALLOWED_PERMISSIONS`: `media` without video, `clipboard-sanitized-write`), granted only to the app's own windows. A feature that needs another Chromium permission must be added there; a denial is logged once per session as `Permission denied: <name>`.
+- CSP is a `<meta>` tag injected at build time by `cspMeta` in `vite.renderer.config.ts`; the dev server runs without it. A violation is logged to `main.log` as `CSP violation: <directive> blocked <uri>`.
 - Navigation, `window.open` and `<webview>` are blocked for every `webContents` (`web-contents-created` in `main.ts`). The dev server URL is honoured only when `!app.isPackaged`.
 
 ### IPC — single source of truth
