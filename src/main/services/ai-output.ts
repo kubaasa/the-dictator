@@ -4,8 +4,8 @@ export interface OutputVerdict {
 }
 
 const WRAPPER_TAGS = 'output|message|result|response|text';
-const WRAPPED_RE = new RegExp(`^\\s*<(${WRAPPER_TAGS})>\\s*([\\s\\S]*?)\\s*<\\/\\1>\\s*$`, 'i');
-const ORPHAN_CLOSER_RE = new RegExp(`\\s*<\\/(?:${WRAPPER_TAGS})>\\s*$`, 'i');
+const OPENING_TAG_RE = new RegExp(`^<(${WRAPPER_TAGS})>`, 'i');
+const CLOSING_TAG_RE = new RegExp(`<\\/(${WRAPPER_TAGS})>$`, 'i');
 const ANY_WRAPPER_TAG_RE = new RegExp(`<\\/?(?:${WRAPPER_TAGS})>`, 'i');
 const INPUT_TAG_RE = /<\/?input>/i;
 const TOKEN_RE = /[\p{L}\p{N}]{3,}/gu;
@@ -17,9 +17,15 @@ const MAX_LENGTH_SLACK = 80;
 
 export function unwrapModelOutput(output: string): string {
   const trimmed = output.trim();
-  const wrapped = WRAPPED_RE.exec(trimmed);
-  if (wrapped) return ANY_WRAPPER_TAG_RE.test(wrapped[2]) ? trimmed : wrapped[2].trim();
-  return trimmed.replace(ORPHAN_CLOSER_RE, '').trim();
+  const opening = OPENING_TAG_RE.exec(trimmed);
+  const closing = CLOSING_TAG_RE.exec(trimmed);
+  if (!closing) return trimmed;
+  const wrapped = opening !== null
+    && opening[1].toLowerCase() === closing[1].toLowerCase()
+    && closing.index >= opening[0].length;
+  if (!wrapped) return trimmed.slice(0, closing.index).trim();
+  const inner = trimmed.slice(opening[0].length, closing.index);
+  return ANY_WRAPPER_TAG_RE.test(inner) ? trimmed : inner.trim();
 }
 
 function tokens(text: string): string[] {
