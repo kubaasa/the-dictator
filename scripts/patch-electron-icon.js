@@ -17,7 +17,7 @@ try {
   return;
 }
 
-const electronExe = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron.exe');
+const electronExe = require('electron');
 const icon = path.resolve(__dirname, '..', 'assets', 'icon.ico');
 
 rcedit(electronExe, { icon })

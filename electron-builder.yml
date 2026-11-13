@@ -2,7 +2,7 @@ appId: com.jakubbruniecki.the-dictator
 productName: The Dictator
 copyright: Copyright © 2026 Jakub Bruniecki
 
-electronVersion: 40.10.6
+electronVersion: 45.3.2
 
 directories:
   output: out

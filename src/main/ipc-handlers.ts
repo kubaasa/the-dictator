@@ -62,8 +62,8 @@ function normalizeNewlines(text: string): string {
 
 async function writeClipboardVerified(text: string): Promise<boolean> {
   for (let attempt = 1; attempt <= CLIPBOARD_WRITE_ATTEMPTS; attempt++) {
-    clipboard.writeText(text);
-    if (normalizeNewlines(clipboard.readText()) === normalizeNewlines(text)) return true;
+    await clipboard.writeText(text);
+    if (normalizeNewlines(await clipboard.readText()) === normalizeNewlines(text)) return true;
     log.warn('Clipboard read-back mismatch (attempt %d/%d)', attempt, CLIPBOARD_WRITE_ATTEMPTS);
     await new Promise((resolve) => setTimeout(resolve, CLIPBOARD_RETRY_DELAY_MS));
   }

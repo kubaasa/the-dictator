@@ -150,7 +150,7 @@ Both widgets float above all windows during recording and hide when idle.
 
 ### Building from Source
 
-**Prerequisites:** Node.js 18+, Git, Windows 10+.
+**Prerequisites:** Node.js 22.12+, Git, Windows 10+.
 
 ```bash
 git clone https://github.com/kubaasa/the-dictator.git
@@ -170,7 +170,7 @@ npm install
 
 | Layer | Technology |
 |-------|------------|
-| Framework | Electron 40 |
+| Framework | Electron 45 |
 | Bundler | Vite 6 |
 | Frontend | React 19 + Tailwind CSS 4 |
 | Language | TypeScript |
@@ -390,7 +390,7 @@ Oba widgety unoszą się nad wszystkimi oknami podczas nagrywania i znikają gdy
 
 ### Build ze źródła
 
-**Wymagania:** Node.js 18+, Git, Windows 10+.
+**Wymagania:** Node.js 22.12+, Git, Windows 10+.
 
 ```bash
 git clone https://github.com/kubaasa/the-dictator.git
@@ -410,7 +410,7 @@ npm install
 
 | Warstwa | Technologia |
 |---------|-------------|
-| Framework | Electron 40 |
+| Framework | Electron 45 |
 | Bundler | Vite 6 |
 | Frontend | React 19 + Tailwind CSS 4 |
 | Język | TypeScript |

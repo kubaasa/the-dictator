@@ -4,7 +4,7 @@
 
 Windows desktop voice dictation app. Records audio via global hotkey, transcribes with Whisper (local ONNX, or cloud via OpenAI / Groq API), optionally post-processes with AI (OpenAI / Anthropic), then auto-pastes the result into the focused application.
 
-**Stack:** Electron 40 + Vite 6 + React 19 + TypeScript 4.5 + Tailwind CSS v4, plus a C# (.NET 8) helper that mutes other apps while recording
+**Stack:** Electron 45 + Vite 6 + React 19 + TypeScript 4.5 + Tailwind CSS v4, plus a C# (.NET 8) helper that mutes other apps while recording
 **Package manager:** npm
 
 ## Dev Commands
@@ -38,10 +38,10 @@ npx -y -p typescript@5.9.3 tsc --noEmit
 
 - Config: `electron-builder.yml`
 - Dev script: `scripts/dev.mjs` (Vite dev server + Electron watch/restart)
-- Security fuses: `scripts/after-pack.js` (flipped after packaging)
+- Security fuses: `scripts/after-pack.js` (flipped after packaging). `strictlyRequireAllFuses` is on, so a new Electron fuse must be listed there or packaging fails. `@electron/fuses` 2.x is ESM-only, hence the dynamic `import()`.
 - Custom NSIS pages: `assets/installer.nsh` (desktop shortcut + auto-start options)
 - Installer images: `assets/nsis-header.bmp`, `assets/nsis-sidebar.bmp` (generate via `node scripts/generate-installer-images.js`)
-- `postinstall` runs `scripts/patch-electron-icon.js`, which swaps the icon of the dev Electron binary so the taskbar shows the app icon in `npm run dev`
+- `postinstall` runs `scripts/patch-electron-icon.js`, which swaps the icon of the dev Electron binary so the taskbar shows the app icon in `npm run dev`. It resolves the binary through `require('electron')`, which also downloads it: since Electron 42 the `electron` package no longer downloads the binary on install.
 - Audio-mute helper: `tools/audio-mute-helper/` (C# .NET 8, NAudio.Wasapi, self-contained). `build:helper` publishes it to `bin/Release/net8.0-windows/win-x64/publish/`, which `extraResources` copies to `resources/audio-mute-helper/`. `PublishSingleFile` is intentionally `false`: AV software (AVG CyberCapture) flags self-extracting single-file bundles and blocks the spawn long enough for it to time out.
 
 ## Architecture
@@ -82,7 +82,7 @@ Adding new functionality to main process:
 - Defaults in `DEFAULT_SETTINGS` (same file).
 - Access in renderer: `window.dictator.getSettings()` / `setSettings()`.
 - Legacy settings shapes are migrated in the `SETTINGS_GET` handler (`src/main/ipc-handlers.ts`). When renaming or removing a field, update `AppSettings`, `DEFAULT_SETTINGS` **and** the migration.
-- API keys are encrypted with `safeStorage` (`src/main/services/secure-storage.ts`); the rest of the store is plain JSON.
+- API keys are encrypted with `safeStorage` (`src/main/services/secure-storage.ts`); the rest of the store is plain JSON. The synchronous `safeStorage` calls used there are deprecated in Electron 45 and removed in 46: move to `encryptStringAsync` / `decryptStringAsync` before the next major upgrade.
 - Key material never leaves the main process. The renderer gets `RendererSettings`: no key fields, only `apiKeys` with `set` / `hint` / `length` per provider. `SETTINGS_SET` drops key fields from the patch; keys are written only through `API_KEY_SAVE` (validates, then stores) and `API_KEY_DELETE`.
 
 ### History
@@ -93,6 +93,7 @@ Adding new functionality to main process:
 - `src/main/services/paste.service.ts` keeps a persistent PowerShell process with precompiled Win32 interop (`SendInput`).
 - Call `captureTarget()` **before** any Electron UI work (state broadcast, clipboard, window show) — those can shift OS focus away from the target app.
 - Before history, overlay and clipboard, the final text passes `stripUnsafeChars` (`src/main/services/paste-text.ts`): control characters other than tab and line breaks, and bidi overrides, are removed (an ESC sequence can end a terminal's bracketed paste). For classic console windows (conhost, PuTTY, mintty, ConEmu) the clipboard copy also gets line breaks collapsed to spaces, because each pasted line would run as a command; Windows Terminal and VS Code terminals keep line breaks.
+- Electron's `clipboard` module is async since v44: `writeText` / `readText` return Promises and must be awaited (`writeClipboardVerified` in `ipc-handlers.ts`).
 - Paste = write text to clipboard + send Ctrl+V. Always Ctrl+V, no per-app shortcuts: Shift+Insert broke VS Code / Cursor terminals that enable the kitty keyboard protocol (v1.3.4). The previous clipboard content is not restored.
 
 ### Audio mute helper
