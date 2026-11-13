@@ -248,9 +248,7 @@ export class PasteService {
   async captureTarget(): Promise<void> {
     if (process.platform !== 'win32') return;
 
-    this.targetHwnd = null;
-    this.targetAppName = null;
-    this.targetWindowClass = null;
+    this.clearTarget();
 
     let stdout: string;
     try {
@@ -285,6 +283,12 @@ export class PasteService {
     this.targetAppName = processName;
     this.targetWindowClass = windowClass;
     log.info('Captured paste target (class: %s, process: %s)', windowClass, processName);
+  }
+
+  clearTarget(): void {
+    this.targetHwnd = null;
+    this.targetAppName = null;
+    this.targetWindowClass = null;
   }
 
   getAppName(): string | null {
@@ -336,9 +340,7 @@ export class PasteService {
       log.warn('simulatePaste failed:', err instanceof Error ? err.message : err);
       throw err;
     } finally {
-      this.targetHwnd = null;
-      this.targetAppName = null;
-      this.targetWindowClass = null;
+      this.clearTarget();
     }
   }
 

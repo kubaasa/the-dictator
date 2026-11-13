@@ -732,6 +732,8 @@ export function registerIpcHandlers(
       const autoPaste = (store.get('dictation.autoPaste') as boolean) ?? true;
       if (autoPaste) {
         await pasteService.captureTarget();
+      } else {
+        pasteService.clearTarget();
       }
       const appName = pasteService.getAppName() ?? undefined;
 
