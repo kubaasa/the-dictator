@@ -131,6 +131,8 @@ const MIN_SAMPLE_RATE = 8_000;
 const MAX_SAMPLE_RATE = 192_000;
 const MAX_RECORDING_SECONDS = 60 * 60;
 const MAX_COMPRESSED_AUDIO_BYTES = 100 * 1024 * 1024;
+const MAX_CLOUD_WAV_BYTES = 20 * 1024 * 1024;
+const WAV_BYTES_PER_SAMPLE = 2;
 const MAX_MIGRATED_ENTRIES = 10_000;
 const MAX_ENTRY_TEXT_LENGTH = 100_000;
 const MAX_PROMPT_LENGTH = 4000;
@@ -624,14 +626,25 @@ export function registerIpcHandlers(
 
       const emptyTailWindow = hasEmptyTailWindow(metrics);
       let whisperInput: ArrayBuffer | Buffer = audioBuffer;
+      let whisperCompressed = compressedAudio;
       if (emptyTailWindow) {
         const kept = cutTrailingSilence(samples, sampleRate, metrics);
-        whisperInput = Buffer.from(kept.buffer, kept.byteOffset, kept.byteLength);
-        if (engine === 'cloud' && compressedAudio) {
-          log.info(
-            'Trailing silence %ss after %ss of audio (id=%s) — cut to %ss, sending WAV instead of WebM',
-            metrics.trailingSilenceSeconds.toFixed(1), metrics.durationSeconds.toFixed(1), entryId, (kept.length / sampleRate).toFixed(1),
+        const wavBytes = kept.length * WAV_BYTES_PER_SAMPLE;
+        const hasWebm = engine === 'cloud' && (compressedAudio?.byteLength ?? 0) > 0;
+        if (hasWebm && wavBytes > MAX_CLOUD_WAV_BYTES) {
+          log.warn(
+            'Trailing silence %ss after %ss of audio (id=%s) kept: WAV would be %s MB, sending the uncut WebM',
+            metrics.trailingSilenceSeconds.toFixed(1), metrics.durationSeconds.toFixed(1), entryId, (wavBytes / (1024 * 1024)).toFixed(1),
           );
+        } else {
+          whisperInput = Buffer.from(kept.buffer, kept.byteOffset, kept.byteLength);
+          whisperCompressed = undefined;
+          if (hasWebm) {
+            log.info(
+              'Trailing silence %ss after %ss of audio (id=%s) — cut to %ss, sending WAV instead of WebM',
+              metrics.trailingSilenceSeconds.toFixed(1), metrics.durationSeconds.toFixed(1), entryId, (kept.length / sampleRate).toFixed(1),
+            );
+          }
         }
       }
 
@@ -640,7 +653,7 @@ export function registerIpcHandlers(
       let whisper: TranscriptionResult;
       try {
         whisper = await transcriptionService.transcribeFromBuffer(
-          whisperInput, sampleRate, emptyTailWindow ? undefined : compressedAudio, abort.signal,
+          whisperInput, sampleRate, whisperCompressed, abort.signal,
         );
       } catch (transcribeErr) {
         if (abort.signal.aborted) throw new Error(`Transcription timed out after ${Math.round(adaptiveTimeout / 1000)}s`);
