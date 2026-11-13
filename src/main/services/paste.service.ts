@@ -1,4 +1,5 @@
 import { spawn, execFile, ChildProcess } from 'child_process';
+import path from 'node:path';
 import { promisify } from 'util';
 import { BrowserWindow } from 'electron';
 import logger from './logger';
@@ -6,6 +7,9 @@ import logger from './logger';
 const log = logger.scope('Paste');
 
 const execFileAsync = promisify(execFile);
+
+const SYSTEM32_DIR = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32');
+const POWERSHELL_EXE = path.join(SYSTEM32_DIR, 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 
 // Top-level window classes that are NOT valid paste targets (Windows shell UI)
 const EXCLUDED_SHELL_CLASSES = new Set([
@@ -85,13 +89,14 @@ export class PasteService {
   }
 
   private spawnPersistentProcess(): void {
-    const ps = spawn('powershell', [
+    const ps = spawn(POWERSHELL_EXE, [
       '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden',
       '-Command',
       '& { while ($true) { $line = [Console]::ReadLine(); if ($line -eq $null) { break }; try { Invoke-Expression $line } catch { Write-Error $_ } } }',
     ], {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      cwd: SYSTEM32_DIR,
     });
 
     ps.on('error', (err) => {
@@ -252,7 +257,7 @@ export class PasteService {
       if (this.psReady && this.psProcess) {
         stdout = await this.exec(CAPTURE_CMD, 3000);
       } else {
-        const result = await execFileAsync('powershell', GET_HWND_ARGS, { timeout: 3000, windowsHide: true });
+        const result = await execFileAsync(POWERSHELL_EXE, GET_HWND_ARGS, { timeout: 3000, windowsHide: true, cwd: SYSTEM32_DIR });
         stdout = result.stdout;
       }
     } catch (err) {
@@ -319,7 +324,7 @@ export class PasteService {
           '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command',
           `${PW_TYPEDEF}; ${buildPasteCmd(hwnd)}`,
         ];
-        stdout = (await execFileAsync('powershell', args, { timeout: 10000, windowsHide: true })).stdout;
+        stdout = (await execFileAsync(POWERSHELL_EXE, args, { timeout: 10000, windowsHide: true, cwd: SYSTEM32_DIR })).stdout;
       }
       // A throw inside the paste script surfaces only on stderr (the persistent loop catches
       // it), so the success token is the one signal that SendInput actually ran.

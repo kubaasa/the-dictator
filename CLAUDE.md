@@ -90,7 +90,7 @@ Adding new functionality to main process:
 - Schema: `RecordingEntry` in `src/shared/types.ts`.
 
 ### Paste flow
-- `src/main/services/paste.service.ts` keeps a persistent PowerShell process with precompiled Win32 interop (`SendInput`).
+- `src/main/services/paste.service.ts` keeps a persistent PowerShell process with precompiled Win32 interop (`SendInput`). PowerShell is started by absolute path (`POWERSHELL_EXE` under `%SystemRoot%\System32`) with `cwd` set to System32, never by bare name.
 - Call `captureTarget()` **before** any Electron UI work (state broadcast, clipboard, window show) — those can shift OS focus away from the target app.
 - Before history, overlay and clipboard, the final text passes `stripUnsafeChars` (`src/main/services/paste-text.ts`): control characters other than tab and line breaks, and bidi overrides, are removed (an ESC sequence can end a terminal's bracketed paste). For classic console windows (conhost, PuTTY, mintty, ConEmu) the clipboard copy also gets line breaks collapsed to spaces, because each pasted line would run as a command; Windows Terminal and VS Code terminals keep line breaks.
 - Electron's `clipboard` module is async since v44: `writeText` / `readText` return Promises and must be awaited (`writeClipboardVerified` in `ipc-handlers.ts`).
