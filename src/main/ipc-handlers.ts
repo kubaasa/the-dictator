@@ -839,7 +839,7 @@ export function registerIpcHandlers(
   });
 
   guardedIpc.handle(IPC.HISTORY_DELETE, (_event, id: string) => {
-    if (!id || typeof id !== 'string') {
+    if (!id || typeof id !== 'string' || id.length > MAX_ID_LENGTH) {
       return { success: false, error: 'Invalid recording ID' };
     }
     return wrapHandler('HISTORY_DELETE', () => historyService.delete(id));

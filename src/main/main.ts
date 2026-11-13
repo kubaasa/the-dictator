@@ -147,6 +147,8 @@ app.on('second-instance', () => {
 const RENDERER_RELAUNCH_FLAG = '--renderer-relaunch';
 const POST_INSTALL_FLAG = '--post-install';
 const MAIN_RENDERER_LOAD_TIMEOUT_MS = 30_000;
+const MAX_MIC_ERROR_LENGTH = 500;
+const MAX_VOICE_BANDS = 8;
 const devServerUrl = app.isPackaged ? undefined : process.env.VITE_DEV_SERVER_URL;
 
 let isQuitting = false;
@@ -500,6 +502,10 @@ function broadcastState(state: RecordingState): void {
   }
 }
 
+function isVoiceBands(value: unknown): value is number[] {
+  return Array.isArray(value) && value.length <= MAX_VOICE_BANDS && value.every((band) => typeof band === 'number');
+}
+
 function setupRecordingIpc(): void {
   guardedIpc.on(IPC.RENDERER_READY, () => {
     mainRendererReady = true;
@@ -538,18 +544,23 @@ function setupRecordingIpc(): void {
     hotkeyService.notifyRecordingStopped();
   });
 
-  guardedIpc.on(IPC.RECORDING_MIC_ERROR, (_event, errorMessage: string) => {
+  guardedIpc.on(IPC.RECORDING_MIC_ERROR, (_event, errorMessage: unknown) => {
+    const message = typeof errorMessage === 'string' && errorMessage
+      ? errorMessage.slice(0, MAX_MIC_ERROR_LENGTH)
+      : 'Microphone error';
     broadcastState('error');
     hotkeyService.notifyRecordingStopped();
     if (overlayWindow && !overlayWindow.isDestroyed()) {
-      overlayWindow.webContents.send(IPC.TRANSCRIPTION_ERROR, errorMessage);
+      overlayWindow.webContents.send(IPC.TRANSCRIPTION_ERROR, message);
     }
     setTimeout(() => {
       if (currentState === 'error') broadcastState('idle');
     }, 2500);
   });
 
-  guardedIpc.on(IPC.VOICE_ACTIVITY, (_, level: number, bands?: number[]) => {
+  guardedIpc.on(IPC.VOICE_ACTIVITY, (_, level: unknown, bands?: unknown) => {
+    if (typeof level !== 'number' || !Number.isFinite(level)) return;
+    if (bands != null && !isVoiceBands(bands)) return;
     overlayWindow?.webContents.send(IPC.VOICE_ACTIVITY, level, bands);
   });
 
