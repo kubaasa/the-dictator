@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { RecordingEntry, HistoryStats } from '../../shared/types';
-import logger from './logger';
+import logger, { dictatedText } from './logger';
 
 const log = logger.scope('History');
 
@@ -184,7 +184,7 @@ export class HistoryService {
     if (trimmed.length > MAX_QUERY_LENGTH) {
       throw new Error(`Search query too long (max ${MAX_QUERY_LENGTH} characters)`);
     }
-    log.debug('Searching:', trimmed);
+    log.debug('Searching:', dictatedText(trimmed));
     // Escape LIKE wildcards so user input like "100%" is treated literally
     const escaped = trimmed.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
     const rows = this.db.prepare(

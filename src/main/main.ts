@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import Store from 'electron-store';
 import { initSentry } from './services/sentry';
-import log from './services/logger';
+import log, { setDiagnosticLogging } from './services/logger';
 
 initSentry();
 import { TrayManager } from './tray';
@@ -93,6 +93,7 @@ if (typeof store.get('transcription.preferredCloudLanguage') !== 'string') {
   const existingLang = store.get('transcription.language') as string | undefined;
   store.set('transcription.preferredCloudLanguage', existingLang || DEFAULT_SETTINGS.transcription.preferredCloudLanguage);
 }
+setDiagnosticLogging(store.get('general.diagnosticLogging') === true);
 
 function syncAutoStart(enabled: boolean): void {
   if (!app.isPackaged) return;

@@ -43,18 +43,25 @@ log.hooks.push((message, _transport, transportName) => {
       Sentry.captureMessage(message.data.join(' '), 'error');
     }
   }
-  const breadcrumbLevel: Sentry.SeverityLevel =
-    message.level === 'warn' ? 'warning'
-      : message.level === 'verbose' || message.level === 'silly' ? 'debug'
-        : message.level;
+  if (message.level !== 'warn' && message.level !== 'error') return message;
   Sentry.addBreadcrumb({
     message: message.data.filter((item) => typeof item === 'string').join(' '),
-    level: breadcrumbLevel,
+    level: message.level === 'warn' ? 'warning' : 'error',
     category: message.scope || 'app',
   });
   return message;
 });
 
 log.initialize();
+
+let diagnosticLogging = false;
+
+export function setDiagnosticLogging(enabled: boolean): void {
+  diagnosticLogging = enabled;
+}
+
+export function dictatedText(text: string): string {
+  return diagnosticLogging ? text : `<${text.length} chars>`;
+}
 
 export default log;

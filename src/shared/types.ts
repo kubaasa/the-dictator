@@ -124,6 +124,7 @@ export interface AppSettings {
     overlayPosition: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'center';
     firstRunComplete: boolean;
     widgetTooltipShown: boolean;
+    diagnosticLogging: boolean;
   };
 }
 
@@ -233,6 +234,7 @@ ${PROMPT_PLAIN_TEXT_TAIL}`,
     overlayPosition: 'top-right',
     firstRunComplete: false,
     widgetTooltipShown: false,
+    diagnosticLogging: false,
   },
 };
 

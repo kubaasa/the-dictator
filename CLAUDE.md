@@ -105,7 +105,8 @@ Adding new functionality to main process:
 ### Logging & Sentry
 - `src/main/services/logger.ts` (`electron-log`) writes to `%APPDATA%\The Dictator\logs\main.log`. Renderer logs (`electron-log/renderer`) end up in the same file. Use scoped loggers: `logger.scope('Name')`.
 - A log hook masks API keys (`sk-proj-`, `sk-ant-`, `gsk_`). Add the prefix there when integrating a new provider.
-- `log.error` is forwarded to Sentry (`src/main/services/sentry.ts`), enabled only in packaged builds.
+- `log.error` is forwarded to Sentry (`src/main/services/sentry.ts`), enabled only in packaged builds. Only `warn` and `error` lines become Sentry breadcrumbs.
+- Dictated text, vocabulary rules and history search queries are logged through `dictatedText()` (`logger.ts`), which prints `<N chars>` unless `general.diagnosticLogging` is `true`. The setting has no UI: set it in `%APPDATA%\The Dictator\config.json` when investigating transcription problems.
 - Nothing loads `.env` into `process.env` (no dotenv, and Vite doesn't do it for its config). `SENTRY_DSN` is read at runtime and `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` at build time (sourcemap upload, plugin disabled without a token), so all of them must come from the shell environment. As a result, packaged builds currently run without a DSN.
 
 ## Native Modules — Critical Rules
@@ -162,6 +163,7 @@ Work happens on `develop`; `main` is fast-forwarded from `develop` on release. T
 - Define IPC channel names as raw strings anywhere except `src/shared/constants.ts`
 - Bundle native modules — they must always be in `vite.main.config.ts` externals
 - Send API key material to the renderer, or accept it through `SETTINGS_SET`
+- Log dictated text directly: wrap it in `dictatedText()`
 - Trust `tsc --noEmit` with the project's TypeScript — "no errors in `src`" means `src` wasn't checked (see Type checking)
 - Re-enable `PublishSingleFile` for the audio-mute helper without code signing in place
 - Use `gh release create --generate-notes` or HTML in release notes

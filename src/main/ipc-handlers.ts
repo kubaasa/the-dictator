@@ -3,7 +3,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import * as Sentry from '@sentry/electron/main';
-import logger from './services/logger';
+import logger, { dictatedText, setDiagnosticLogging } from './services/logger';
 import { IPC, TRANSCRIPTION_ENGINES, AI_PROVIDERS, API_KEY_PROVIDERS, WIDGET_TYPES, OVERLAY_POSITIONS, HOTKEY_MODES } from '../shared/constants';
 
 const log = logger.scope('IPC');
@@ -82,7 +82,7 @@ function formatNoSpeech(stats: NoSpeechStats | null): string {
 function runVocabulary(text: string, vocabulary: VocabularyEntry[], pass: number): string {
   const result = applyVocabularyReplacements(text, vocabulary);
   if (result.applied > 0) {
-    log.info('Vocabulary pass %d: %d replacement(s) applied: %s', pass, result.applied, result.summary);
+    log.info('Vocabulary pass %d: %d replacement(s) applied: %s', pass, result.applied, dictatedText(result.summary));
   }
   return result.text;
 }
@@ -411,7 +411,7 @@ export function registerIpcHandlers(
     if (settings.widget?.activeWidget !== undefined) expectOneOf('widget.activeWidget', settings.widget.activeWidget, WIDGET_TYPES);
     const general = settings.general;
     if (general?.overlayPosition !== undefined) expectOneOf('general.overlayPosition', general.overlayPosition, OVERLAY_POSITIONS);
-    for (const field of ['autoStart', 'minimizeToTray', 'firstRunComplete', 'widgetTooltipShown'] as const) {
+    for (const field of ['autoStart', 'minimizeToTray', 'firstRunComplete', 'widgetTooltipShown', 'diagnosticLogging'] as const) {
       if (general?.[field] !== undefined) expectBoolean(`general.${field}`, general[field]);
     }
     if (settings.ai?.temperature !== undefined) {
@@ -475,6 +475,10 @@ export function registerIpcHandlers(
 
     if (settings.general?.autoStart !== undefined) {
       onAutoStartChanged(store.get('general.autoStart') as boolean);
+    }
+
+    if (settings.general?.diagnosticLogging !== undefined) {
+      setDiagnosticLogging(store.get('general.diagnosticLogging') === true);
     }
 
     if (settings.audio?.soundEnabled !== undefined) {
@@ -613,14 +617,14 @@ export function registerIpcHandlers(
       if (vocabularyHit) {
         log.info(
           'Low-confidence transcript kept — vocabulary hit (id=%s avgLogprob=%s): "%s"',
-          entryId, avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3), rawText,
+          entryId, avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3), dictatedText(rawText),
         );
       }
       if (lowConfidence && !vocabularyHit) {
         log.warn(
           'Low-confidence transcript rejected (id=%s avgLogprob=%s speech=%ss longestRun=%ss noSpeech=%s): "%s"',
           entryId, avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3),
-          metrics.speechSeconds.toFixed(2), metrics.longestSpeechRunSeconds.toFixed(2), formatNoSpeech(noSpeech), rawText,
+          metrics.speechSeconds.toFixed(2), metrics.longestSpeechRunSeconds.toFixed(2), formatNoSpeech(noSpeech), dictatedText(rawText),
         );
         const unclearMsg = `Speech was too unclear to transcribe reliably. Rejected: "${rawText}"`;
         for (const win of BrowserWindow.getAllWindows()) {
@@ -633,12 +637,12 @@ export function registerIpcHandlers(
 
       const creditsLike = !!rawText && isCreditsOnly(rawText);
       if (creditsLike && metrics.speechSeconds >= CREDITS_MAX_SPEECH_SECONDS) {
-        log.info('Credits-like transcript kept (id=%s speech=%ss): "%s"', entryId, metrics.speechSeconds.toFixed(2), rawText);
+        log.info('Credits-like transcript kept (id=%s speech=%ss): "%s"', entryId, metrics.speechSeconds.toFixed(2), dictatedText(rawText));
       }
       if (!rawText || isNoiseTag(rawText) || (creditsLike && metrics.speechSeconds < CREDITS_MAX_SPEECH_SECONDS)) {
         log.info(
           'Whisper returned empty or hallucinated text: "%s" (id=%s speech=%ss longestRun=%ss noSpeech=%s) — skipping',
-          rawText ?? '', entryId, metrics.speechSeconds.toFixed(2), metrics.longestSpeechRunSeconds.toFixed(2), formatNoSpeech(noSpeech),
+          dictatedText(rawText ?? ''), entryId, metrics.speechSeconds.toFixed(2), metrics.longestSpeechRunSeconds.toFixed(2), formatNoSpeech(noSpeech),
         );
         const noSpeechMsg = creditsLike
           ? `No speech detected. Rejected hallucinated text: "${rawText}"`
@@ -654,7 +658,7 @@ export function registerIpcHandlers(
       setTranscriptionState('processing');
       const { text: speechText, stripped } = stripTrailingCredits(rawText);
       if (stripped) {
-        log.warn('Dropped trailing credits hallucination (id=%s): "%s"', entryId, stripped);
+        log.warn('Dropped trailing credits hallucination (id=%s): "%s"', entryId, dictatedText(stripped));
       }
       // Vocabulary runs before AI so the model sees the intended spellings instead of
       // "correcting" the trigger phrase; a second pass only if the model rewrote the text.
