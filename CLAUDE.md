@@ -16,8 +16,9 @@ npm run build:helper  # Publish the audio-mute helper (requires .NET 8 SDK)
 npm run dist          # build:helper + build + create NSIS installer
 npm run publish       # build:helper + build + create installer + publish to GitHub
 npm run lint          # ESLint (TypeScript + import rules)
-npm run rebuild       # Rebuild native modules (run after npm install or Node version change)
 ```
+
+There is no native rebuild step: every native module ships N-API prebuilds that work across Node and Electron versions, and `npmRebuild: false` in `electron-builder.yml` keeps packaging from compiling them.
 
 There is no automated test suite.
 
@@ -112,7 +113,7 @@ The following packages are **native modules** or large non-bundleable packages. 
 | Package | Reason |
 |---|---|
 | `uiohook-napi` | Native C++ addon (global hotkeys) |
-| `better-sqlite3` | Native C++ addon (SQLite) |
+| `better-sqlite3` | Native N-API addon (SQLite), pinned to 13.0.3; prebuilds for other platforms are excluded in `electron-builder.yml` |
 | `@huggingface/transformers` | ML pipeline library, must stay external |
 | `onnxruntime-node` | Native ONNX runtime with DirectML GPU support |
 | `openai` | Must be loaded at runtime in main process |

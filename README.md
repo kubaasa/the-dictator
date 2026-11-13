@@ -150,13 +150,12 @@ Both widgets float above all windows during recording and hide when idle.
 
 ### Building from Source
 
-**Prerequisites:** Node.js 18+, Git, Windows 10+, C++ build tools (Visual Studio Installer or `npm install --global windows-build-tools`).
+**Prerequisites:** Node.js 18+, Git, Windows 10+.
 
 ```bash
 git clone https://github.com/kubaasa/the-dictator.git
 cd the-dictator
 npm install
-npm run rebuild
 ```
 
 | Command | What it does |
@@ -391,13 +390,12 @@ Oba widgety unoszą się nad wszystkimi oknami podczas nagrywania i znikają gdy
 
 ### Build ze źródła
 
-**Wymagania:** Node.js 18+, Git, Windows 10+, narzędzia C++ (Visual Studio Installer albo `npm install --global windows-build-tools`).
+**Wymagania:** Node.js 18+, Git, Windows 10+.
 
 ```bash
 git clone https://github.com/kubaasa/the-dictator.git
 cd the-dictator
 npm install
-npm run rebuild
 ```
 
 | Komenda | Co robi |
