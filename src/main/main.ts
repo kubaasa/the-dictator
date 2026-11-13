@@ -690,11 +690,15 @@ app.on('ready', () => {
 
   // Detect first launch after installation (marker created by NSIS installer)
   const installMarkerPath = path.join(app.getPath('userData'), '.install-marker');
+  let installerAutoStart: boolean | null = null;
   try {
     if (fs.existsSync(installMarkerPath)) {
+      const marker = fs.readFileSync(installMarkerPath, 'utf8').trim();
       fs.unlinkSync(installMarkerPath);
+      if (marker === 'autostart=1') installerAutoStart = true;
+      if (marker === 'autostart=0') installerAutoStart = false;
       isPostInstallLaunch = true;
-      log.info('Post-install launch detected — will show main window');
+      log.info('Post-install launch detected (marker: %s) — will show main window', marker);
     }
   } catch (err) {
     log.warn('Failed to check/remove install marker:', err);
@@ -713,16 +717,10 @@ app.on('ready', () => {
 
   migrateApiKeys(store);
 
-  // Bidirectional sync: adopt the OS auto-start state into the store so the
-  // UI toggle stays consistent with what the NSIS installer (or the user via
-  // Windows settings) has configured.
-  const systemAutoStart = app.getLoginItemSettings({ args: ['--autostart'] }).openAtLogin;
-  const storeAutoStart = store.get('general.autoStart') as boolean;
-  if (systemAutoStart !== storeAutoStart) {
-    store.set('general.autoStart', systemAutoStart);
+  if (installerAutoStart !== null) {
+    store.set('general.autoStart', installerAutoStart);
   }
-
-  const autoStartEnabled = store.get('general.autoStart') as boolean;
+  const autoStartEnabled = store.get('general.autoStart') === true;
   syncAutoStart(autoStartEnabled);
 
   const launchedAtStartup = process.argv.includes('--autostart');

@@ -11,11 +11,17 @@ Var AutoStartCheckbox
 Var CreateDesktopShortcut
 Var CreateStartMenuShortcut
 Var CreateAutoStart
+Var HadInstallerAutoStart
 !endif
 
 ; force per-user install, skip multi-user selection page
 !macro customInstallMode
   StrCpy $isForceCurrentInstall "1"
+!macroend
+
+!macro customInit
+  ReadRegStr $HadInstallerAutoStart HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "The Dictator"
+  ClearErrors
 !macroend
 
 !macro customHeader
@@ -75,16 +81,25 @@ FunctionEnd
   ; The main process reads and deletes this file on startup to show the window.
   CreateDirectory "$APPDATA\The Dictator"
   FileOpen $0 "$APPDATA\The Dictator\.install-marker" w
-  FileWrite $0 "1"
+  ${If} ${Silent}
+    ${If} $HadInstallerAutoStart != ""
+      FileWrite $0 "autostart=1"
+    ${Else}
+      FileWrite $0 "keep"
+    ${EndIf}
+  ${ElseIf} $CreateAutoStart == ${BST_CHECKED}
+    FileWrite $0 "autostart=1"
+  ${Else}
+    FileWrite $0 "autostart=0"
+  ${EndIf}
   FileClose $0
 
   ; Silent install (electron-updater auto-update) bypasses OptionsPageLeave,
   ; leaving checkbox state at 0 — without this, every auto-update would silently
-  ; strip the user's shortcuts and autostart entry.
+  ; strip the user's shortcuts.
   ${If} ${Silent}
     StrCpy $CreateDesktopShortcut ${BST_CHECKED}
     StrCpy $CreateStartMenuShortcut ${BST_CHECKED}
-    StrCpy $CreateAutoStart ${BST_CHECKED}
   ${EndIf}
 
   ${If} $CreateDesktopShortcut == ${BST_CHECKED}
@@ -94,11 +109,6 @@ FunctionEnd
   ; Flat layout — directly in Programs, not nested under a folder
   ${If} $CreateStartMenuShortcut == ${BST_CHECKED}
     CreateShortCut "$SMPROGRAMS\${SHORTCUT_NAME}.lnk" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0
-  ${EndIf}
-
-  ${If} $CreateAutoStart == ${BST_CHECKED}
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" \
-      "The Dictator" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --autostart'
   ${EndIf}
 !macroend
 
@@ -114,4 +124,8 @@ FunctionEnd
   RMDir "$SMPROGRAMS\${SHORTCUT_NAME}"
 
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "The Dictator"
+  ${IfNot} ${isUpdated}
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_ID}"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${APP_ID}"
+  ${EndIf}
 !macroend

@@ -40,6 +40,7 @@ npx -y -p typescript@5.9.3 tsc --noEmit
 - Dev script: `scripts/dev.mjs` (Vite dev server + Electron watch/restart)
 - Security fuses: `scripts/after-pack.js` (flipped after packaging). `strictlyRequireAllFuses` is on, so a new Electron fuse must be listed there or packaging fails. `@electron/fuses` 2.x is ESM-only, hence the dynamic `import()`.
 - Custom NSIS pages: `assets/installer.nsh` (desktop shortcut + auto-start options)
+- Autostart has one owner, the app: `general.autoStart` is the source of truth and `syncAutoStart` (`main.ts`) writes or removes the Run entry on every start. The installer never writes the entry; it passes the checkbox choice through `.install-marker` (`autostart=1`, `autostart=0`, or `keep` on a silent update). The uninstaller removes the entry, except during an update. Electron 45 quotes the exe path and does not recognise the unquoted entry written by Electron 40, so the OS state must not be adopted back into the store.
 - Installer images: `assets/nsis-header.bmp`, `assets/nsis-sidebar.bmp` (generate via `node scripts/generate-installer-images.js`)
 - `postinstall` runs `scripts/patch-electron-icon.js`, which swaps the icon of the dev Electron binary so the taskbar shows the app icon in `npm run dev`. It resolves the binary through `require('electron')`, which also downloads it: since Electron 42 the `electron` package no longer downloads the binary on install.
 - Audio-mute helper: `tools/audio-mute-helper/` (C# .NET 8, NAudio.Wasapi, self-contained). `build:helper` publishes it to `bin/Release/net8.0-windows/win-x64/publish/`, which `extraResources` copies to `resources/audio-mute-helper/`. `PublishSingleFile` is intentionally `false`: AV software (AVG CyberCapture) flags self-extracting single-file bundles and blocks the spawn long enough for it to time out.
@@ -136,7 +137,7 @@ The following packages are **native modules** or large non-bundleable packages. 
 
 2. Native `.node` and `.dll` files are unpacked by the `**/*.node` and `**/*.dll` globs in `asarUnpack` (`electron-builder.yml`). `asar.smartUnpack` is `false` on purpose: by default electron-builder unpacks every package that contains a binary in full, and unpacked `.js` files are outside ASAR integrity validation. Only a module that needs some other file on the real filesystem gets an extra glob for exactly that file.
 
-Skipping either step will cause the production build to fail or crash at runtime.
+Skipping the first step will cause the production build to fail or crash at runtime.
 
 ## Release Process
 
