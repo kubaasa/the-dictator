@@ -11,6 +11,9 @@ const log = logger.scope('AI');
 
 const AI_METHOD_TIMEOUT_MS = 25_000;
 
+const OPENAI_CLIENT_DEFAULTS = { baseURL: 'https://api.openai.com/v1', organization: null, project: null };
+const ANTHROPIC_CLIENT_DEFAULTS = { baseURL: 'https://api.anthropic.com' };
+
 interface ModelAnswer {
   text: string;
   stop: string | null;
@@ -58,7 +61,7 @@ export class AIService {
 
   static async validateOpenAIKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
     try {
-      const client = new OpenAI({ apiKey });
+      const client = new OpenAI({ apiKey, ...OPENAI_CLIENT_DEFAULTS });
       await client.models.list({ timeout: 5000 });
       return { valid: true };
     } catch (err) {
@@ -68,7 +71,7 @@ export class AIService {
 
   static async validateAnthropicKey(apiKey: string): Promise<{ valid: boolean; error?: string }> {
     try {
-      const client = new Anthropic({ apiKey });
+      const client = new Anthropic({ apiKey, ...ANTHROPIC_CLIENT_DEFAULTS });
       await client.messages.countTokens({
         model: 'claude-haiku-4-5-20251001',
         messages: [{ role: 'user', content: 'validate' }],
@@ -190,7 +193,7 @@ ${basePrompt}${vocabSection}
     const apiKey = getApiKey(this.store, 'ai.openaiApiKey');
     if (!apiKey) throw new Error('OpenAI API key for AI processing is not set.');
     if (!this.openaiClient || this.openaiClientKey !== apiKey) {
-      this.openaiClient = new OpenAI({ apiKey });
+      this.openaiClient = new OpenAI({ apiKey, ...OPENAI_CLIENT_DEFAULTS });
       this.openaiClientKey = apiKey;
     }
     return this.openaiClient;
@@ -200,7 +203,7 @@ ${basePrompt}${vocabSection}
     const apiKey = getApiKey(this.store, 'ai.anthropicApiKey');
     if (!apiKey) throw new Error('Anthropic API key for AI processing is not set.');
     if (!this.anthropicClient || this.anthropicClientKey !== apiKey) {
-      this.anthropicClient = new Anthropic({ apiKey });
+      this.anthropicClient = new Anthropic({ apiKey, ...ANTHROPIC_CLIENT_DEFAULTS });
       this.anthropicClientKey = apiKey;
     }
     return this.anthropicClient;

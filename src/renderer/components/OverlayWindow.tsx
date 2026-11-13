@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import log from 'electron-log/renderer';
-import type { RecordingState, WidgetType, HotkeyMode, AppSettings } from '../../shared/types';
+import type { RecordingState, WidgetType, HotkeyMode, AppSettings, RendererSettings } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import { useVoiceActivity } from '../hooks/useVoiceActivity';
 import { useTranscriptionResult } from '../hooks/useTranscriptionResult';
@@ -21,7 +21,7 @@ export function OverlayWindow({ state }: OverlayWindowProps) {
   const [hotkeyMode, setHotkeyMode] = useState<HotkeyMode>('toggle');
   useEffect(() => {
     let cancelled = false;
-    const apply = (settings: AppSettings) => {
+    const apply = (settings: RendererSettings) => {
       if (settings.widget) setActiveWidget(settings.widget.activeWidget);
       if (settings.hotkey) {
         setShortcuts(settings.hotkey.shortcuts);

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, powerMonitor, protocol, screen, session, systemPreferences } from 'electron';
+import { app, BrowserWindow, ipcMain, powerMonitor, protocol, screen, session, systemPreferences, type WebContents } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -12,8 +12,8 @@ import { HotkeyService } from './services/hotkey.service';
 import { TranscriptionService } from './services/transcription.service';
 import { HistoryService } from './services/history.service';
 import { UpdateService } from './services/update.service';
-import { migrateApiKeys, decryptSettingsForRenderer } from './services/secure-storage';
-import { registerIpcHandlers, getOverlaySize, activeOverlaySize, clampToVisibleArea, placeOverlay } from './ipc-handlers';
+import { migrateApiKeys } from './services/secure-storage';
+import { registerIpcHandlers, broadcastSettings, getOverlaySize, activeOverlaySize, clampToVisibleArea, placeOverlay } from './ipc-handlers';
 import { getAssetPath } from './paths';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
@@ -145,6 +145,7 @@ app.on('second-instance', () => {
 const RENDERER_RELAUNCH_FLAG = '--renderer-relaunch';
 const POST_INSTALL_FLAG = '--post-install';
 const MAIN_RENDERER_LOAD_TIMEOUT_MS = 30_000;
+const devServerUrl = app.isPackaged ? undefined : process.env.VITE_DEV_SERVER_URL;
 
 let isQuitting = false;
 let isPostInstallLaunch = false;
@@ -250,8 +251,8 @@ function createMainWindow(): BrowserWindow {
     },
   });
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL);
+  if (devServerUrl) {
+    win.loadURL(devServerUrl);
   } else {
     win.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
@@ -365,8 +366,8 @@ function createOverlayWindow(): BrowserWindow {
   // Blur immediately on focus so the overlay never steals focus from other apps
   win.on('focus', () => win.blur());
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(`${process.env.VITE_DEV_SERVER_URL}#overlay`);
+  if (devServerUrl) {
+    win.loadURL(`${devServerUrl}#overlay`);
   } else {
     win.loadFile(
       path.join(__dirname, '../renderer/index.html'),
@@ -581,6 +582,46 @@ function setupWindowControlIpc(): void {
   });
 }
 
+const ALLOWED_PERMISSIONS = new Set(['media', 'clipboard-sanitized-write']);
+const reportedPermissionDenials = new Set<string>();
+
+function isAppUrl(url: string): boolean {
+  if (!devServerUrl) return url.startsWith('file://');
+  try {
+    return new URL(url).origin === new URL(devServerUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+function isAppContents(contents: WebContents | null, requestingUrl: string): boolean {
+  if (!contents) return isAppUrl(requestingUrl);
+  return [mainWindow, overlayWindow].some((win) => win !== null && !win.isDestroyed() && win.webContents === contents);
+}
+
+function decidePermission(contents: WebContents | null, requestingUrl: string, permission: string, wantsVideo: boolean): boolean {
+  const allowed = ALLOWED_PERMISSIONS.has(permission) && !wantsVideo && isAppContents(contents, requestingUrl);
+  if (!allowed) {
+    const denial = wantsVideo ? `${permission} (video)` : permission;
+    if (!reportedPermissionDenials.has(denial)) {
+      reportedPermissionDenials.add(denial);
+      log.warn('Permission denied: %s', denial);
+    }
+  }
+  return allowed;
+}
+
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-navigate', (event) => {
+    const devNavigation = devServerUrl !== undefined && (isAppUrl(event.url) || event.url.startsWith('devtools://'));
+    if (devNavigation) return;
+    event.preventDefault();
+    log.warn('Blocked navigation away from the app');
+  });
+  contents.on('will-attach-webview', (event) => event.preventDefault());
+});
+
 app.on('ready', () => {
   // CSP headers — only in production (strict CSP breaks Vite dev server HMR)
   if (app.isPackaged) {
@@ -596,13 +637,12 @@ app.on('ready', () => {
     });
   }
 
-  // Auto-grant all permissions (standalone desktop app — only loads our own renderer code).
-  // Three layers needed for full coverage: synchronous check, async request, device access.
-  session.defaultSession.setPermissionCheckHandler(() => true);
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
-    callback(true);
+  session.defaultSession.setPermissionCheckHandler((contents, permission, requestingOrigin, details) =>
+    decidePermission(contents, requestingOrigin, permission, details.mediaType === 'video'));
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    const wantsVideo = 'mediaTypes' in details && (details.mediaTypes ?? []).includes('video');
+    callback(decidePermission(contents, details.requestingUrl, permission, wantsVideo));
   });
-  session.defaultSession.setDevicePermissionHandler(() => true);
 
   // Resolve recordings directory early so the protocol handler can validate paths.
   const recordingsDir = path.resolve(path.join(app.getPath('userData'), 'recordings'));
@@ -708,25 +748,16 @@ app.on('ready', () => {
     onAutoStartToggle: (enabled) => {
       store.set('general.autoStart', enabled);
       syncAutoStart(enabled);
-      const decrypted = decryptSettingsForRenderer(store.store);
-      for (const win of BrowserWindow.getAllWindows()) {
-        win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
-      }
+      broadcastSettings(store);
     },
     onAudioCuesToggle: (enabled) => {
       store.set('audio.soundEnabled', enabled);
-      const decrypted = decryptSettingsForRenderer(store.store);
-      for (const win of BrowserWindow.getAllWindows()) {
-        win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
-      }
+      broadcastSettings(store);
     },
     onMuteOthersToggle: (enabled) => {
       store.set('audio.muteOthersWhileRecording', enabled);
       audioMuteService.setEnabled(enabled);
-      const decrypted = decryptSettingsForRenderer(store.store);
-      for (const win of BrowserWindow.getAllWindows()) {
-        win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
-      }
+      broadcastSettings(store);
     },
     // Escape hatch for a widget stranded where the user can't see it (powered-off
     // display that Windows still enumerates, exotic DPI layouts): center on primary

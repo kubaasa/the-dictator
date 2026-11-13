@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import log from 'electron-log/renderer';
-import { DEFAULT_SETTINGS, type AppSettings, type HotkeyMode } from '../../shared/types';
+import { DEFAULT_SETTINGS, type HotkeyMode } from '../../shared/types';
 import { useToast } from './Toast';
 import { Segmented } from './ui/Segmented';
 import { Switch } from './ui/Switch';
@@ -152,7 +152,7 @@ export function ShortcutsPage() {
   const inputRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    window.dictator.getSettings().then((s: AppSettings) => {
+    window.dictator.getSettings().then((s) => {
       const stored = s.hotkey?.shortcuts ?? DEFAULT_SETTINGS.hotkey.shortcuts;
       setShortcuts({ ...DEFAULT_SETTINGS.hotkey.shortcuts, ...stored });
       setHotkeyMode(s.hotkey?.mode ?? DEFAULT_SETTINGS.hotkey.mode);

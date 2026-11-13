@@ -57,6 +57,8 @@ The app runs in **three isolated Electron contexts** — each has different capa
 - **Never use `require()` in renderer code.** It will throw at runtime.
 - All communication with main process goes through `window.dictator.*` (exposed via `contextBridge` in preload).
 - `window.dictator` API is typed in `src/renderer/global.d.ts`.
+- Session permissions are an allowlist in `src/main/main.ts` (`ALLOWED_PERMISSIONS`: `media` without video, `clipboard-sanitized-write`), granted only to the app's own windows. A feature that needs another Chromium permission must be added there; a denial is logged once per session as `Permission denied: <name>`.
+- Navigation, `window.open` and `<webview>` are blocked for every `webContents` (`web-contents-created` in `main.ts`). The dev server URL is honoured only when `!app.isPackaged`.
 
 ### IPC — single source of truth
 - All IPC channel names are defined **only** in `src/shared/constants.ts` (the `IPC` object).
@@ -80,6 +82,7 @@ Adding new functionality to main process:
 - Access in renderer: `window.dictator.getSettings()` / `setSettings()`.
 - Legacy settings shapes are migrated in the `SETTINGS_GET` handler (`src/main/ipc-handlers.ts`). When renaming or removing a field, update `AppSettings`, `DEFAULT_SETTINGS` **and** the migration.
 - API keys are encrypted with `safeStorage` (`src/main/services/secure-storage.ts`); the rest of the store is plain JSON.
+- Key material never leaves the main process. The renderer gets `RendererSettings`: no key fields, only `apiKeys` with `set` / `hint` / `length` per provider. `SETTINGS_SET` drops key fields from the patch; keys are written only through `API_KEY_SAVE` (validates, then stores) and `API_KEY_DELETE`.
 
 ### History
 - SQLite via `better-sqlite3`, managed by `src/main/services/history.service.ts`.
@@ -88,6 +91,7 @@ Adding new functionality to main process:
 ### Paste flow
 - `src/main/services/paste.service.ts` keeps a persistent PowerShell process with precompiled Win32 interop (`SendInput`).
 - Call `captureTarget()` **before** any Electron UI work (state broadcast, clipboard, window show) — those can shift OS focus away from the target app.
+- Before history, overlay and clipboard, the final text passes `stripUnsafeChars` (`src/main/services/paste-text.ts`): control characters other than tab and line breaks, and bidi overrides, are removed (an ESC sequence can end a terminal's bracketed paste). For classic console windows (conhost, PuTTY, mintty, ConEmu) the clipboard copy also gets line breaks collapsed to spaces, because each pasted line would run as a command; Windows Terminal and VS Code terminals keep line breaks.
 - Paste = write text to clipboard + send Ctrl+V. Always Ctrl+V, no per-app shortcuts: Shift+Insert broke VS Code / Cursor terminals that enable the kitty keyboard protocol (v1.3.4). The previous clipboard content is not restored.
 
 ### Audio mute helper
@@ -140,7 +144,7 @@ Work happens on `develop`; `main` is fast-forwarded from `develop` on release. T
 2. Add a plain-text, user-facing entry to `CHANGELOG.md`
 3. Commit: `release: vX.Y.Z - <short summary>`
 4. Fast-forward `main` to `develop` and push both
-5. `npm run publish` (electron-builder creates the GitHub release; needs `GH_TOKEN`)
+5. `npm run publish` (electron-builder creates the GitHub release; needs `GH_TOKEN`). Set the token for that one command only, never as a persistent user variable, because every npm lifecycle script would inherit it: `$env:GH_TOKEN = (gh auth token); npm run publish; Remove-Item Env:GH_TOKEN`
 6. Set release notes as plain text or simple Markdown (`gh release edit vX.Y.Z --notes "..."`), one bullet per line. electron-updater reads the notes from GitHub's Atom feed, where the body is already rendered to HTML; `UpdateService.releaseNotesToText` strips that HTML to plain lines, so the update window shows one list item per bullet and nothing else (no headings, links or nested lists).
 
 ## Conventions
@@ -154,6 +158,7 @@ Work happens on `develop`; `main` is fast-forwarded from `develop` on release. T
 - `require()` anything in renderer — it's sandboxed, no Node.js access
 - Define IPC channel names as raw strings anywhere except `src/shared/constants.ts`
 - Bundle native modules — they must always be in `vite.main.config.ts` externals
+- Send API key material to the renderer, or accept it through `SETTINGS_SET`
 - Trust `tsc --noEmit` with the project's TypeScript — "no errors in `src`" means `src` wasn't checked (see Type checking)
 - Re-enable `PublishSingleFile` for the audio-mute helper without code signing in place
 - Use `gh release create --generate-notes` or HTML in release notes

@@ -4,22 +4,25 @@ import path from 'node:path';
 import fs from 'node:fs';
 import * as Sentry from '@sentry/electron/main';
 import logger from './services/logger';
-import { IPC, TRANSCRIPTION_ENGINES, AI_PROVIDERS, WIDGET_TYPES, OVERLAY_POSITIONS, HOTKEY_MODES } from '../shared/constants';
+import { IPC, TRANSCRIPTION_ENGINES, AI_PROVIDERS, API_KEY_PROVIDERS, WIDGET_TYPES, OVERLAY_POSITIONS, HOTKEY_MODES } from '../shared/constants';
 
 const log = logger.scope('IPC');
-import type { AppSettings, SettingsPatch, RecordingState, WidgetType, RecordingEntry, VocabularyEntry } from '../shared/types';
+import type {
+  ApiKeyProvider, AppSettings, RendererSettings, SettingsPatch, RecordingState, WidgetType, RecordingEntry, VocabularyEntry,
+} from '../shared/types';
 import { TranscriptionService, type TranscriptionResult } from './services/transcription.service';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
 import { HotkeyService } from './services/hotkey.service';
 import { HistoryService } from './services/history.service';
 import { UpdateService } from './services/update.service';
-import { encryptSettingsKeys, decryptSettingsForRenderer, getApiKey } from './services/secure-storage';
+import { deleteApiKey, getApiKey, setApiKey, stripApiKeyFields, toRendererSettings } from './services/secure-storage';
 import {
   measureSpeech, isNoiseTag, isCreditsOnly, isLowConfidence, hasEmptyTailWindow, cutTrailingSilence, stripTrailingCredits, countWords,
   MIN_SPEECH_SECONDS, CREDITS_MAX_SPEECH_SECONDS, type NoSpeechStats,
 } from './services/transcript-filter';
 import { applyVocabularyReplacements, selectTriggeredEntries } from './services/vocabulary';
+import { stripUnsafeChars, textForPasteTarget } from './services/paste-text';
 import Store from 'electron-store';
 import { DEFAULT_SETTINGS, LEGACY_PROMPT_TAIL, PROMPT_PLAIN_TEXT_TAIL } from '../shared/types';
 
@@ -106,6 +109,20 @@ export function clampToVisibleArea(x: number, y: number, w: number, h: number): 
     x: Math.max(wx, Math.min(x, wx + ww - w)),
     y: Math.max(wy, Math.min(y, wy + wh - h)),
   };
+}
+
+export function broadcastSettings(store: Store<AppSettings>): RendererSettings {
+  const settings = toRendererSettings(store.store);
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(IPC.SETTINGS_ON_CHANGE, settings);
+  }
+  return settings;
+}
+
+function validateApiKey(provider: ApiKeyProvider, apiKey: string): Promise<{ valid: boolean; error?: string }> {
+  if (provider === 'groq') return TranscriptionService.validateGroqApiKey(apiKey);
+  if (provider === 'openai') return AIService.validateOpenAIKey(apiKey);
+  return AIService.validateAnthropicKey(apiKey);
 }
 
 const TRANSCRIPTION_TIMEOUT_MIN_MS = 30_000;
@@ -281,7 +298,7 @@ export function registerIpcHandlers(
       store.set('vocabulary', migrated);
     }
 
-    return decryptSettingsForRenderer(store.store);
+    return toRendererSettings(store.store);
   });
 
   ipcMain.handle(IPC.SETTINGS_SET, (_event, settings: SettingsPatch) => {
@@ -376,14 +393,10 @@ export function registerIpcHandlers(
     for (const field of ['localModelSize', 'language', 'preferredCloudLanguage'] as const) {
       if (transcription?.[field] !== undefined) expectString(`transcription.${field}`, transcription[field], 100);
     }
-    if (transcription?.groqApiKey !== undefined) expectString('transcription.groqApiKey', transcription.groqApiKey, 500);
     const ai = settings.ai;
     if (ai?.provider !== undefined) expectOneOf('ai.provider', ai.provider, AI_PROVIDERS);
     for (const field of ['openaiModel', 'anthropicModel'] as const) {
       if (ai?.[field] !== undefined) expectString(`ai.${field}`, ai[field], 100);
-    }
-    for (const field of ['openaiApiKey', 'anthropicApiKey'] as const) {
-      if (ai?.[field] !== undefined) expectString(`ai.${field}`, ai[field], 500);
     }
     const dictation = settings.dictation;
     for (const field of ['aiPostProcessing', 'autoPaste'] as const) {
@@ -422,7 +435,7 @@ export function registerIpcHandlers(
       }
     }
 
-    encryptSettingsKeys(settings);
+    stripApiKeyFields(settings);
     for (const [key, value] of Object.entries(settings)) {
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
         store.set(key, { ...(store.get(key) as object), ...value });
@@ -430,10 +443,7 @@ export function registerIpcHandlers(
         store.set(key, value);
       }
     }
-    const decrypted = decryptSettingsForRenderer(store.store);
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send(IPC.SETTINGS_ON_CHANGE, decrypted);
-    }
+    const rendererSettings = broadcastSettings(store);
 
     if (settings.hotkey) {
       const hotkey = store.get('hotkey');
@@ -471,7 +481,7 @@ export function registerIpcHandlers(
       onAudioCuesChanged(store.get('audio.soundEnabled') as boolean);
     }
 
-    return decrypted;
+    return rendererSettings;
   });
 
   ipcMain.handle(IPC.TRANSCRIPTION_CHECK_READY, () => {
@@ -672,6 +682,7 @@ export function registerIpcHandlers(
       if (text !== vocabText) {
         text = runVocabulary(text, selectTriggeredEntries(speechText, vocabEntries), 2);
       }
+      text = stripUnsafeChars(text);
 
       // Capture the focused window FIRST — before any Electron UI operations
       // (broadcastState, clipboard, scheduleIdle) that may shift OS focus.
@@ -694,7 +705,7 @@ export function registerIpcHandlers(
         avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3), formatNoSpeech(noSpeech),
       );
 
-      const clipboardOk = await writeClipboardVerified(text);
+      const clipboardOk = await writeClipboardVerified(textForPasteTarget(text, pasteService.getTargetWindowClass()));
 
       if (!clipboardOk) {
         log.warn('Clipboard write not confirmed after %d attempts — skipping auto-paste', CLIPBOARD_WRITE_ATTEMPTS);
@@ -927,16 +938,24 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.UPDATE_GET_INFO, () => updateService.getUpdateInfo());
   ipcMain.handle(IPC.UPDATE_INSTALL, () => updateService.quitAndInstall());
 
-  ipcMain.handle(IPC.GROQ_VALIDATE_KEY, async (_event, apiKey: string) => {
-    if (!apiKey || typeof apiKey !== 'string') return { valid: false, error: 'No API key provided' };
-    return TranscriptionService.validateGroqApiKey(apiKey);
+  ipcMain.handle(IPC.API_KEY_SAVE, async (_event, provider: ApiKeyProvider, apiKey: string) => {
+    expectOneOf('provider', provider, API_KEY_PROVIDERS);
+    if (typeof apiKey !== 'string' || !apiKey.trim() || apiKey.length > 500) {
+      return { valid: false, error: 'No API key provided' };
+    }
+    const key = apiKey.trim();
+    const result = await validateApiKey(provider, key);
+    if (result.valid) {
+      setApiKey(store, provider, key);
+      broadcastSettings(store);
+    }
+    return result;
   });
 
-  ipcMain.handle(IPC.AI_VALIDATE_KEY, async (_event, provider: string, apiKey: string) => {
-    if (!apiKey || typeof apiKey !== 'string') return { valid: false, error: 'No API key provided' };
-    if (provider === 'openai') return AIService.validateOpenAIKey(apiKey);
-    if (provider === 'anthropic') return AIService.validateAnthropicKey(apiKey);
-    return { valid: false, error: `Unknown provider: ${provider}` };
+  ipcMain.handle(IPC.API_KEY_DELETE, (_event, provider: ApiKeyProvider) => {
+    expectOneOf('provider', provider, API_KEY_PROVIDERS);
+    deleteApiKey(store, provider);
+    broadcastSettings(store);
   });
 
   ipcMain.on(IPC.SHELL_OPEN_EXTERNAL, (_event, url: string) => {

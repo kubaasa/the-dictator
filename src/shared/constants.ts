@@ -45,7 +45,9 @@ export const IPC = {
   AI_ENHANCE_PROMPT: 'ai:enhance-prompt',
   AI_GENERATE_PROMPT_NAME: 'ai:generate-prompt-name',
   AI_GET_OPENAI_MODELS: 'ai:get-openai-models',
-  AI_VALIDATE_KEY: 'ai:validate-key',
+
+  API_KEY_SAVE: 'api-key:save',
+  API_KEY_DELETE: 'api-key:delete',
 
   APP_QUIT: 'app:quit',
   APP_SHOW_SETTINGS: 'app:show-settings',
@@ -56,8 +58,6 @@ export const IPC = {
 
   WIDGET_DRAG_START: 'widget:drag-start',
   WIDGET_DRAG_END: 'widget:drag-end',
-
-  GROQ_VALIDATE_KEY: 'groq:validate-key',
 
   SHELL_OPEN_EXTERNAL: 'shell:open-external',
 
@@ -73,6 +73,7 @@ export const IPC = {
 
 export const TRANSCRIPTION_ENGINES = ['local', 'cloud'] as const;
 export const AI_PROVIDERS = ['openai', 'anthropic'] as const;
+export const API_KEY_PROVIDERS = ['groq', 'openai', 'anthropic'] as const;
 export const WIDGET_TYPES = ['voicebar', 'maxi'] as const;
 export const OVERLAY_POSITIONS = ['top-right', 'top-left', 'bottom-right', 'bottom-left', 'center'] as const;
 export const HOTKEY_MODES = ['toggle', 'push-to-talk'] as const;

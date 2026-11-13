@@ -523,6 +523,9 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
     setGroqApiKey('');
     setValidation('idle');
     setValidationError('');
+    window.dictator.apiKeys.delete('groq').catch((err) => {
+      log.error('[OnboardingWizard] Failed to delete Groq key:', err);
+    });
   };
 
   const handleValidateKey = async () => {
@@ -531,7 +534,7 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
     setValidation('validating');
     setValidationError('');
     try {
-      const result = await window.dictator.groq.validateKey(key);
+      const result = await window.dictator.apiKeys.save('groq', key);
       if (result.valid) {
         setValidation('valid');
       } else {
@@ -565,7 +568,6 @@ export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps)
         engine,
         localModelSize: modelSize,
         language: 'en',
-        groqApiKey: engine === 'cloud' ? groqApiKey.trim() : current.transcription.groqApiKey,
       },
       audio: {
         ...current.audio,

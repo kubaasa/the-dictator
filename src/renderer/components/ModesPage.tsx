@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import log from 'electron-log/renderer';
 import type { ModelStatus } from '../hooks/useModelStatus';
-import type { AIProviderType, TranscriptionEngine, AppSettings, SavedPrompt } from '../../shared/types';
+import type { AIProviderType, TranscriptionEngine, RendererSettings, SavedPrompt } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
 import { WHISPER_MODELS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
 import { ApiKeyInput } from './ApiKeyInput';
@@ -55,6 +55,7 @@ export function ModesPage(props: ModelStatus) {
   const [engine, setEngine] = useState<TranscriptionEngine>('cloud');
   const [modelSize, setModelSize] = useState('base');
   const [language, setLanguage] = useState('en');
+  const [apiKeys, setApiKeys] = useState<RendererSettings['apiKeys'] | null>(null);
   const [groqApiKey, setGroqApiKey] = useState('');
   const [groqValidation, setGroqValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
   const [groqValidationError, setGroqValidationError] = useState('');
@@ -92,26 +93,26 @@ export function ModesPage(props: ModelStatus) {
     }
   }, []);
 
-  const syncFromSettings = useCallback((s: AppSettings) => {
+  const syncFromSettings = useCallback((s: RendererSettings) => {
     setEngine(s.transcription.engine);
     setModelSize(s.transcription.localModelSize);
     setLanguage(s.transcription.language);
-    setGroqApiKey(s.transcription.groqApiKey);
-    setGroqValidation(s.transcription.groqApiKey ? 'valid' : 'idle');
+    setApiKeys(s.apiKeys);
+    setGroqApiKey('');
+    setGroqValidation(s.apiKeys.groq.set ? 'valid' : 'idle');
     setAiPostProcessing(s.dictation.aiPostProcessing);
     setAutoPaste(s.dictation.autoPaste);
     setCustomPrompt(s.dictation.customPrompt);
     setSavedPrompts(s.dictation.savedPrompts ?? []);
     setSelectedPromptId(s.dictation.selectedPromptId ?? 'default');
     setAiProvider(s.ai.provider);
-    setAiOpenaiKey(s.ai.openaiApiKey);
+    setAiOpenaiKey('');
     setAiOpenaiModel(s.ai.openaiModel);
-    setOpenaiKeySaved(!!s.ai.openaiApiKey);
-    setAiAnthropicKey(s.ai.anthropicApiKey);
+    setOpenaiKeySaved(s.apiKeys.openai.set);
+    setAiAnthropicKey('');
     setAiAnthropicModel(s.ai.anthropicModel);
-    setAnthropicKeySaved(!!s.ai.anthropicApiKey);
-    const activeKey = s.ai.provider === 'openai' ? s.ai.openaiApiKey : s.ai.anthropicApiKey;
-    setAiKeyValidation(activeKey ? 'valid' : 'idle');
+    setAnthropicKeySaved(s.apiKeys.anthropic.set);
+    setAiKeyValidation(s.apiKeys[s.ai.provider].set ? 'valid' : 'idle');
     setAiKeyValidationError('');
   }, []);
 
@@ -123,7 +124,7 @@ export function ModesPage(props: ModelStatus) {
         ? DEFAULT_SETTINGS.dictation.customPrompt
         : (s.dictation.savedPrompts ?? []).find(p => p.id === id)?.content ?? DEFAULT_SETTINGS.dictation.customPrompt;
       setLastLoadedPrompt(loaded);
-      if (s.ai.provider === 'openai' && s.ai.openaiApiKey) fetchOpenAIModels();
+      if (s.ai.provider === 'openai' && s.apiKeys.openai.set) fetchOpenAIModels();
       setSettingsLoaded(true);
     }).catch((err) => {
       log.error('Failed to load settings in ModesPage:', err);
@@ -148,7 +149,7 @@ export function ModesPage(props: ModelStatus) {
     setLanguage(newLang);
     try {
       const current = await window.dictator.getSettings();
-      const patch: Partial<AppSettings['transcription']> = { language: newLang };
+      const patch: Partial<RendererSettings['transcription']> = { language: newLang };
       if (current.transcription.engine === 'cloud') {
         patch.preferredCloudLanguage = newLang;
       }
@@ -177,7 +178,7 @@ export function ModesPage(props: ModelStatus) {
     setEngine(newEngine);
     try {
       const current = await window.dictator.getSettings();
-      const patch: Partial<AppSettings['transcription']> = { engine: newEngine };
+      const patch: Partial<RendererSettings['transcription']> = { engine: newEngine };
       await window.dictator.setSettings({
         transcription: { ...current.transcription, ...patch },
       });
@@ -200,13 +201,10 @@ export function ModesPage(props: ModelStatus) {
     setGroqValidation('validating');
     setGroqValidationError('');
     try {
-      const result = await window.dictator.groq.validateKey(key);
+      const result = await window.dictator.apiKeys.save('groq', key);
       if (result.valid) {
         setGroqValidation('valid');
-        const current = await window.dictator.getSettings();
-        await window.dictator.setSettings({
-          transcription: { ...current.transcription, groqApiKey: key },
-        });
+        setGroqApiKey('');
         addToast('success', 'Groq API key verified and saved');
       } else {
         setGroqValidation('invalid');
@@ -225,10 +223,7 @@ export function ModesPage(props: ModelStatus) {
       setGroqApiKey('');
       setGroqValidation('idle');
       setGroqValidationError('');
-      const current = await window.dictator.getSettings();
-      await window.dictator.setSettings({
-        transcription: { ...current.transcription, groqApiKey: '' },
-      });
+      await window.dictator.apiKeys.delete('groq');
       addToast('success', 'Groq API key removed');
     } catch (err) {
       log.error('[ModesPage] Failed to delete Groq key:', err);
@@ -407,9 +402,8 @@ export function ModesPage(props: ModelStatus) {
 
   const handleProviderChange = async (provider: AIProviderType) => {
     setAiProvider(provider);
-    const activeKey = provider === 'openai' ? aiOpenaiKey : aiAnthropicKey;
     const isSaved = provider === 'openai' ? openaiKeySaved : anthropicKeySaved;
-    setAiKeyValidation(isSaved && activeKey ? 'valid' : 'idle');
+    setAiKeyValidation(isSaved ? 'valid' : 'idle');
     setAiKeyValidationError('');
     try {
       const current = await window.dictator.getSettings();
@@ -442,18 +436,11 @@ export function ModesPage(props: ModelStatus) {
     setAiKeyValidation('validating');
     setAiKeyValidationError('');
     try {
-      const result = await window.dictator.ai.validateKey(aiProvider, key);
+      const result = await window.dictator.apiKeys.save(aiProvider, key);
       if (result.valid) {
         setAiKeyValidation('valid');
         const current = await window.dictator.getSettings();
-        const updates: Record<string, unknown> = {};
-        if (aiProvider === 'openai') {
-          updates.openaiApiKey = key;
-          updates.openaiModel = aiOpenaiModel;
-        } else {
-          updates.anthropicApiKey = key;
-          updates.anthropicModel = aiAnthropicModel;
-        }
+        const updates = aiProvider === 'openai' ? { openaiModel: aiOpenaiModel } : { anthropicModel: aiAnthropicModel };
         await window.dictator.setSettings({
           ai: { ...current.ai, ...updates },
         });
@@ -480,20 +467,14 @@ export function ModesPage(props: ModelStatus) {
 
   const handleAiKeyDelete = async () => {
     try {
-      const current = await window.dictator.getSettings();
       if (aiProvider === 'openai') {
         setAiOpenaiKey('');
         setOpenaiKeySaved(false);
-        await window.dictator.setSettings({
-          ai: { ...current.ai, openaiApiKey: '' },
-        });
-      } else if (aiProvider === 'anthropic') {
+      } else {
         setAiAnthropicKey('');
         setAnthropicKeySaved(false);
-        await window.dictator.setSettings({
-          ai: { ...current.ai, anthropicApiKey: '' },
-        });
       }
+      await window.dictator.apiKeys.delete(aiProvider);
       setAiKeyValidation('idle');
       setAiKeyValidationError('');
       addToast('success', 'API key removed');
@@ -503,8 +484,8 @@ export function ModesPage(props: ModelStatus) {
   };
 
   const isAiConfigured =
-    aiProvider === 'openai' ? !!aiOpenaiKey :
-    aiProvider === 'anthropic' ? !!aiAnthropicKey :
+    aiProvider === 'openai' ? openaiKeySaved :
+    aiProvider === 'anthropic' ? anthropicKeySaved :
     false;
 
   const isPromptModified = !isCreatingNewPrompt && customPrompt !== lastLoadedPrompt;
@@ -552,6 +533,7 @@ export function ModesPage(props: ModelStatus) {
                   onSave={handleGroqKeyVerify}
                   onDelete={handleGroqKeyDelete}
                   saved={groqValidation === 'valid'}
+                  savedStatus={apiKeys?.groq}
                   invalid={groqValidation === 'invalid'}
                   buttonLabel={groqValidation === 'validating' ? 'Verifying...' : 'Verify'}
                   buttonDisabled={groqValidation === 'validating' || !groqApiKey.trim()}
@@ -653,6 +635,7 @@ export function ModesPage(props: ModelStatus) {
                     onSave={handleAiKeySave}
                     onDelete={handleAiKeyDelete}
                     saved={activeAiKeySaved}
+                    savedStatus={apiKeys?.[aiProvider]}
                     invalid={aiKeyValidation === 'invalid'}
                     buttonLabel={aiKeyValidation === 'validating' ? 'Verifying...' : 'Verify'}
                     buttonDisabled={aiKeyValidation === 'validating' || !activeAiKey.trim()}

@@ -1,19 +1,22 @@
 import { safeStorage } from 'electron';
 import Store from 'electron-store';
-import type { AppSettings, SettingsPatch } from '../../shared/types';
+import type { ApiKeyProvider, ApiKeyStatus, AppSettings, RendererSettings, SettingsPatch } from '../../shared/types';
 import logger from './logger';
 
 const log = logger.scope('SecureStorage');
 
 const ENCRYPTED_PREFIX = 'enc:';
+const KEY_HINT_LENGTH = 4;
 
-const API_KEY_PATHS = [
-  'transcription.groqApiKey',
-  'ai.openaiApiKey',
-  'ai.anthropicApiKey',
-] as const;
+const API_KEY_PATHS = {
+  groq: 'transcription.groqApiKey',
+  openai: 'ai.openaiApiKey',
+  anthropic: 'ai.anthropicApiKey',
+} as const;
 
-type ApiKeyPath = typeof API_KEY_PATHS[number];
+type ApiKeyPath = typeof API_KEY_PATHS[ApiKeyProvider];
+
+const statusByStoredValue = new Map<string, ApiKeyStatus>();
 
 function encryptValue(value: string): string {
   if (!value || !safeStorage.isEncryptionAvailable()) return value;
@@ -33,6 +36,20 @@ function decryptValue(value: string): string {
   }
 }
 
+function apiKeyStatus(stored: string | undefined): ApiKeyStatus {
+  if (!stored) return { set: false, hint: '', length: 0 };
+  const cached = statusByStoredValue.get(stored);
+  if (cached) return cached;
+  const key = decryptValue(stored);
+  const status: ApiKeyStatus = {
+    set: key.length > 0,
+    hint: key.length > KEY_HINT_LENGTH ? key.slice(0, KEY_HINT_LENGTH) : '',
+    length: key.length,
+  };
+  statusByStoredValue.set(stored, status);
+  return status;
+}
+
 // Call once after app.ready (safeStorage requires the app to be ready)
 export function migrateApiKeys(store: Store<AppSettings>): void {
   if (!safeStorage.isEncryptionAvailable()) {
@@ -40,7 +57,7 @@ export function migrateApiKeys(store: Store<AppSettings>): void {
     return;
   }
 
-  for (const keyPath of API_KEY_PATHS) {
+  for (const keyPath of Object.values(API_KEY_PATHS)) {
     const value = store.get(keyPath) as string;
     if (value && !value.startsWith(ENCRYPTED_PREFIX)) {
       store.set(keyPath, encryptValue(value));
@@ -53,45 +70,36 @@ export function getApiKey(store: Store<AppSettings>, keyPath: ApiKeyPath): strin
   return decryptValue(value);
 }
 
-export function encryptSettingsKeys(settings: SettingsPatch): void {
-  if (!safeStorage.isEncryptionAvailable()) return;
+export function setApiKey(store: Store<AppSettings>, provider: ApiKeyProvider, key: string): void {
+  store.set(API_KEY_PATHS[provider], encryptValue(key));
+}
 
-  if (settings.transcription && 'groqApiKey' in settings.transcription) {
-    const key = settings.transcription.groqApiKey;
-    if (key && !key.startsWith(ENCRYPTED_PREFIX)) {
-      settings.transcription = { ...settings.transcription, groqApiKey: encryptValue(key) };
+export function deleteApiKey(store: Store<AppSettings>, provider: ApiKeyProvider): void {
+  store.set(API_KEY_PATHS[provider], '');
+}
+
+export function stripApiKeyFields(patch: SettingsPatch): void {
+  const sections = patch as Record<string, unknown>;
+  for (const keyPath of Object.values(API_KEY_PATHS)) {
+    const [section, field] = keyPath.split('.');
+    const value = sections[section];
+    if (typeof value === 'object' && value !== null) {
+      delete (value as Record<string, unknown>)[field];
     }
-  }
-  if (settings.ai) {
-    const ai = { ...settings.ai };
-    if ('openaiApiKey' in ai && ai.openaiApiKey && !ai.openaiApiKey.startsWith(ENCRYPTED_PREFIX)) {
-      ai.openaiApiKey = encryptValue(ai.openaiApiKey);
-    }
-    if ('anthropicApiKey' in ai && ai.anthropicApiKey && !ai.anthropicApiKey.startsWith(ENCRYPTED_PREFIX)) {
-      ai.anthropicApiKey = encryptValue(ai.anthropicApiKey);
-    }
-    settings.ai = ai;
   }
 }
 
-export function decryptSettingsForRenderer(raw: AppSettings): AppSettings {
-  const settings = { ...raw };
-
-  if (settings.transcription) {
-    settings.transcription = { ...settings.transcription };
-    if (settings.transcription.groqApiKey) {
-      settings.transcription.groqApiKey = decryptValue(settings.transcription.groqApiKey);
-    }
-  }
-  if (settings.ai) {
-    settings.ai = { ...settings.ai };
-    if (settings.ai.openaiApiKey) {
-      settings.ai.openaiApiKey = decryptValue(settings.ai.openaiApiKey);
-    }
-    if (settings.ai.anthropicApiKey) {
-      settings.ai.anthropicApiKey = decryptValue(settings.ai.anthropicApiKey);
-    }
-  }
-
-  return settings;
+export function toRendererSettings(raw: AppSettings): RendererSettings {
+  const { groqApiKey, ...transcription } = raw.transcription;
+  const { openaiApiKey, anthropicApiKey, ...ai } = raw.ai;
+  return {
+    ...raw,
+    transcription,
+    ai,
+    apiKeys: {
+      groq: apiKeyStatus(groqApiKey),
+      openai: apiKeyStatus(openaiApiKey),
+      anthropic: apiKeyStatus(anthropicApiKey),
+    },
+  };
 }

@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 import 'electron-log/preload';
 import '@sentry/electron/preload';
 import { IPC } from '../shared/constants';
-import type { AppSettings, SettingsPatch, RecordingState, TranscriptionResult, RecordingEntry, HistoryStats, UpdateState } from '../shared/types';
+import type {
+  ApiKeyProvider, RendererSettings, SettingsPatch, RecordingState, TranscriptionResult, RecordingEntry, HistoryStats, UpdateState,
+} from '../shared/types';
 
 export interface DictatorAPI {
   initRecording: () => void;
@@ -25,9 +27,9 @@ export interface DictatorAPI {
   onModelDone: (callback: () => void) => () => void;
   onModelError: (callback: (msg: string) => void) => () => void;
 
-  getSettings: () => Promise<AppSettings>;
-  setSettings: (settings: SettingsPatch) => Promise<AppSettings>;
-  onSettingsChange: (callback: (settings: AppSettings) => void) => () => void;
+  getSettings: () => Promise<RendererSettings>;
+  setSettings: (settings: SettingsPatch) => Promise<RendererSettings>;
+  onSettingsChange: (callback: (settings: RendererSettings) => void) => () => void;
 
   sendVoiceActivity: (level: number, bands?: number[]) => void;
   onVoiceActivity: (callback: (level: number, bands?: number[]) => void) => () => void;
@@ -53,11 +55,11 @@ export interface DictatorAPI {
     enhancePrompt: (rawPrompt: string) => Promise<{ success: boolean; result?: string; error?: string }>;
     generatePromptName: (promptContent: string) => Promise<{ success: boolean; name?: string; error?: string }>;
     getOpenAIModels: () => Promise<{ success: boolean; models: { value: string; label: string }[]; error?: string }>;
-    validateKey: (provider: string, apiKey: string) => Promise<{ valid: boolean; error?: string }>;
   };
 
-  groq: {
-    validateKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>;
+  apiKeys: {
+    save: (provider: ApiKeyProvider, apiKey: string) => Promise<{ valid: boolean; error?: string }>;
+    delete: (provider: ApiKeyProvider) => Promise<void>;
   };
 
   checkMicSystemPermission: () => Promise<string>;
@@ -136,7 +138,7 @@ const api: DictatorAPI = {
   getSettings: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
   setSettings: (settings) => ipcRenderer.invoke(IPC.SETTINGS_SET, settings),
   onSettingsChange: (callback) => {
-    const handler = (_event: Electron.IpcRendererEvent, settings: AppSettings) => callback(settings);
+    const handler = (_event: Electron.IpcRendererEvent, settings: RendererSettings) => callback(settings);
     ipcRenderer.on(IPC.SETTINGS_ON_CHANGE, handler);
     return () => ipcRenderer.removeListener(IPC.SETTINGS_ON_CHANGE, handler);
   },
@@ -178,11 +180,11 @@ const api: DictatorAPI = {
     enhancePrompt: (rawPrompt) => ipcRenderer.invoke(IPC.AI_ENHANCE_PROMPT, rawPrompt),
     generatePromptName: (promptContent) => ipcRenderer.invoke(IPC.AI_GENERATE_PROMPT_NAME, promptContent),
     getOpenAIModels: () => ipcRenderer.invoke(IPC.AI_GET_OPENAI_MODELS),
-    validateKey: (provider, apiKey) => ipcRenderer.invoke(IPC.AI_VALIDATE_KEY, provider, apiKey),
   },
 
-  groq: {
-    validateKey: (apiKey) => ipcRenderer.invoke(IPC.GROQ_VALIDATE_KEY, apiKey),
+  apiKeys: {
+    save: (provider, apiKey) => ipcRenderer.invoke(IPC.API_KEY_SAVE, provider, apiKey),
+    delete: (provider) => ipcRenderer.invoke(IPC.API_KEY_DELETE, provider),
   },
 
   audio: {

@@ -1,7 +1,9 @@
 import { AUTO_MIC_DEVICE_ID } from './constants';
 
+type SettingsSections = Omit<RendererSettings, 'apiKeys'>;
+
 /** Payload of settings:set — each top-level section is shallow-merged into the stored one. */
-export type SettingsPatch = { [K in keyof AppSettings]?: Partial<AppSettings[K]> };
+export type SettingsPatch = { [K in keyof SettingsSections]?: Partial<SettingsSections[K]> };
 
 export interface TranscriptionResult {
   id?: string;
@@ -125,7 +127,21 @@ export interface AppSettings {
   };
 }
 
-export const LEGACY_PROMPT_TAIL = 'Respond with ONLY the reformatted message wrapped in the required tags.';
+export type ApiKeyProvider = 'groq' | 'openai' | 'anthropic';
+
+export interface ApiKeyStatus {
+  set: boolean;
+  hint: string;
+  length: number;
+}
+
+export type RendererSettings = Omit<AppSettings, 'transcription' | 'ai'> & {
+  transcription: Omit<AppSettings['transcription'], 'groqApiKey'>;
+  ai: Omit<AppSettings['ai'], 'openaiApiKey' | 'anthropicApiKey'>;
+  apiKeys: Record<ApiKeyProvider, ApiKeyStatus>;
+};
+
+export const LEGACY_PROMPT_TAIL ='Respond with ONLY the reformatted message wrapped in the required tags.';
 export const PROMPT_PLAIN_TEXT_TAIL = 'Respond with ONLY the reformatted message, as plain text without any tags.';
 
 export const DEFAULT_SETTINGS: AppSettings = {

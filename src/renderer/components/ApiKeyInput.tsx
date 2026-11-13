@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import type { ApiKeyStatus } from '../../shared/types';
 import { ConfirmDeleteButton } from './ui/ConfirmDeleteButton';
 
 function maskKey(key: string): string {
@@ -8,12 +9,18 @@ function maskKey(key: string): string {
   return `${prefix}${'●'.repeat(4)} (${key.length} chars)`;
 }
 
+function maskStatus({ hint, length }: ApiKeyStatus): string {
+  if (!hint) return '●'.repeat(length);
+  return `${hint}${'●'.repeat(4)} (${length} chars)`;
+}
+
 interface ApiKeyInputProps {
   value: string;
   onChange: (v: string) => void;
   onSave: () => void;
   onDelete?: () => void;
   saved?: boolean;
+  savedStatus?: ApiKeyStatus;
   invalid?: boolean;
   buttonLabel?: string;
   buttonDisabled?: boolean;
@@ -26,6 +33,7 @@ export function ApiKeyInput({
   onSave,
   onDelete,
   saved = false,
+  savedStatus,
   invalid = false,
   buttonLabel,
   buttonDisabled = false,
@@ -60,7 +68,7 @@ export function ApiKeyInput({
         <div className="flex-1 relative min-w-0">
           <div className="flex items-center rounded-lg border border-border bg-surface-sunken px-3 py-1.5 text-sm font-mono text-text-muted tracking-wider">
             <span className="text-accent/50 mr-2 shrink-0">[ENC]</span>
-            <span className="min-w-0 truncate text-text-dim">{maskKey(value)}</span>
+            <span className="min-w-0 truncate text-text-dim">{savedStatus ? maskStatus(savedStatus) : maskKey(value)}</span>
             <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-3 font-sans text-[11px] tracking-normal text-ok">
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.4} stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 12.5l4.5 4.5L19 7" />

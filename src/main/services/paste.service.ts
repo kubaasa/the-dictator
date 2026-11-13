@@ -64,6 +64,7 @@ const GET_HWND_ARGS = [
 export class PasteService {
   private targetHwnd: string | null = null;
   private targetAppName: string | null = null;
+  private targetWindowClass: string | null = null;
   private psProcess: ChildProcess | null = null;
   private psReady = false;
   private commandQueue: Array<{ cmd: string; resolve: (output: string) => void; reject: (err: Error) => void }> = [];
@@ -244,6 +245,7 @@ export class PasteService {
 
     this.targetHwnd = null;
     this.targetAppName = null;
+    this.targetWindowClass = null;
 
     let stdout: string;
     try {
@@ -276,11 +278,16 @@ export class PasteService {
 
     this.targetHwnd = hwnd;
     this.targetAppName = processName;
+    this.targetWindowClass = windowClass;
     log.info('Captured paste target (class: %s, process: %s)', windowClass, processName);
   }
 
   getAppName(): string | null {
     return this.targetAppName;
+  }
+
+  getTargetWindowClass(): string | null {
+    return this.targetWindowClass;
   }
 
   private isOwnWindow(hwnd: string): boolean {
@@ -326,6 +333,7 @@ export class PasteService {
     } finally {
       this.targetHwnd = null;
       this.targetAppName = null;
+      this.targetWindowClass = null;
     }
   }
 
