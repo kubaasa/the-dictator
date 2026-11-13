@@ -103,7 +103,7 @@ Adding new functionality to main process:
 ### Audio mute helper
 - `src/main/services/audio-mute.service.ts` spawns `audio-mute-helper.exe` and talks to it via JSON lines over stdin/stdout. If the helper doesn't report `ready` within 5 s, the feature disables itself.
 - The app's own audio sessions are excluded by **executable path** (`QueryFullProcessImageName`), not by PID tree — PID matching raced with lazily spawned Electron audio processes and muted the app's own chimes (v1.3.2).
-- The pre-mute volume snapshot is persisted in `audio.muteSnapshot` and restored on next start after a crash.
+- The pre-mute volume snapshot is persisted in `audio.muteSnapshot` and restored on next start after a crash. The field is deliberately absent from `OPTIONAL_SETTINGS_FIELDS` (`ipc-handlers.ts`): the renderer echoes it back with the rest of `audio`, and `SETTINGS_SET` has to drop that copy, neither storing nor rejecting it.
 
 ### Logging & Sentry
 - `src/main/services/logger.ts` (`electron-log`) writes to `%APPDATA%\The Dictator\logs\main.log`. Renderer logs (`electron-log/renderer`) end up in the same file. Use scoped loggers: `logger.scope('Name')`.

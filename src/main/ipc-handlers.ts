@@ -137,7 +137,7 @@ const MAX_PROMPT_LENGTH = 4000;
 const MAX_ID_LENGTH = 200;
 
 const OPTIONAL_SETTINGS_FIELDS: Record<string, readonly string[]> = {
-  audio: ['deviceLabel', 'muteSnapshot'],
+  audio: ['deviceLabel'],
   widget: ['x', 'y'],
 };
 
@@ -454,9 +454,6 @@ export function registerIpcHandlers(
       }
     }
     if (settings.audio?.deviceId !== undefined) expectString('audio.deviceId', settings.audio.deviceId, 500);
-    if (settings.audio && 'muteSnapshot' in settings.audio) {
-      throw new Error('"audio.muteSnapshot" is managed by the main process');
-    }
     if (settings.widget) {
       for (const axis of ['x', 'y'] as const) {
         const v = settings.widget[axis];
