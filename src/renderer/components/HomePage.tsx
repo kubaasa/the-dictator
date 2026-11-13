@@ -86,8 +86,8 @@ export function HomePage({ recordingState, audioRecorder, onNavigate }: HomePage
   useEffect(() => { refreshStats(); }, [refreshStats]);
 
   const [recentEntries, setRecentEntries] = useState<RecordingEntry[]>([]);
-  const [newEntryId, setNewEntryId] = useState<number | null>(null);
-  const prevTopIdRef = useRef<number | null>(null);
+  const [newEntryId, setNewEntryId] = useState<string | null>(null);
+  const prevTopIdRef = useRef<string | null>(null);
 
   const refreshRecent = useCallback(async () => {
     try {

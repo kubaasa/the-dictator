@@ -71,16 +71,19 @@ export const IPC = {
   MIC_CHECK_SYSTEM_PERMISSION: 'mic:check-system-permission',
 } as const;
 
-export const WHISPER_MODEL_DESCRIPTIONS: Record<string, string> = {
-  tiny: 'Fastest, lowest accuracy',
-  base: 'Good balance of speed and accuracy',
-  small: 'Better accuracy, moderate speed',
-  medium: 'High accuracy, slower',
-  'large-v3': 'Best accuracy, slowest',
-  'large-v3-turbo': 'Near large-v3 accuracy, much faster',
-  'distil-medium.en': 'Fast, near-medium quality (English only)',
-  'distil-large-v3': '2x faster than large-v3, similar accuracy',
-};
+export const TRANSCRIPTION_ENGINES = ['local', 'cloud'] as const;
+export const AI_PROVIDERS = ['openai', 'anthropic'] as const;
+export const WIDGET_TYPES = ['voicebar', 'maxi'] as const;
+export const OVERLAY_POSITIONS = ['top-right', 'top-left', 'bottom-right', 'bottom-left', 'center'] as const;
+export const HOTKEY_MODES = ['toggle', 'push-to-talk'] as const;
+
+export const WHISPER_MODELS: readonly { value: string; label: string; size: string; description: string }[] = [
+  { value: 'tiny', label: 'Tiny', size: '150 MB', description: 'Fastest, lowest accuracy' },
+  { value: 'base', label: 'Base', size: '280 MB', description: 'Good balance of speed and accuracy' },
+  { value: 'small', label: 'Small', size: '~1 GB', description: 'Better accuracy, moderate speed' },
+  { value: 'medium', label: 'Medium', size: '1.5 GB', description: 'High accuracy, slower' },
+  { value: 'large-v3', label: 'Large v3', size: '3.1 GB', description: 'Best accuracy, slowest' },
+];
 
 export const OPENAI_MODELS: { value: string; label: string }[] = [
   { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },

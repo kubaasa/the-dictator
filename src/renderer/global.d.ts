@@ -5,8 +5,3 @@ declare global {
     dictator: DictatorAPI;
   }
 }
-
-declare module '*.png' {
-  const src: string;
-  export default src;
-}

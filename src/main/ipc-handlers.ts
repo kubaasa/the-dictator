@@ -4,11 +4,11 @@ import path from 'node:path';
 import fs from 'node:fs';
 import * as Sentry from '@sentry/electron/main';
 import logger from './services/logger';
-import { IPC } from '../shared/constants';
+import { IPC, TRANSCRIPTION_ENGINES, AI_PROVIDERS, WIDGET_TYPES, OVERLAY_POSITIONS, HOTKEY_MODES } from '../shared/constants';
 
 const log = logger.scope('IPC');
 import type { AppSettings, SettingsPatch, RecordingState, WidgetType, RecordingEntry, VocabularyEntry } from '../shared/types';
-import { TranscriptionService } from './services/transcription.service';
+import { TranscriptionService, type TranscriptionResult } from './services/transcription.service';
 import { PasteService } from './services/paste.service';
 import { AIService } from './services/ai.service';
 import { HotkeyService } from './services/hotkey.service';
@@ -16,7 +16,7 @@ import { HistoryService } from './services/history.service';
 import { UpdateService } from './services/update.service';
 import { encryptSettingsKeys, decryptSettingsForRenderer, getApiKey } from './services/secure-storage';
 import {
-  measureSpeech, isNoiseTag, isCreditsOnly, isLowConfidence, isShortLowConfidence, stripTrailingCredits,
+  measureSpeech, isNoiseTag, isCreditsOnly, isLowConfidence, hasEmptyTailWindow, cutTrailingSilence, stripTrailingCredits, countWords,
   MIN_SPEECH_SECONDS, CREDITS_MAX_SPEECH_SECONDS, type NoSpeechStats,
 } from './services/transcript-filter';
 import { applyVocabularyReplacements, selectTriggeredEntries } from './services/vocabulary';
@@ -121,6 +121,24 @@ function expectObject(name: string, value: unknown): void {
 function expectArray(name: string, value: unknown): void {
   if (!Array.isArray(value)) {
     throw new Error(`Invalid value for "${name}": expected array`);
+  }
+}
+
+function expectBoolean(name: string, value: unknown): void {
+  if (typeof value !== 'boolean') {
+    throw new Error(`Invalid value for "${name}": expected boolean`);
+  }
+}
+
+function expectString(name: string, value: unknown, maxLength: number): void {
+  if (typeof value !== 'string' || value.length > maxLength) {
+    throw new Error(`Invalid value for "${name}": expected string of at most ${maxLength} characters`);
+  }
+}
+
+function expectOneOf(name: string, value: unknown, allowed: readonly string[]): void {
+  if (typeof value !== 'string' || !allowed.includes(value)) {
+    throw new Error(`Invalid value for "${name}": "${String(value)}"`);
   }
 }
 
@@ -352,8 +370,36 @@ export function registerIpcHandlers(
         }
       }
     }
-    if (settings.hotkey?.mode !== undefined && settings.hotkey.mode !== 'toggle' && settings.hotkey.mode !== 'push-to-talk') {
-      throw new Error(`Invalid value for "hotkey.mode": "${String(settings.hotkey.mode)}"`);
+    if (settings.hotkey?.mode !== undefined) expectOneOf('hotkey.mode', settings.hotkey.mode, HOTKEY_MODES);
+    const transcription = settings.transcription;
+    if (transcription?.engine !== undefined) expectOneOf('transcription.engine', transcription.engine, TRANSCRIPTION_ENGINES);
+    for (const field of ['localModelSize', 'language', 'preferredCloudLanguage'] as const) {
+      if (transcription?.[field] !== undefined) expectString(`transcription.${field}`, transcription[field], 100);
+    }
+    if (transcription?.groqApiKey !== undefined) expectString('transcription.groqApiKey', transcription.groqApiKey, 500);
+    const ai = settings.ai;
+    if (ai?.provider !== undefined) expectOneOf('ai.provider', ai.provider, AI_PROVIDERS);
+    for (const field of ['openaiModel', 'anthropicModel'] as const) {
+      if (ai?.[field] !== undefined) expectString(`ai.${field}`, ai[field], 100);
+    }
+    for (const field of ['openaiApiKey', 'anthropicApiKey'] as const) {
+      if (ai?.[field] !== undefined) expectString(`ai.${field}`, ai[field], 500);
+    }
+    const dictation = settings.dictation;
+    for (const field of ['aiPostProcessing', 'autoPaste'] as const) {
+      if (dictation?.[field] !== undefined) expectBoolean(`dictation.${field}`, dictation[field]);
+    }
+    if (dictation?.selectedPromptId !== undefined) expectString('dictation.selectedPromptId', dictation.selectedPromptId, 100);
+    const audio = settings.audio;
+    for (const field of ['soundEnabled', 'callMode', 'muteOthersWhileRecording'] as const) {
+      if (audio?.[field] !== undefined) expectBoolean(`audio.${field}`, audio[field]);
+    }
+    if (audio?.deviceLabel !== undefined) expectString('audio.deviceLabel', audio.deviceLabel, 200);
+    if (settings.widget?.activeWidget !== undefined) expectOneOf('widget.activeWidget', settings.widget.activeWidget, WIDGET_TYPES);
+    const general = settings.general;
+    if (general?.overlayPosition !== undefined) expectOneOf('general.overlayPosition', general.overlayPosition, OVERLAY_POSITIONS);
+    for (const field of ['autoStart', 'minimizeToTray', 'firstRunComplete', 'widgetTooltipShown'] as const) {
+      if (general?.[field] !== undefined) expectBoolean(`general.${field}`, general[field]);
     }
     if (settings.ai?.temperature !== undefined) {
       const t = settings.ai.temperature;
@@ -523,28 +569,47 @@ export function registerIpcHandlers(
         Math.max(TRANSCRIPTION_TIMEOUT_MIN_MS, audioDurationSec * 3000),
       );
 
-      let timeoutId: ReturnType<typeof setTimeout>;
-      const { text: rawText, avgLogprob, noSpeech } = await Promise.race([
-        transcriptionService.transcribeFromBuffer(audioBuffer, sampleRate, compressedAudio).then((result) => {
-          clearTimeout(timeoutId);
-          return result;
-        }),
-        new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error(`Transcription timed out after ${Math.round(adaptiveTimeout / 1000)}s`)), adaptiveTimeout);
-        }),
-      ]);
+      const emptyTailWindow = hasEmptyTailWindow(metrics);
+      let whisperInput: ArrayBuffer | Buffer = audioBuffer;
+      if (emptyTailWindow) {
+        const kept = cutTrailingSilence(samples, sampleRate, metrics);
+        whisperInput = Buffer.from(kept.buffer, kept.byteOffset, kept.byteLength);
+        if (engine === 'cloud' && compressedAudio) {
+          log.info(
+            'Trailing silence %ss after %ss of audio (id=%s) — cut to %ss, sending WAV instead of WebM',
+            metrics.trailingSilenceSeconds.toFixed(1), metrics.durationSeconds.toFixed(1), entryId, (kept.length / sampleRate).toFixed(1),
+          );
+        }
+      }
 
-      const lowConfidenceReason = !rawText
-        ? null
-        : isLowConfidence(avgLogprob)
-          ? 'Low-confidence'
-          : isShortLowConfidence(rawText, metrics, avgLogprob)
-            ? 'Short low-confidence'
-            : null;
-      if (rawText && lowConfidenceReason) {
+      const abort = new AbortController();
+      const timeoutId = setTimeout(() => abort.abort(), adaptiveTimeout);
+      let whisper: TranscriptionResult;
+      try {
+        whisper = await transcriptionService.transcribeFromBuffer(
+          whisperInput, sampleRate, emptyTailWindow ? undefined : compressedAudio, abort.signal,
+        );
+      } catch (transcribeErr) {
+        if (abort.signal.aborted) throw new Error(`Transcription timed out after ${Math.round(adaptiveTimeout / 1000)}s`);
+        throw transcribeErr;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      const { text: rawText, avgLogprob, noSpeech } = whisper;
+
+      const vocabEntries = (store.get('vocabulary') as VocabularyEntry[]) ?? [];
+      const lowConfidence = !!rawText && isLowConfidence(rawText, avgLogprob);
+      const vocabularyHit = lowConfidence && selectTriggeredEntries(rawText, vocabEntries).length > 0;
+      if (vocabularyHit) {
+        log.info(
+          'Low-confidence transcript kept — vocabulary hit (id=%s avgLogprob=%s): "%s"',
+          entryId, avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3), rawText,
+        );
+      }
+      if (lowConfidence && !vocabularyHit) {
         log.warn(
-          '%s transcript rejected (id=%s avgLogprob=%s speech=%ss longestRun=%ss noSpeech=%s): "%s"',
-          lowConfidenceReason, entryId, avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3),
+          'Low-confidence transcript rejected (id=%s avgLogprob=%s speech=%ss longestRun=%ss noSpeech=%s): "%s"',
+          entryId, avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3),
           metrics.speechSeconds.toFixed(2), metrics.longestSpeechRunSeconds.toFixed(2), formatNoSpeech(noSpeech), rawText,
         );
         const unclearMsg = `Speech was too unclear to transcribe reliably. Rejected: "${rawText}"`;
@@ -583,7 +648,6 @@ export function registerIpcHandlers(
       }
       // Vocabulary runs before AI so the model sees the intended spellings instead of
       // "correcting" the trigger phrase; a second pass only if the model rewrote the text.
-      const vocabEntries = (store.get('vocabulary') as VocabularyEntry[]) ?? [];
       const vocabText = runVocabulary(speechText, vocabEntries, 1);
       let text: string;
       try {
@@ -622,11 +686,12 @@ export function registerIpcHandlers(
       setTranscriptionState('done', DONE_STATE_MS);
       // words/s of the raw transcript vs audio length: normal dictation lands around 1.6–2.0,
       // a value well below ~1.3 on a long recording means Whisper dropped part of the speech.
-      const rawWords = rawText.trim().split(/\s+/).filter(Boolean).length;
+      const rawWords = countWords(rawText);
       log.info(
-        'Transcription done. id=%s autoPaste=%s, chars=%d, audio=%ss, speech=%ss, longestRun=%ss, rawWords=%d, wps=%s, avgLogprob=%s, noSpeech=%s',
+        'Transcription done. id=%s autoPaste=%s, chars=%d, audio=%ss, speech=%ss, longestRun=%ss, trailingSilence=%ss, rawWords=%d, wps=%s, avgLogprob=%s, noSpeech=%s',
         entryId, autoPaste, text.length, audioDurationSec.toFixed(1), metrics.speechSeconds.toFixed(1), metrics.longestSpeechRunSeconds.toFixed(2),
-        rawWords, (rawWords / audioDurationSec).toFixed(2), avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3), formatNoSpeech(noSpeech),
+        metrics.trailingSilenceSeconds.toFixed(1), rawWords, (rawWords / audioDurationSec).toFixed(2),
+        avgLogprob === null ? 'n/a' : avgLogprob.toFixed(3), formatNoSpeech(noSpeech),
       );
 
       const clipboardOk = await writeClipboardVerified(text);
@@ -653,9 +718,8 @@ export function registerIpcHandlers(
       }
 
       const durationSeconds = samples.length / sampleRate;
-      const countWordsInline = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
-      const wordCount = countWordsInline(text);
-      const rawWordCount = countWordsInline(rawText);
+      const wordCount = countWords(text);
+      const rawWordCount = rawWords;
       const promptLabel = aiService.getPromptLabel();
       const entry: RecordingEntry = {
         id: entryId,
@@ -744,11 +808,23 @@ export function registerIpcHandlers(
       for (const entry of entries) {
         try {
           const e = entry as Record<string, unknown>;
-          // Backfill rawWordCount for legacy entries that predate this field
-          if (typeof e.rawWordCount !== 'number') {
-            e.rawWordCount = typeof e.wordCount === 'number' ? e.wordCount : 0;
+          if (typeof e.id !== 'string' || typeof e.date !== 'string' || typeof e.text !== 'string') {
+            throw new Error('entry must have string "id", "date" and "text"');
           }
-          historyService.add(e as RecordingEntry);
+          const wordCount = typeof e.wordCount === 'number' ? e.wordCount : countWords(e.text);
+          const migrated: RecordingEntry = {
+            id: e.id,
+            date: e.date,
+            text: e.text,
+            rawText: typeof e.rawText === 'string' ? e.rawText : e.text,
+            wordCount,
+            rawWordCount: typeof e.rawWordCount === 'number' ? e.rawWordCount : wordCount,
+            durationSeconds: typeof e.durationSeconds === 'number' ? e.durationSeconds : 0,
+            appName: typeof e.appName === 'string' ? e.appName : undefined,
+            audioPath: typeof e.audioPath === 'string' ? e.audioPath : undefined,
+            mode: typeof e.mode === 'string' ? e.mode : undefined,
+          };
+          historyService.add(migrated);
           added++;
         } catch (entryErr) {
           log.warn('HISTORY_MIGRATE skipped invalid entry:', entryErr);

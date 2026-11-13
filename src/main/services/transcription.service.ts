@@ -17,6 +17,8 @@ export interface TranscriptionResult {
   noSpeech: NoSpeechStats | null;
 }
 
+type AudioBytes = ArrayBuffer | Buffer;
+
 // Lazy-loaded @huggingface/transformers — the library eagerly loads onnxruntime-node
 // native bindings at import time, which crashes on systems without DirectML support
 // (e.g. VirtualBox VMs). Dynamic import() defers loading until local transcription
@@ -34,13 +36,14 @@ async function getTransformers(): Promise<TransformersModule> {
 }
 
 /** Retry on transient network/server errors (5xx, timeout). Auth errors (401/403) are never retried. */
-async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 1000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, signal?: AbortSignal, maxAttempts = 2, delayMs = 1000): Promise<T> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (err) {
       lastError = err;
+      if (signal?.aborted) throw err;
       const status = (err as { status?: number }).status;
       if (typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429) throw err;
       if (attempt < maxAttempts) {
@@ -50,6 +53,16 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2, delayMs = 100
     }
   }
   throw lastError;
+}
+
+function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new Error('Transcription aborted'));
+    if (signal.aborted) { onAbort(); return; }
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
 }
 
 const MODEL_MAP: Record<string, string> = {
@@ -69,9 +82,9 @@ const MODEL_MAP: Record<string, string> = {
 // Large models (medium+) have fp32 encoders >2GB split into .onnx + .onnx_data files
 // which fail to load. fp16 quantization keeps them in a single file with negligible accuracy loss.
 const NEEDS_QUANTIZATION = new Set(['medium', 'large', 'large-v3', 'large-v3-turbo']);
-const QUANTIZED_DTYPE = { encoder_model: 'fp16', decoder_model_merged: 'fp16' };
+const QUANTIZED_DTYPE = { encoder_model: 'fp16', decoder_model_merged: 'fp16' } as const;
 
-function getDtypeForModel(modelId: string): Record<string, string> | undefined {
+function getDtypeForModel(modelId: string): typeof QUANTIZED_DTYPE | undefined {
   for (const [size, id] of Object.entries(MODEL_MAP)) {
     if (id === modelId && NEEDS_QUANTIZATION.has(size)) return QUANTIZED_DTYPE;
   }
@@ -82,6 +95,7 @@ function getDtypeForModel(modelId: string): Record<string, string> | undefined {
 // The old require.resolve() approach pointed inside app.asar in production,
 // causing ENOTDIR when the library tried to create the cache directory.
 const MODELS_CACHE_DIR = path.join(app.getPath('userData'), 'models');
+const GROQ_WHISPER_MODEL = 'whisper-large-v3';
 
 // Capture the pristine global.fetch once at module load — never lost even if overrides overlap.
 const pristineFetch = global.fetch;
@@ -286,7 +300,7 @@ export class TranscriptionService {
     return MODELS_CACHE_DIR;
   }
 
-  async transcribeFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number, compressedAudio?: ArrayBuffer): Promise<TranscriptionResult> {
+  async transcribeFromBuffer(audioBuffer: AudioBytes, sampleRate: number, compressedAudio?: AudioBytes, signal?: AbortSignal): Promise<TranscriptionResult> {
     const engine = (this.store.get('transcription.engine') as string) ?? 'local';
 
     // Cloud path: prefer pre-compressed WebM/Opus from MediaRecorder (~8x smaller upload).
@@ -294,8 +308,8 @@ export class TranscriptionService {
     // we can't apply Float32 preprocessing to an already-encoded WebM. Groq Whisper API
     // is robust to silence and volume variations, so faster upload outweighs preprocessing.
     const compressedSize = compressedAudio ? (Buffer.isBuffer(compressedAudio) ? compressedAudio.length : compressedAudio.byteLength) : 0;
-    if (engine === 'cloud' && compressedSize > 0) {
-      return this.transcribeGroqFromCompressed(compressedAudio);
+    if (engine === 'cloud' && compressedAudio && compressedSize > 0) {
+      return this.transcribeGroqFromCompressed(compressedAudio, signal);
     }
 
     // Preprocess: trim silence edges + normalize peak level before transcription.
@@ -307,8 +321,8 @@ export class TranscriptionService {
     const preprocessed = Buffer.from(trimmed.buffer, trimmed.byteOffset, trimmed.byteLength);
 
     return engine === 'cloud'
-      ? this.transcribeGroqFromBuffer(preprocessed, sampleRate)
-      : this.transcribeLocalFromBuffer(preprocessed, sampleRate);
+      ? this.transcribeGroqFromBuffer(preprocessed, sampleRate, signal)
+      : abortable(this.transcribeLocalFromBuffer(preprocessed, sampleRate), signal);
   }
 
   private getGroqClient(): OpenAI {
@@ -328,7 +342,7 @@ export class TranscriptionService {
   // sentences — deterministically on 6/6 affected files, and even on a 9 s recording.
   // Without a prompt all of them transcribed in full. Vocabulary is still applied after
   // transcription via applyVocabularyReplacements (ipc-handlers.ts).
-  private async transcribeGroqFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<TranscriptionResult> {
+  private async transcribeGroqFromBuffer(audioBuffer: AudioBytes, sampleRate: number, signal?: AbortSignal): Promise<TranscriptionResult> {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
@@ -338,17 +352,18 @@ export class TranscriptionService {
       const file = await toFile(wavBuffer, 'audio.wav', { type: 'audio/wav' });
 
       const response = await client.audio.transcriptions.create({
-        model: 'whisper-large-v3',
+        model: GROQ_WHISPER_MODEL,
         file,
         response_format: 'verbose_json',
+        temperature: 0,
         ...(language !== 'auto' && { language }),
-      });
+      }, { signal });
 
       return { text: response.text.trim(), avgLogprob: meanSegmentLogprob(response.segments), noSpeech: noSpeechStats(response.segments) };
-    });
+    }, signal);
   }
 
-  private async transcribeGroqFromCompressed(compressedAudio: ArrayBuffer): Promise<TranscriptionResult> {
+  private async transcribeGroqFromCompressed(compressedAudio: AudioBytes, signal?: AbortSignal): Promise<TranscriptionResult> {
     return withRetry(async () => {
       const client = this.getGroqClient();
       const language = (this.store.get('transcription.language') as string) ?? 'auto';
@@ -357,17 +372,18 @@ export class TranscriptionService {
       const file = await toFile(buf, 'audio.webm', { type: 'audio/webm' });
 
       const response = await client.audio.transcriptions.create({
-        model: 'whisper-large-v3',
+        model: GROQ_WHISPER_MODEL,
         file,
         response_format: 'verbose_json',
+        temperature: 0,
         ...(language !== 'auto' && { language }),
-      });
+      }, { signal });
 
       return { text: response.text.trim(), avgLogprob: meanSegmentLogprob(response.segments), noSpeech: noSpeechStats(response.segments) };
-    });
+    }, signal);
   }
 
-  private async transcribeLocalFromBuffer(audioBuffer: ArrayBuffer, sampleRate: number): Promise<TranscriptionResult> {
+  private async transcribeLocalFromBuffer(audioBuffer: AudioBytes, sampleRate: number): Promise<TranscriptionResult> {
     const { modelId } = this.resolveModelId();
     const language = (this.store.get('transcription.language') as string) ?? 'auto';
 
@@ -510,7 +526,7 @@ function normalizeAudio(samples: Float32Array, targetPeak = 0.9): Float32Array {
   return out;
 }
 
-function ipcBufferToFloat32(buffer: ArrayBuffer): Float32Array {
+function ipcBufferToFloat32(buffer: AudioBytes): Float32Array {
   const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
   return new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
 }

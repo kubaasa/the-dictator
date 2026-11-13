@@ -230,6 +230,7 @@ export function useAudioRecorder(
   const speechWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reacquireCountRef = useRef(0);
   const reacquiredAtRef = useRef(0);
+  const wiredAtRef = useRef<number | null>(null);
 
   function clearSpeechWatchdog() {
     if (speechWatchdogRef.current) {
@@ -366,6 +367,7 @@ export function useAudioRecorder(
   function teardownRecording() {
     sessionIdRef.current++;
     clearWatchdog();
+    wiredAtRef.current = null;
     isRecordingRef.current = false;
     isSettingUpRef.current = false;
     pendingStopRef.current = false;
@@ -695,6 +697,7 @@ export function useAudioRecorder(
       reacquireCountRef.current = 0;
       const wiredCtx = audioContext;
       const wiredTime = wiredCtx.currentTime;
+      wiredAtRef.current = Date.now();
       recLog.info('pipeline wired:', describeCtx(wiredCtx));
       // Dead-pipeline detector: a healthy 16kHz context advances currentTime and posts
       // ~90 level messages in 1.5s. Log only — evidence first, recovery once the cause is proven.
@@ -755,6 +758,8 @@ export function useAudioRecorder(
     clearWatchdog();
     setIsRecording(false);
     const elapsedMs = recordingStartTimeRef.current !== null ? Date.now() - recordingStartTimeRef.current : 0;
+    const expectedMs = wiredAtRef.current !== null ? Date.now() - wiredAtRef.current : elapsedMs;
+    wiredAtRef.current = null;
     if (recordingStartTimeRef.current !== null) {
       setLastDurationSeconds(elapsedMs / 1000);
       recordingStartTimeRef.current = null;
@@ -828,7 +833,7 @@ export function useAudioRecorder(
       totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
       hasAudio = totalLength > 0 && !!audioContext;
       const pcmSeconds = totalLength / (audioContext?.sampleRate ?? WHISPER_SAMPLE_RATE);
-      const pcmTooShort = elapsedMs > 1000 && pcmSeconds < (elapsedMs / 1000) * PCM_COVERAGE_FLOOR;
+      const pcmTooShort = expectedMs > 1000 && pcmSeconds < (expectedMs / 1000) * PCM_COVERAGE_FLOOR;
 
       // Worklet produced nothing (stalled context) — fall back to the MediaRecorder capture
       // before telling main the recording was empty.
@@ -840,7 +845,9 @@ export function useAudioRecorder(
           ]);
           const samples = await decodeCompressedAudio(compressed);
           if (samples) {
-            const why = hasAudio ? `worklet pcm=${pcmSeconds.toFixed(1)}s covers <80% of elapsed` : 'worklet produced no samples';
+            const why = hasAudio
+              ? `worklet pcm=${pcmSeconds.toFixed(1)}s covers <80% of ${(expectedMs / 1000).toFixed(1)}s since wiring`
+              : 'worklet produced no samples';
             recLog.warn(`${why}, using MediaRecorder capture: elapsed=${elapsedMs}ms`
               + ` decoded=${(samples.length / WHISPER_SAMPLE_RATE).toFixed(1)}s`, describeCtx(audioContext), stoppedTrackInfo);
             recovered = { samples, compressed };

@@ -3,21 +3,13 @@ import log from 'electron-log/renderer';
 import type { ModelStatus } from '../hooks/useModelStatus';
 import type { AIProviderType, TranscriptionEngine, AppSettings, SavedPrompt } from '../../shared/types';
 import { DEFAULT_SETTINGS } from '../../shared/types';
-import { WHISPER_MODEL_DESCRIPTIONS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
+import { WHISPER_MODELS, OPENAI_MODELS, ANTHROPIC_MODELS } from '../../shared/constants';
 import { ApiKeyInput } from './ApiKeyInput';
 import { useToast } from './Toast';
 import { Segmented } from './ui/Segmented';
 import { Switch } from './ui/Switch';
 import { StepCard } from './ui/StepCard';
 import { FieldRow } from './ui/FieldRow';
-
-const MODEL_OPTIONS = [
-  { value: 'tiny', label: 'Tiny', size: '75 MB' },
-  { value: 'base', label: 'Base', size: '150 MB' },
-  { value: 'small', label: 'Small', size: '470 MB' },
-  { value: 'medium', label: 'Medium', size: '1.5 GB' },
-  { value: 'large-v3', label: 'Large', size: '3.1 GB' },
-];
 
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
@@ -527,7 +519,7 @@ export function ModesPage(props: ModelStatus) {
 
   if (!settingsLoaded) return null;
 
-  const selectedWhisper = MODEL_OPTIONS.find((o) => o.value === modelSize);
+  const selectedWhisper = WHISPER_MODELS.find((o) => o.value === modelSize);
   const whisperReady = downloadedModels.includes(modelSize);
   const activeAiKey = aiProvider === 'openai' ? aiOpenaiKey : aiAnthropicKey;
   const activeAiKeySaved = aiProvider === 'openai' ? openaiKeySaved : anthropicKeySaved;
@@ -576,11 +568,11 @@ export function ModesPage(props: ModelStatus) {
                   ariaLabel="Whisper model"
                   value={modelSize}
                   onChange={handleModelChange}
-                  options={MODEL_OPTIONS.map((o) => ({ value: o.value, label: o.label, disabled: downloading && o.value !== modelSize }))}
+                  options={WHISPER_MODELS.map((o) => ({ value: o.value, label: o.label, disabled: downloading && o.value !== modelSize }))}
                 />
                 <div className="flex min-h-[30px] w-full items-center gap-3 text-xs text-text-muted">
                   <span className="font-mono text-text">{selectedWhisper?.size}</span>
-                  <span>{WHISPER_MODEL_DESCRIPTIONS[modelSize]}</span>
+                  <span>{selectedWhisper?.description}</span>
                   <span className="ml-auto flex items-center gap-2">
                     {whisperReady ? (
                       <span className="flex items-center gap-1 text-ok">

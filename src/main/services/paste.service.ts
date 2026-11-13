@@ -43,11 +43,14 @@ const CAPTURE_CMD = `$h=[WinCapE]::GetForegroundWindow(); $sb=New-Object System.
 // Windows (workbench.action.terminal.paste, in commandsToSkipShell), so it bypasses xterm.js.
 // SendInput goes to whatever window is foreground, so the target is re-checked right before
 // the keystrokes; a closed or un-focusable target throws instead of pasting somewhere else.
+const FOCUS_POLL_INTERVAL_MS = 10;
+const FOCUS_POLL_ATTEMPTS = 25;
+
 function buildPasteCmd(hwnd: string): string {
   if (!/^\d+$/.test(hwnd)) {
     throw new Error(`Invalid hwnd: expected digits only, got "${hwnd}"`);
   }
-  const focus = `$t=[IntPtr]${hwnd}; if(-not [PW]::IsWindow($t)){ throw 'target window no longer exists' }; $fg=[PW]::GetForegroundWindow(); $ft=[PW]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $mt=[PW]::GetCurrentThreadId(); $att=$false; if($ft -ne $mt){[void][PW]::AttachThreadInput($mt,$ft,$true);$att=$true}; if([PW]::IsIconic($t)){[void][PW]::ShowWindow($t,9)}; [void][PW]::SetForegroundWindow($t); if($att){[void][PW]::AttachThreadInput($mt,$ft,$false)}; Start-Sleep -Milliseconds 250;`;
+  const focus = `$t=[IntPtr]${hwnd}; if(-not [PW]::IsWindow($t)){ throw 'target window no longer exists' }; if([PW]::GetForegroundWindow().ToInt64() -ne $t.ToInt64()){ $fg=[PW]::GetForegroundWindow(); $ft=[PW]::GetWindowThreadProcessId($fg,[IntPtr]::Zero); $mt=[PW]::GetCurrentThreadId(); $att=$false; if($ft -ne $mt){[void][PW]::AttachThreadInput($mt,$ft,$true);$att=$true}; if([PW]::IsIconic($t)){[void][PW]::ShowWindow($t,9)}; [void][PW]::SetForegroundWindow($t); if($att){[void][PW]::AttachThreadInput($mt,$ft,$false)}; $i=0; while($i -lt ${FOCUS_POLL_ATTEMPTS} -and [PW]::GetForegroundWindow().ToInt64() -ne $t.ToInt64()){ Start-Sleep -Milliseconds ${FOCUS_POLL_INTERVAL_MS}; $i++ } };`;
   const verify = `if([PW]::GetForegroundWindow().ToInt64() -ne $t.ToInt64()){ throw 'target window did not come to the foreground' };`;
   return `${focus} ${verify} [PW]::Paste(); Write-Output '${PASTE_OK}'`;
 }

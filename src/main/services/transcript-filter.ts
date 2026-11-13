@@ -2,6 +2,7 @@ export interface SpeechMetrics {
   durationSeconds: number;
   speechSeconds: number;
   longestSpeechRunSeconds: number;
+  trailingSilenceSeconds: number;
   rms: number;
   peak: number;
 }
@@ -21,12 +22,18 @@ export interface NoSpeechStats {
 export const SPEECH_FRAME_RMS = 0.02;
 export const MIN_SPEECH_SECONDS = 0.1;
 export const CREDITS_MAX_SPEECH_SECONDS = 1.0;
-export const LOW_CONFIDENCE_LOGPROB = -0.7;
-export const SHORT_TRANSCRIPT_MAX_WORDS = 3;
-export const SHORT_TRANSCRIPT_MIN_SPEECH_RUN_SECONDS = 0.5;
-export const SHORT_TRANSCRIPT_LOGPROB = -0.6;
+export const LOW_CONFIDENCE_LOGPROB = -0.8;
+export const SHORT_COMMAND_MAX_WORDS = 2;
+export const SHORT_COMMAND_LOGPROB = -0.9;
+export const WHISPER_WINDOW_SECONDS = 30;
+export const EMPTY_TAIL_WINDOW_SILENCE_SECONDS = 1.0;
+export const TRAILING_KEEP_SECONDS = 0.35;
 
 const FRAME_SECONDS = 0.05;
+
+export function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
 
 export function noSpeechStats(segments: TranscriptSegment[] | undefined): NoSpeechStats | null {
   const probs = (segments ?? []).map((s) => s.no_speech_prob).filter((p): p is number => typeof p === 'number');
@@ -49,14 +56,19 @@ export function meanSegmentLogprob(segments: TranscriptSegment[] | undefined): n
   return weighted / total;
 }
 
-export function isLowConfidence(avgLogprob: number | null): avgLogprob is number {
-  return avgLogprob !== null && avgLogprob < LOW_CONFIDENCE_LOGPROB;
+export function isLowConfidence(text: string, avgLogprob: number | null): boolean {
+  if (avgLogprob === null) return false;
+  const threshold = countWords(text) <= SHORT_COMMAND_MAX_WORDS ? SHORT_COMMAND_LOGPROB : LOW_CONFIDENCE_LOGPROB;
+  return avgLogprob < threshold;
 }
 
-export function isShortLowConfidence(text: string, metrics: SpeechMetrics, avgLogprob: number | null): boolean {
-  if (avgLogprob === null || avgLogprob >= SHORT_TRANSCRIPT_LOGPROB) return false;
-  if (metrics.longestSpeechRunSeconds >= SHORT_TRANSCRIPT_MIN_SPEECH_RUN_SECONDS) return false;
-  return text.trim().split(/\s+/).filter(Boolean).length <= SHORT_TRANSCRIPT_MAX_WORDS;
+export function hasEmptyTailWindow(metrics: Pick<SpeechMetrics, 'durationSeconds' | 'trailingSilenceSeconds'>): boolean {
+  return metrics.durationSeconds > WHISPER_WINDOW_SECONDS && metrics.trailingSilenceSeconds >= EMPTY_TAIL_WINDOW_SILENCE_SECONDS;
+}
+
+export function cutTrailingSilence(samples: Float32Array, sampleRate: number, metrics: SpeechMetrics): Float32Array {
+  const keepSeconds = metrics.durationSeconds - metrics.trailingSilenceSeconds + TRAILING_KEEP_SECONDS;
+  return samples.subarray(0, Math.min(samples.length, Math.round(keepSeconds * sampleRate)));
 }
 
 export function measureSpeech(samples: Float32Array, sampleRate: number): SpeechMetrics {
@@ -66,6 +78,7 @@ export function measureSpeech(samples: Float32Array, sampleRate: number): Speech
   let speechFrames = 0;
   let run = 0;
   let longestRun = 0;
+  let lastSpeechEnd = 0;
   for (let start = 0; start < samples.length; start += frame) {
     const end = Math.min(start + frame, samples.length);
     let frameSum = 0;
@@ -79,6 +92,7 @@ export function measureSpeech(samples: Float32Array, sampleRate: number): Speech
     if (end - start === frame && Math.sqrt(frameSum / frame) > SPEECH_FRAME_RMS) {
       speechFrames++;
       run++;
+      lastSpeechEnd = end;
       if (run > longestRun) longestRun = run;
     } else {
       run = 0;
@@ -88,6 +102,7 @@ export function measureSpeech(samples: Float32Array, sampleRate: number): Speech
     durationSeconds: samples.length / sampleRate,
     speechSeconds: speechFrames * FRAME_SECONDS,
     longestSpeechRunSeconds: longestRun * FRAME_SECONDS,
+    trailingSilenceSeconds: (samples.length - lastSpeechEnd) / sampleRate,
     rms: samples.length > 0 ? Math.sqrt(sumSquares / samples.length) : 0,
     peak,
   };
@@ -143,7 +158,6 @@ export function stripTrailingCredits(text: string): { text: string; stripped: st
   const match = TRAILING_CREDITS_RE.exec(text);
   if (!match || match.index === 0) return { text, stripped: null };
   const head = text.slice(0, match.index).trimEnd();
-  const wordsBefore = head.split(/\s+/).filter(Boolean).length;
-  if (wordsBefore < MIN_WORDS_BEFORE_TRAILING_CREDITS) return { text, stripped: null };
+  if (countWords(head) < MIN_WORDS_BEFORE_TRAILING_CREDITS) return { text, stripped: null };
   return { text: head, stripped: match[1].trim() };
 }

@@ -11,9 +11,9 @@ const path = require('path');
 
 let rcedit;
 try {
-  rcedit = require('rcedit');
+  ({ rcedit } = require('rcedit'));
 } catch {
-  // rcedit not available (non-Windows or maker-wix not installed) — skip silently
+  console.warn('[postinstall] rcedit is not installed — Electron binary icon not patched');
   return;
 }
 

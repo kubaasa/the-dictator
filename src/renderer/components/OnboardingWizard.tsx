@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import log from 'electron-log/renderer';
-import type { TranscriptionEngine } from '../../shared/types';
-import { AUTO_MIC_DEVICE_ID } from '../../shared/constants';
+import { DEFAULT_SETTINGS, type TranscriptionEngine } from '../../shared/types';
+import { AUTO_MIC_DEVICE_ID, WHISPER_MODELS } from '../../shared/constants';
 import { resolveAutoMic } from '../utils/mic-devices';
 import { ApiKeyInput } from './ApiKeyInput';
 import appIcon from '../../../assets/icon.png';
@@ -100,14 +100,6 @@ function StepEngine({ engine, onEngineChange }: { engine: TranscriptionEngine; o
   );
 }
 
-const LOCAL_MODELS = [
-  { value: 'tiny',     label: 'Tiny',     size: '40 MB',  text: 'Fastest, lowest quality' },
-  { value: 'base',     label: 'Base',     size: '75 MB',  text: 'Good balance' },
-  { value: 'small',    label: 'Small',    size: '250 MB', text: 'Accurate, slower' },
-  { value: 'medium',   label: 'Medium',   size: '770 MB', text: 'Near-professional' },
-  { value: 'large-v3', label: 'Large v3', size: '1.5 GB', text: 'Best accuracy' },
-] as const;
-
 function StepConfig({
   engine,
   modelSize,
@@ -133,7 +125,7 @@ function StepConfig({
     return (
       <div className="flex flex-col gap-3.5">
         <div role="radiogroup" aria-label="Whisper model" className="divide-y divide-border/60 overflow-hidden rounded-[10px] border border-border bg-surface-sunken">
-          {LOCAL_MODELS.map((model) => {
+          {WHISPER_MODELS.map((model) => {
             const selected = model.value === modelSize;
             return (
               <button
@@ -146,7 +138,7 @@ function StepConfig({
               >
                 <Radio selected={selected} />
                 <span className="text-[13px] font-medium text-text">{model.label}</span>
-                <span className="text-xs text-text-muted">{model.text}</span>
+                <span className="text-xs text-text-muted">{model.description}</span>
                 <span className="ml-auto font-mono text-[11px] text-text-dim">{model.size}</span>
               </button>
             );
@@ -253,7 +245,7 @@ function StepMicTest({
     activeRef.current = true;
 
     let analyser: AnalyserNode | null = null;
-    let dataArray: Uint8Array | null = null;
+    let dataArray: Uint8Array<ArrayBuffer> | null = null;
     let samplesPerBar = 0;
 
     try {
@@ -310,7 +302,7 @@ function StepMicTest({
       const source = ctx.createMediaStreamSource(stream);
       source.connect(analyser);
 
-      dataArray = new Uint8Array(analyser.fftSize);
+      dataArray = new Uint8Array(new ArrayBuffer(analyser.fftSize));
       samplesPerBar = Math.floor(analyser.fftSize / MIC_BAR_COUNT);
       setMicPermission('granted');
     } catch (err: unknown) {
@@ -503,7 +495,7 @@ function StepMicTest({
 
 export function OnboardingWizard({ onComplete, onClose }: OnboardingWizardProps) {
   const [currentStep, setCurrentStep] = useState<WizardStep>(0);
-  const [engine, setEngine] = useState<TranscriptionEngine>('local');
+  const [engine, setEngine] = useState<TranscriptionEngine>(DEFAULT_SETTINGS.transcription.engine);
   const [modelSize, setModelSize] = useState('base');
   const [groqApiKey, setGroqApiKey] = useState('');
   const [validation, setValidation] = useState<ValidationStatus>('idle');
