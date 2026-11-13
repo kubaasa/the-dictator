@@ -19,17 +19,16 @@ files:
   - "!**/node_modules/onnxruntime-node/bin/napi-v3/win32/arm64/**"
   - "!**/node_modules/better-sqlite3/prebuilds/{darwin,linux,linuxmusl}-*.node"
   - "!**/node_modules/better-sqlite3/prebuilds/win32-arm64.node"
+  - "!**/node_modules/uiohook-napi/prebuilds/{darwin,linux}-*/**"
 
 npmRebuild: false
 
 extraMetadata:
   main: dist/main/main.js
 
-asar: true
+asar:
+  smartUnpack: false
 asarUnpack:
-  - "node_modules/uiohook-napi/**"
-  - "node_modules/better-sqlite3/**"
-  - "node_modules/onnxruntime-node/**"
   - "**/*.node"
   - "**/*.dll"
 

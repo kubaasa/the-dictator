@@ -134,11 +134,7 @@ The following packages are **native modules** or large non-bundleable packages. 
    external: ['uiohook-napi', '@huggingface/transformers', 'onnxruntime-node', ..., 'new-native-module']
    ```
 
-2. If it contains native `.node` addons, add to `asarUnpack` in `electron-builder.yml` (catch-all `**/*.node` and `**/*.dll` globs exist, but list the package explicitly):
-   ```yaml
-   asarUnpack:
-     - "node_modules/new-native-module/**"
-   ```
+2. Native `.node` and `.dll` files are unpacked by the `**/*.node` and `**/*.dll` globs in `asarUnpack` (`electron-builder.yml`). `asar.smartUnpack` is `false` on purpose: by default electron-builder unpacks every package that contains a binary in full, and unpacked `.js` files are outside ASAR integrity validation. Only a module that needs some other file on the real filesystem gets an extra glob for exactly that file.
 
 Skipping either step will cause the production build to fail or crash at runtime.
 
