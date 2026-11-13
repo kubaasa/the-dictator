@@ -52,7 +52,7 @@ export class TrayManager {
   updateRecordingState(state: RecordingState): void {
     this.state = state;
     if (this.tray) {
-      this.tray.setToolTip(`The Dictator — ${state}`);
+      this.tray.setToolTip(`The Dictator: ${state}`);
       this.updateMenu();
     }
   }

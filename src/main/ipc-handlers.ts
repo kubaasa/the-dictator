@@ -550,7 +550,7 @@ export function registerIpcHandlers(
         'Audio below speech threshold (id=%s rms=%s peak=%s speech=%ss of %ss) — skipping transcription',
         entryId, metrics.rms.toFixed(4), metrics.peak.toFixed(3), metrics.speechSeconds.toFixed(2), metrics.durationSeconds.toFixed(1),
       );
-      const quietMsg = 'Audio too quiet — nothing to transcribe. Check your microphone.';
+      const quietMsg = 'Audio too quiet, nothing to transcribe. Check your microphone.';
       for (const win of BrowserWindow.getAllWindows()) {
         win.webContents.send(IPC.NOTIFICATION_ERROR, quietMsg);
       }
@@ -631,8 +631,8 @@ export function registerIpcHandlers(
           rawText ?? '', entryId, metrics.speechSeconds.toFixed(2), metrics.longestSpeechRunSeconds.toFixed(2), formatNoSpeech(noSpeech),
         );
         const noSpeechMsg = creditsLike
-          ? `No speech detected — rejected hallucinated text: "${rawText}"`
-          : 'No speech detected — recording contained only silence or background noise.';
+          ? `No speech detected. Rejected hallucinated text: "${rawText}"`
+          : 'No speech detected. The recording contained only silence or background noise.';
         for (const win of BrowserWindow.getAllWindows()) {
           win.webContents.send(IPC.NOTIFICATION_ERROR, noSpeechMsg);
         }
@@ -699,7 +699,7 @@ export function registerIpcHandlers(
       if (!clipboardOk) {
         log.warn('Clipboard write not confirmed after %d attempts — skipping auto-paste', CLIPBOARD_WRITE_ATTEMPTS);
         for (const win of BrowserWindow.getAllWindows()) {
-          win.webContents.send(IPC.NOTIFICATION_ERROR, 'Could not place the text in the clipboard — copy it from History.');
+          win.webContents.send(IPC.NOTIFICATION_ERROR, 'Could not place the text in the clipboard. Copy it from History.');
         }
       } else if (autoPaste && pasteService.hasTarget()) {
         try {

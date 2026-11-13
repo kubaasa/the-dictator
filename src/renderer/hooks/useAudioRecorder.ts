@@ -677,7 +677,7 @@ export function useAudioRecorder(
           log.warn('AudioWorklet: no audio input detected — mic may have been taken by another app');
           if (isRecordingRef.current) {
             teardownRecording();
-            const message = 'Microphone stopped responding — it may have been taken by another application.';
+            const message = 'Microphone stopped responding. It may have been taken by another application.';
             setError(message);
             setErrorType('');
             window.dictator.reportMicError(message);
@@ -861,7 +861,7 @@ export function useAudioRecorder(
       if (!hasAudio) {
         recLog.warn(`empty recording: elapsed=${elapsedMs}ms chunks=${chunks.length} levels=${levelCountRef.current}`,
           describeCtx(audioContext), stoppedTrackInfo);
-        const emptyMsg = 'Recording was empty — no audio captured. Try again.';
+        const emptyMsg = 'Recording was empty, no audio captured. Try again.';
         setError(emptyMsg);
         setErrorType('');
         window.dictator.reportMicError(emptyMsg);
@@ -933,7 +933,7 @@ export function useAudioRecorder(
         isRecordingRef.current = false;
         setIsRecording(false);
         setRecordingStartTime(null);
-        setError(err instanceof Error ? err.message : 'Transcription failed — please try again');
+        setError(err instanceof Error ? err.message : 'Transcription failed. Please try again.');
       });
   }, []);
 

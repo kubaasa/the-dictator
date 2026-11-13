@@ -178,7 +178,7 @@ export class UpdateService {
   private showNativeNotification(): void {
     const version = this.state.latestVersion;
     const notification = new Notification({
-      title: 'The Dictator — Update Ready',
+      title: 'The Dictator: Update Ready',
       body: `Version ${version ?? 'new'} is ready to install. Right-click the tray icon to restart.`,
       icon: nativeImage.createFromPath(this.iconPath),
     });
