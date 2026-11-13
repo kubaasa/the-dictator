@@ -36,7 +36,7 @@ npx -y -p typescript@5.9.3 tsc --noEmit
 
 **electron-builder** with NSIS target (replaced Electron Forge in v1.2.0).
 
-- Config: `electron-builder.yml`
+- Config: `electron-builder.yml`. Its `files` list is an allowlist (`dist/main`, `dist/renderer`, `package.json`) plus exclusions for source maps, the transformers model cache, `onnxruntime-web` and native binaries for other platforms. A new dependency that ships per-platform binaries needs its own exclusion there.
 - Dev script: `scripts/dev.mjs` (Vite dev server + Electron watch/restart)
 - Security fuses: `scripts/after-pack.js` (flipped after packaging). `strictlyRequireAllFuses` is on, so a new Electron fuse must be listed there or packaging fails. `@electron/fuses` 2.x is ESM-only, hence the dynamic `import()`.
 - Custom NSIS pages: `assets/installer.nsh` (desktop shortcut + auto-start options)
